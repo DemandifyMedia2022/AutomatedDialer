@@ -1,0 +1,16 @@
+{
+  "name": "Automated Dialer",
+  "short_name": "AutoDialer",
+  "description": "Call Management System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#125ca5",
+  "icons": [
+    {
+      "src": "/next.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
