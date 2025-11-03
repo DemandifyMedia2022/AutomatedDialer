@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Automated Dialer Monorepo
 
-## Getting Started
+Enterprise-style monorepo with separate frontend (Next.js) and backend (Express + MySQL).
 
-First, run the development server:
+## Structure
+
+```
+apps/
+  frontend/   # Next.js app (App Router)
+  backend/    # Express API (TypeScript)
+```
+
+## Requirements
+
+- Node 18+
+- MySQL 8+
+
+## Install
+
+```bash
+npm install
+```
+
+## Development
+
+Run both apps concurrently:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Frontend: http://localhost:3000
+- Backend:  http://localhost:4000
+- Health:   http://localhost:4000/api/health
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Run individually:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run start:frontend   # Next.js
+npm run start:backend    # Compiled Express
+```
 
-## Learn More
+## Backend Environment
 
-To learn more about Next.js, take a look at the following resources:
+Create `apps/backend/.env`:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+PORT=4000
+DATABASE_URL=mysql://USER:PASSWORD@localhost:3306/automated_dialer
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Build
 
-## Deploy on Vercel
+```bash
+npm run build
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Lint
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+```
+
+## Notes
+
+- Frontend dark mode image swap implemented on the sign-in page.
+- For API calls from frontend, use `http://localhost:4000` in development or configure `NEXT_PUBLIC_API_URL`.
