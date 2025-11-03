@@ -37,21 +37,30 @@ const data = {
       ],
     },
     {
-      title: "Teams",
+      title: "Monitoring",
       url: "#",
       icon: Users,
       items: [
-        { title: "Agents", url: "#" },
-        { title: "Performance", url: "#" },
+        { title: "Track Agent", url: "/dashboard/manager/monitoring/track-agent" },
+        { title: "Live Calls", url: "/dashboard/manager/monitoring/live-calls" },
       ],
     },
     {
-      title: "Queues",
+      title: "Call Management",
       url: "#",
       icon: ClipboardList,
       items: [
-        { title: "Active Queues", url: "#" },
-        { title: "Archived", url: "#" },
+        { title: "Change DID", url: "/dashboard/manager/call-management/change-did" },
+        { title: "Call Details", url: "/dashboard/manager/call-management/cdr" },
+      ],
+    },
+    {
+      title: "Administration",
+      url: "#",
+      icon: Settings2,
+      items: [
+        { title: "Agent", url: "/dashboard/manager/administration/agent" },
+        { title: "Campaigns", url: "/dashboard/manager/administration/campaigns" },
       ],
     },
     {
@@ -59,8 +68,8 @@ const data = {
       url: "#",
       icon: Settings2,
       items: [
-        { title: "Routing", url: "#" },
-        { title: "Notifications", url: "#" },
+        { title: "Profile", url: "/dashboard/manager/settings/profile" },
+        { title: "Preferences", url: "/dashboard/manager/settings/preferences" },
       ],
     },
   ],

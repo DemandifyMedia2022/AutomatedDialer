@@ -4975,63 +4975,63 @@ const data = {
     },
     navMain: [
         {
-            title: "My Calls",
-            url: "/dashboard/agent",
+            title: "Dialer",
+            url: "/dashboard/agent/dialer",
             icon: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$phone$2d$call$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__PhoneCall$3e$__["PhoneCall"],
             isActive: true,
             items: [
                 {
-                    title: "Active",
-                    url: "#"
+                    title: "Manual",
+                    url: "/dashboard/agent/dialer/manual"
                 },
                 {
-                    title: "Completed",
-                    url: "#"
+                    title: "Automated",
+                    url: "/dashboard/agent/dialer/automated"
                 }
             ]
         },
         {
-            title: "Tasks",
-            url: "#",
+            title: "Campaigns",
+            url: "/dashboard/agent/campaigns",
             icon: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$list$2d$check$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ListCheck$3e$__["ListCheck"],
             items: [
                 {
-                    title: "Today",
-                    url: "#"
+                    title: "Active Campaigns",
+                    url: "/dashboard/agent/campaigns/active"
                 },
                 {
-                    title: "Upcoming",
-                    url: "#"
+                    title: "Campaign History",
+                    url: "/dashboard/agent/campaigns/campaign-history"
                 }
             ]
         },
         {
-            title: "Leads",
-            url: "#",
+            title: "My Calls",
+            url: "/dashboard/agent/my-calls",
             icon: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$users$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Users$3e$__["Users"],
             items: [
                 {
-                    title: "All Leads",
-                    url: "#"
+                    title: "Call History",
+                    url: "/dashboard/agent/my-calls/call-history"
                 },
                 {
-                    title: "My Leads",
-                    url: "#"
+                    title: "Lead Details",
+                    url: "/dashboard/agent/my-calls/lead-details"
                 }
             ]
         },
         {
             title: "Settings",
-            url: "#",
+            url: "/dashboard/agent/settings",
             icon: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$settings$2d$2$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Settings2$3e$__["Settings2"],
             items: [
                 {
                     title: "Profile",
-                    url: "#"
+                    url: "/dashboard/agent/settings/profile"
                 },
                 {
                     title: "Preferences",
-                    url: "#"
+                    url: "/dashboard/agent/settings/preferences"
                 }
             ]
         }
@@ -5039,11 +5039,11 @@ const data = {
 };
 function AgentSidebar(t0) {
     const $ = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$compiler$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["c"])(10);
-    if ($[0] !== "80c69cc748c42aeb71931215d56d2a731c3bc32c73c66253a9f7623c0ca92f04") {
+    if ($[0] !== "0ed2d73c6240f34da921ca83247e360814412cd566c8cfd4972f80eb0e40672b") {
         for(let $i = 0; $i < 10; $i += 1){
             $[$i] = Symbol.for("react.memo_cache_sentinel");
         }
-        $[0] = "80c69cc748c42aeb71931215d56d2a731c3bc32c73c66253a9f7623c0ca92f04";
+        $[0] = "0ed2d73c6240f34da921ca83247e360814412cd566c8cfd4972f80eb0e40672b";
     }
     let props;
     if ($[1] !== t0) {

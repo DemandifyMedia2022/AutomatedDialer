@@ -14,5 +14,8 @@
   },
   "devDependencies": {
     "concurrently": "^9.0.1"
+  },
+  "dependencies": {
+    "jssip": "^3.10.1"
   }
 }

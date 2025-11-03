@@ -1985,63 +1985,63 @@ const data = {
     },
     navMain: [
         {
-            title: "My Calls",
-            url: "/dashboard/agent",
+            title: "Dialer",
+            url: "/dashboard/agent/dialer",
             icon: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$phone$2d$call$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__PhoneCall$3e$__["PhoneCall"],
             isActive: true,
             items: [
                 {
-                    title: "Active",
-                    url: "#"
+                    title: "Manual",
+                    url: "/dashboard/agent/dialer/manual"
                 },
                 {
-                    title: "Completed",
-                    url: "#"
+                    title: "Automated",
+                    url: "/dashboard/agent/dialer/automated"
                 }
             ]
         },
         {
-            title: "Tasks",
-            url: "#",
+            title: "Campaigns",
+            url: "/dashboard/agent/campaigns",
             icon: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$list$2d$check$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__ListCheck$3e$__["ListCheck"],
             items: [
                 {
-                    title: "Today",
-                    url: "#"
+                    title: "Active Campaigns",
+                    url: "/dashboard/agent/campaigns/active"
                 },
                 {
-                    title: "Upcoming",
-                    url: "#"
+                    title: "Campaign History",
+                    url: "/dashboard/agent/campaigns/campaign-history"
                 }
             ]
         },
         {
-            title: "Leads",
-            url: "#",
+            title: "My Calls",
+            url: "/dashboard/agent/my-calls",
             icon: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$users$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Users$3e$__["Users"],
             items: [
                 {
-                    title: "All Leads",
-                    url: "#"
+                    title: "Call History",
+                    url: "/dashboard/agent/my-calls/call-history"
                 },
                 {
-                    title: "My Leads",
-                    url: "#"
+                    title: "Lead Details",
+                    url: "/dashboard/agent/my-calls/lead-details"
                 }
             ]
         },
         {
             title: "Settings",
-            url: "#",
+            url: "/dashboard/agent/settings",
             icon: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$settings$2d$2$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Settings2$3e$__["Settings2"],
             items: [
                 {
                     title: "Profile",
-                    url: "#"
+                    url: "/dashboard/agent/settings/profile"
                 },
                 {
                     title: "Preferences",
-                    url: "#"
+                    url: "/dashboard/agent/settings/preferences"
                 }
             ]
         }

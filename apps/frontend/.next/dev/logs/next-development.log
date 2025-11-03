@@ -80,3 +80,846 @@ It can also happen if the client has a browser extension installed which messes 
                   ...
 
 [00:02:18.790] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:13:56.065] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[01:45:58.082] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[01:45:58.341] Browser ERROR   A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch `if (typeof window !== 'undefined')`.
+- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
+- Date formatting in a user's locale which doesn't match the server.
+- External changing data without sending a snapshot of it along with the HTML.
+- Invalid HTML tag nesting.
+
+It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+
+%s%s https://react.dev/link/hydration-mismatch 
+
+  ...
+    <HotReload globalError={[...]} webSocket={WebSocket} staticIndicatorState={{pathname:null, ...}}>
+      <AppDevOverlayErrorBoundary globalError={[...]}>
+        <ReplaySsrOnlyErrors>
+        <DevRootHTTPAccessFallbackBoundary>
+          <HTTPAccessFallbackBoundary notFound={<NotAllowedRootHTTPFallbackError>}>
+            <HTTPAccessFallbackErrorBoundary pathname="/dashboard..." notFound={<NotAllowedRootHTTPFallbackError>} ...>
+              <RedirectBoundary>
+                <RedirectErrorBoundary router={{...}}>
+                  <Head>
+                  <__next_root_layout_boundary__>
+                    <SegmentViewNode type="layout" pagePath="/apps/fron...">
+                      <SegmentTrieNode>
+                      <link>
+                      <script>
+                      <script>
+                      <RootLayout>
+                        <html lang="en" suppressHydrationWarning={true}>
+                          <body
+                            className="geist_a71539c9-module__T19VSG__variable geist_mono_8d43a2aa-module__8Li5zG__var..."
+-                           cz-shortcut-listen="true"
+                          >
+                  ...
+
+[01:47:48.658] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[01:47:48.848] Browser ERROR   A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch `if (typeof window !== 'undefined')`.
+- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
+- Date formatting in a user's locale which doesn't match the server.
+- External changing data without sending a snapshot of it along with the HTML.
+- Invalid HTML tag nesting.
+
+It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+
+%s%s https://react.dev/link/hydration-mismatch 
+
+  ...
+    <HotReload globalError={[...]} webSocket={WebSocket} staticIndicatorState={{pathname:null, ...}}>
+      <AppDevOverlayErrorBoundary globalError={[...]}>
+        <ReplaySsrOnlyErrors>
+        <DevRootHTTPAccessFallbackBoundary>
+          <HTTPAccessFallbackBoundary notFound={<NotAllowedRootHTTPFallbackError>}>
+            <HTTPAccessFallbackErrorBoundary pathname="/dashboard" notFound={<NotAllowedRootHTTPFallbackError>} ...>
+              <RedirectBoundary>
+                <RedirectErrorBoundary router={{...}}>
+                  <Head>
+                  <__next_root_layout_boundary__>
+                    <SegmentViewNode type="layout" pagePath="/apps/fron...">
+                      <SegmentTrieNode>
+                      <link>
+                      <script>
+                      <script>
+                      <RootLayout>
+                        <html lang="en" suppressHydrationWarning={true}>
+                          <body
+                            className="geist_a71539c9-module__T19VSG__variable geist_mono_8d43a2aa-module__8Li5zG__var..."
+-                           cz-shortcut-listen="true"
+                          >
+                  ...
+
+[01:58:26.506] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[01:58:37.547] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[01:59:41.094] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:13:14.814] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:14:23.475] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:14:25.318] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:15:07.048] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:15:07.185] Browser ERROR   A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch `if (typeof window !== 'undefined')`.
+- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
+- Date formatting in a user's locale which doesn't match the server.
+- External changing data without sending a snapshot of it along with the HTML.
+- Invalid HTML tag nesting.
+
+It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+
+%s%s https://react.dev/link/hydration-mismatch 
+
+  ...
+    <HotReload globalError={[...]} webSocket={WebSocket} staticIndicatorState={{pathname:null, ...}}>
+      <AppDevOverlayErrorBoundary globalError={[...]}>
+        <ReplaySsrOnlyErrors>
+        <DevRootHTTPAccessFallbackBoundary>
+          <HTTPAccessFallbackBoundary notFound={<NotAllowedRootHTTPFallbackError>}>
+            <HTTPAccessFallbackErrorBoundary pathname="/dashboard" notFound={<NotAllowedRootHTTPFallbackError>} ...>
+              <RedirectBoundary>
+                <RedirectErrorBoundary router={{...}}>
+                  <Head>
+                  <__next_root_layout_boundary__>
+                    <SegmentViewNode type="layout" pagePath="/apps/fron...">
+                      <SegmentTrieNode>
+                      <link>
+                      <script>
+                      <script>
+                      <RootLayout>
+                        <html lang="en" suppressHydrationWarning={true}>
+                          <body
+                            className="geist_a71539c9-module__T19VSG__variable geist_mono_8d43a2aa-module__8Li5zG__var..."
+-                           cz-shortcut-listen="true"
+                          >
+                  ...
+
+[02:15:31.275] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:15:57.470] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:17:17.192] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:41:30.495] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:41:38.774] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:42:03.405] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:49:21.267] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:49:21.378] Browser ERROR   A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch `if (typeof window !== 'undefined')`.
+- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
+- Date formatting in a user's locale which doesn't match the server.
+- External changing data without sending a snapshot of it along with the HTML.
+- Invalid HTML tag nesting.
+
+It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+
+%s%s https://react.dev/link/hydration-mismatch 
+
+  ...
+    <HotReload globalError={[...]} webSocket={WebSocket} staticIndicatorState={{pathname:null, ...}}>
+      <AppDevOverlayErrorBoundary globalError={[...]}>
+        <ReplaySsrOnlyErrors>
+        <DevRootHTTPAccessFallbackBoundary>
+          <HTTPAccessFallbackBoundary notFound={<NotAllowedRootHTTPFallbackError>}>
+            <HTTPAccessFallbackErrorBoundary pathname="/login" notFound={<NotAllowedRootHTTPFallbackError>} ...>
+              <RedirectBoundary>
+                <RedirectErrorBoundary router={{...}}>
+                  <Head>
+                  <__next_root_layout_boundary__>
+                    <SegmentViewNode type="layout" pagePath="/apps/fron...">
+                      <SegmentTrieNode>
+                      <link>
+                      <script>
+                      <script>
+                      <RootLayout>
+                        <html lang="en" suppressHydrationWarning={true}>
+                          <body
+                            className="geist_a71539c9-module__T19VSG__variable geist_mono_8d43a2aa-module__8Li5zG__var..."
+-                           cz-shortcut-listen="true"
+                          >
+                  ...
+
+[02:51:53.790] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:52:32.374] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:52:33.806] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:52:33.945] Browser ERROR   A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch `if (typeof window !== 'undefined')`.
+- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
+- Date formatting in a user's locale which doesn't match the server.
+- External changing data without sending a snapshot of it along with the HTML.
+- Invalid HTML tag nesting.
+
+It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+
+%s%s https://react.dev/link/hydration-mismatch 
+
+  ...
+    <div data-sidebar="sidebar" data-slot="sidebar-inner" className="bg-sidebar...">
+      <SidebarHeader>
+      ...
+        <ul data-slot="sidebar-menu" data-sidebar="menu" className="flex w-ful...">
+          ...
+            <Primitive.div data-state="open" data-disabled={undefined} data-slot="collapsible" asChild={true} ...>
+              <Primitive.div.Slot data-state="open" data-disabled={undefined} data-slot="collapsible" ...>
+                <Primitive.div.SlotClone data-state="open" data-disabled={undefined} data-slot="collapsible" ...>
+                  <SidebarMenuItem data-state="open" data-disabled={undefined} data-slot="collapsible" ...>
+                    <li data-slot="collapsible" data-sidebar="menu-item" className="group/menu..." data-state="open" ...>
+                      ...
+                        <Primitive.div.Slot ref={function}>
+                          <Primitive.div.SlotClone ref={function}>
+                            <Primitive.button aria-describedby={undefined} data-state="closed" data-slot="tooltip-tr..." ...>
+                              <Primitive.button.Slot aria-describedby={undefined} data-state="closed" ...>
+                                <Primitive.button.SlotClone aria-describedby={undefined} data-state="closed" ...>
+                                  <button
+                                    data-slot="collapsible-trigger"
+                                    data-sidebar="menu-button"
+                                    data-size="default"
+                                    data-active={false}
+                                    className={"peer/menu-button flex w-full items-center gap-2 overflow-hidden round..."}
+                                    type="button"
++                                   aria-controls="radix-_R_p9atpesnelb_"
+-                                   aria-controls="radix-_R_356atpesnelb_"
+                                    aria-expanded={true}
+                                    data-state="open"
+                                    data-disabled={undefined}
+                                    disabled={undefined}
+                                    onClick={function}
+                                    ref={function}
+                                    aria-describedby={undefined}
+                                    onPointerMove={function handleEvent}
+                                    onPointerLeave={function handleEvent}
+                                    onPointerDown={function handleEvent}
+                                    onFocus={function handleEvent}
+                                    onBlur={function handleEvent}
+                                  >
+                      <CollapsibleContent>
+                        <CollapsibleContent data-slot="collapsibl...">
+                          <Presence present={true}>
+                            <Primitive.div data-state="open" data-disabled={undefined} id="radix-_R_p..." hidden={false} ...>
+                              <div
+                                data-state="open"
+                                data-disabled={undefined}
++                               id="radix-_R_p9atpesnelb_"
+-                               id="radix-_R_356atpesnelb_"
+                                hidden={false}
+                                data-slot="collapsible-content"
+                                style={{--radix-collapsible-content-height:undefined, ...}}
+                                ref={function}
+                              >
+          ...
+            <Primitive.div data-state="closed" data-disabled={undefined} data-slot="collapsible" asChild={true} ...>
+              <Primitive.div.Slot data-state="closed" data-disabled={undefined} data-slot="collapsible" ...>
+                <Primitive.div.SlotClone data-state="closed" data-disabled={undefined} data-slot="collapsible" ...>
+                  <SidebarMenuItem data-state="closed" data-disabled={undefined} data-slot="collapsible" ...>
+                    <li data-slot="collapsible" data-sidebar="menu-item" className="group/menu..." data-state="closed" ...>
+                      ...
+                        <Primitive.div.Slot ref={function}>
+                          <Primitive.div.SlotClone ref={function}>
+                            <Primitive.button aria-describedby={undefined} data-state="closed" data-slot="tooltip-tr..." ...>
+                              <Primitive.button.Slot aria-describedby={undefined} data-state="closed" ...>
+                                <Primitive.button.SlotClone aria-describedby={undefined} data-state="closed" ...>
+                                  <button
+                                    data-slot="collapsible-trigger"
+                                    data-sidebar="menu-button"
+                                    data-size="default"
+                                    data-active={false}
+                                    className={"peer/menu-button flex w-full items-center gap-2 overflow-hidden round..."}
+                                    type="button"
++                                   aria-controls="radix-_R_199atpesnelb_"
+-                                   aria-controls="radix-_R_556atpesnelb_"
+                                    aria-expanded={false}
+                                    data-state="closed"
+                                    data-disabled={undefined}
+                                    disabled={undefined}
+                                    onClick={function}
+                                    ref={function}
+                                    aria-describedby={undefined}
+                                    onPointerMove={function handleEvent}
+                                    onPointerLeave={function handleEvent}
+                                    onPointerDown={function handleEvent}
+                                    onFocus={function handleEvent}
+                                    onBlur={function handleEvent}
+                                  >
+                      <CollapsibleContent>
+                        <CollapsibleContent data-slot="collapsibl...">
+                          <Presence present={false}>
+                            <Primitive.div data-state="closed" data-disabled={undefined} id="radix-_R_1..." hidden={true} ...>
+                              <div
+                                data-state="closed"
+                                data-disabled={undefined}
++                               id="radix-_R_199atpesnelb_"
+-                               id="radix-_R_556atpesnelb_"
+                                hidden={true}
+                                data-slot="collapsible-content"
+                                style={{--radix-collapsible-content-height:undefined, ...}}
+                                ref={function}
+                              >
+          ...
+            <Primitive.div data-state="closed" data-disabled={undefined} data-slot="collapsible" asChild={true} ...>
+              <Primitive.div.Slot data-state="closed" data-disabled={undefined} data-slot="collapsible" ...>
+                <Primitive.div.SlotClone data-state="closed" data-disabled={undefined} data-slot="collapsible" ...>
+                  <SidebarMenuItem data-state="closed" data-disabled={undefined} data-slot="collapsible" ...>
+                    <li data-slot="collapsible" data-sidebar="menu-item" className="group/menu..." data-state="closed" ...>
+                      ...
+                        <Primitive.div.Slot ref={function}>
+                          <Primitive.div.SlotClone ref={function}>
+                            <Primitive.button aria-describedby={undefined} data-state="closed" data-slot="tooltip-tr..." ...>
+                              <Primitive.button.Slot aria-describedby={undefined} data-state="closed" ...>
+                                <Primitive.button.SlotClone aria-describedby={undefined} data-state="closed" ...>
+                                  <button
+                                    data-slot="collapsible-trigger"
+                                    data-sidebar="menu-button"
+                                    data-size="default"
+                                    data-active={false}
+                                    className={"peer/menu-button flex w-full items-center gap-2 overflow-hidden round..."}
+                                    type="button"
++                                   aria-controls="radix-_R_1p9atpesnelb_"
+-                                   aria-controls="radix-_R_756atpesnelb_"
+                                    aria-expanded={false}
+                                    data-state="closed"
+                                    data-disabled={undefined}
+                                    disabled={undefined}
+                                    onClick={function}
+                                    ref={function}
+                                    aria-describedby={undefined}
+                                    onPointerMove={function handleEvent}
+                                    onPointerLeave={function handleEvent}
+                                    onPointerDown={function handleEvent}
+                                    onFocus={function handleEvent}
+                                    onBlur={function handleEvent}
+                                  >
+                      <CollapsibleContent>
+                        <CollapsibleContent data-slot="collapsibl...">
+                          <Presence present={false}>
+                            <Primitive.div data-state="closed" data-disabled={undefined} id="radix-_R_1..." hidden={true} ...>
+                              <div
+                                data-state="closed"
+                                data-disabled={undefined}
++                               id="radix-_R_1p9atpesnelb_"
+-                               id="radix-_R_756atpesnelb_"
+                                hidden={true}
+                                data-slot="collapsible-content"
+                                style={{--radix-collapsible-content-height:undefined, ...}}
+                                ref={function}
+                              >
+          ...
+            <Primitive.div data-state="closed" data-disabled={undefined} data-slot="collapsible" asChild={true} ...>
+              <Primitive.div.Slot data-state="closed" data-disabled={undefined} data-slot="collapsible" ...>
+                <Primitive.div.SlotClone data-state="closed" data-disabled={undefined} data-slot="collapsible" ...>
+                  <SidebarMenuItem data-state="closed" data-disabled={undefined} data-slot="collapsible" ...>
+                    <li data-slot="collapsible" data-sidebar="menu-item" className="group/menu..." data-state="closed" ...>
+                      ...
+                        <Primitive.div.Slot ref={function}>
+                          <Primitive.div.SlotClone ref={function}>
+                            <Primitive.button aria-describedby={undefined} data-state="closed" data-slot="tooltip-tr..." ...>
+                              <Primitive.button.Slot aria-describedby={undefined} data-state="closed" ...>
+                                <Primitive.button.SlotClone aria-describedby={undefined} data-state="closed" ...>
+                                  <button
+                                    data-slot="collapsible-trigger"
+                                    data-sidebar="menu-button"
+                                    data-size="default"
+                                    data-active={false}
+                                    className={"peer/menu-button flex w-full items-center gap-2 overflow-hidden round..."}
+                                    type="button"
++                                   aria-controls="radix-_R_299atpesnelb_"
+-                                   aria-controls="radix-_R_956atpesnelb_"
+                                    aria-expanded={false}
+                                    data-state="closed"
+                                    data-disabled={undefined}
+                                    disabled={undefined}
+                                    onClick={function}
+                                    ref={function}
+                                    aria-describedby={undefined}
+                                    onPointerMove={function handleEvent}
+                                    onPointerLeave={function handleEvent}
+                                    onPointerDown={function handleEvent}
+                                    onFocus={function handleEvent}
+                                    onBlur={function handleEvent}
+                                  >
+                      <CollapsibleContent>
+                        <CollapsibleContent data-slot="collapsibl...">
+                          <Presence present={false}>
+                            <Primitive.div data-state="closed" data-disabled={undefined} id="radix-_R_2..." hidden={true} ...>
+                              <div
+                                data-state="closed"
+                                data-disabled={undefined}
++                               id="radix-_R_299atpesnelb_"
+-                               id="radix-_R_956atpesnelb_"
+                                hidden={true}
+                                data-slot="collapsible-content"
+                                style={{--radix-collapsible-content-height:undefined, ...}}
+                                ref={function}
+                              >
+      ...
+        <MenuProvider scope={{Menu:[...], ...}} onClose={function Menu.useCallback} isUsingKeyboardRef={{current:false}} ...>
+          <DropdownMenuTrigger asChild={true}>
+            <DropdownMenuTrigger data-slot="dropdown-m..." asChild={true}>
+              <MenuAnchor asChild={true} __scopeMenu={{Menu:[...], ...}}>
+                <PopperAnchor __scopePopper={{Menu:[...], ...}} asChild={true} ref={null}>
+                  <Primitive.div asChild={true} ref={function}>
+                    <Primitive.div.Slot ref={function}>
+                      <Primitive.div.SlotClone ref={function}>
+                        <Primitive.button type="button" id="radix-_R_1..." aria-haspopup="menu" aria-expanded={false} ...>
+                          <Primitive.button.Slot type="button" id="radix-_R_1..." aria-haspopup="menu" ...>
+                            <Primitive.button.SlotClone type="button" id="radix-_R_1..." aria-haspopup="menu" ...>
+                              <SidebarMenuButton size="lg" className="data-[stat..." type="button" id="radix-_R_1..." ...>
+                                <button
+                                  data-slot="dropdown-menu-trigger"
+                                  data-sidebar="menu-button"
+                                  data-size="lg"
+                                  data-active={false}
+                                  className={"peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded..."}
+                                  type="button"
++                                 id="radix-_R_1patpesnelb_"
+-                                 id="radix-_R_76atpesnelb_"
+                                  aria-haspopup="menu"
+                                  aria-expanded={false}
+                                  aria-controls={undefined}
+                                  data-state="closed"
+                                  data-disabled={undefined}
+                                  disabled={false}
+                                  onPointerDown={function handleEvent}
+                                  onKeyDown={function handleEvent}
+                                  ref={function}
+                                >
+          ...
+      ...
+
+[02:52:34.268] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:52:34.690] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:52:35.168] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:52:35.559] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:52:35.969] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:52:36.415] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[03:08:08.963] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[03:13:49.330] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[03:17:03.472] Server  LOG      ✓ Compiled in 100ms
+[03:17:29.923] Server  LOG      ✓ Compiled in 47ms
+[03:17:56.913] Server  LOG      ✓ Compiled in 38ms
+[03:18:13.955] Server  LOG      ✓ Compiled in 37ms
+[03:18:15.611] Server  LOG      ✓ Compiled in 66ms
+[03:18:39.427] Server  LOG      ✓ Compiled in 41ms
+[03:18:43.927] Server  LOG      ✓ Compiled in 39ms
+[03:18:46.660] Server  LOG      ✓ Compiled in 41ms
+[03:19:08.641] Server  ERROR    ⨯ Error: The default export is not a React Component in "/dashboard/agent/settings/profile/page"
+[03:19:08.923] Server  ERROR    ⨯ Error: The default export is not a React Component in "/dashboard/agent/settings/profile/page"
+[03:19:10.174] Browser ERROR   uncaughtError: Error: The default export is not a React Component in "/dashboard/agent/settings/profile/page"
+[03:19:11.849] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[03:28:14.914] Server  ERROR    ⨯ Error: The default export is not a React Component in "/dashboard/agent/campaigns/active/page"
+[03:28:15.238] Server  ERROR    ⨯ Error: The default export is not a React Component in "/dashboard/agent/campaigns/active/page"
+[03:28:15.987] Server  ERROR    ⨯ Error: The default export is not a React Component in "/dashboard/agent/campaigns/campaign-history/page"
+[03:28:16.295] Server  ERROR    ⨯ Error: The default export is not a React Component in "/dashboard/agent/campaigns/campaign-history/page"
+[03:28:16.443] Browser ERROR   uncaughtError: Error: The default export is not a React Component in "/dashboard/agent/campaigns/campaign-history/page"
+[03:28:19.682] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[04:00:58.318] Server  ERROR    ⨯ ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:1:27
+Ecmascript file had an error
+> 1 | import React, { useState, useEffect, useRef } from "react";
+    |                           ^^^^^^^^^
+  2 | import "./Dialer.css";
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+
+You're importing a component that needs `useEffect`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+
+ Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+
+
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+
+
+
+./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:1:38
+Ecmascript file had an error
+> 1 | import React, { useState, useEffect, useRef } from "react";
+    |                                      ^^^^^^
+  2 | import "./Dialer.css";
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+
+You're importing a component that needs `useRef`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+
+ Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+
+
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+
+
+
+./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:1:17
+Ecmascript file had an error
+> 1 | import React, { useState, useEffect, useRef } from "react";
+    |                 ^^^^^^^^
+  2 | import "./Dialer.css";
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+
+You're importing a component that needs `useState`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+
+ Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+
+
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+
+
+
+./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:2:1
+Module not found: Can't resolve './Dialer.css'
+  1 | import React, { useState, useEffect, useRef } from "react";
+> 2 | import "./Dialer.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+  5 |
+
+
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+[04:00:58.468] Browser ERROR   ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:1:27
+Ecmascript file had an error
+> 1 | import React, { useState, useEffect, useRef } from "react";
+    |                           ^^^^^^^^^
+  2 | import "./Dialer.css";
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+
+You're importing a component that needs `useEffect`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+
+ Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+[04:00:58.468] Browser ERROR   ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:1:38
+Ecmascript file had an error
+> 1 | import React, { useState, useEffect, useRef } from "react";
+    |                                      ^^^^^^
+  2 | import "./Dialer.css";
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+
+You're importing a component that needs `useRef`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+
+ Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+[04:00:58.468] Browser ERROR   ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:1:17
+Ecmascript file had an error
+> 1 | import React, { useState, useEffect, useRef } from "react";
+    |                 ^^^^^^^^
+  2 | import "./Dialer.css";
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+
+You're importing a component that needs `useState`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+
+ Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+[04:00:58.468] Browser ERROR   ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:2:1
+Module not found: Can't resolve './Dialer.css'
+  1 | import React, { useState, useEffect, useRef } from "react";
+> 2 | import "./Dialer.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+  5 |
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+
+https://nextjs.org/docs/messages/module-not-found
+[04:00:58.656] Browser ERROR   uncaughtError: Error: ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:1:27
+Ecmascript file had an error
+> 1 | import React, { useState, useEffect, useRef } from "react";
+    |                           ^^^^^^^^^
+  2 | import "./Dialer.css";
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+
+You're importing a component that needs `useEffect`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+
+ Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+
+
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+
+
+[04:00:58.837] Browser ERROR   ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:1:27
+Ecmascript file had an error
+> 1 | import React, { useState, useEffect, useRef } from "react";
+    |                           ^^^^^^^^^
+  2 | import "./Dialer.css";
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+
+You're importing a component that needs `useEffect`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+
+ Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+[04:00:58.837] Browser ERROR   ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:1:38
+Ecmascript file had an error
+> 1 | import React, { useState, useEffect, useRef } from "react";
+    |                                      ^^^^^^
+  2 | import "./Dialer.css";
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+
+You're importing a component that needs `useRef`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+
+ Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+[04:00:58.838] Browser ERROR   ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:1:17
+Ecmascript file had an error
+> 1 | import React, { useState, useEffect, useRef } from "react";
+    |                 ^^^^^^^^
+  2 | import "./Dialer.css";
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+
+You're importing a component that needs `useState`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+
+ Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+[04:00:58.838] Browser ERROR   ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:2:1
+Module not found: Can't resolve './Dialer.css'
+  1 | import React, { useState, useEffect, useRef } from "react";
+> 2 | import "./Dialer.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+  5 |
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+
+https://nextjs.org/docs/messages/module-not-found
+[04:00:58.838] Browser ERROR   ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:1:27
+Ecmascript file had an error
+> 1 | import React, { useState, useEffect, useRef } from "react";
+    |                           ^^^^^^^^^
+  2 | import "./Dialer.css";
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+
+You're importing a component that needs `useEffect`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+
+ Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+[04:00:58.838] Browser ERROR   ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:1:38
+Ecmascript file had an error
+> 1 | import React, { useState, useEffect, useRef } from "react";
+    |                                      ^^^^^^
+  2 | import "./Dialer.css";
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+
+You're importing a component that needs `useRef`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+
+ Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+[04:00:58.838] Browser ERROR   ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:1:17
+Ecmascript file had an error
+> 1 | import React, { useState, useEffect, useRef } from "react";
+    |                 ^^^^^^^^
+  2 | import "./Dialer.css";
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+
+You're importing a component that needs `useState`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+
+ Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+[04:00:58.838] Browser ERROR   ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx:2:1
+Module not found: Can't resolve './Dialer.css'
+  1 | import React, { useState, useEffect, useRef } from "react";
+> 2 | import "./Dialer.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | const SIP_DOMAIN = "pbx2.telxio.com.sg";
+  5 |
+
+Import trace:
+  Server Component:
+    ./apps/frontend/src/app/dashboard/agent/components/ManualDialer.tsx
+    ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx
+
+https://nextjs.org/docs/messages/module-not-found
+[04:03:09.550] Server  LOG      ✓ Compiled in 311ms
+[04:03:10.171] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[04:03:10.851] Browser ERROR   A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch `if (typeof window !== 'undefined')`.
+- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
+- Date formatting in a user's locale which doesn't match the server.
+- External changing data without sending a snapshot of it along with the HTML.
+- Invalid HTML tag nesting.
+
+It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+
+%s%s https://react.dev/link/hydration-mismatch 
+
+  ...
+    <HotReload globalError={[...]} webSocket={WebSocket} staticIndicatorState={{pathname:null, ...}}>
+      <AppDevOverlayErrorBoundary globalError={[...]}>
+        <ReplaySsrOnlyErrors>
+        <DevRootHTTPAccessFallbackBoundary>
+          <HTTPAccessFallbackBoundary notFound={<NotAllowedRootHTTPFallbackError>}>
+            <HTTPAccessFallbackErrorBoundary pathname="/dashboard..." notFound={<NotAllowedRootHTTPFallbackError>} ...>
+              <RedirectBoundary>
+                <RedirectErrorBoundary router={{...}}>
+                  <Head>
+                  <__next_root_layout_boundary__>
+                    <SegmentViewNode type="layout" pagePath="/apps/fron...">
+                      <SegmentTrieNode>
+                      <link>
+                      <script>
+                      <script>
+                      <RootLayout>
+                        <html lang="en" suppressHydrationWarning={true}>
+                          <body
+                            className="geist_a71539c9-module__T19VSG__variable geist_mono_8d43a2aa-module__8Li5zG__var..."
+-                           cz-shortcut-listen="true"
+                          >
+                  ...
+
+[04:03:15.120] Browser INFO    %cJsSIP:WebSocketInterface %cnew() [url:"%s"]%c +0ms color: #66CC33 color: inherit wss://pbx2.telxio.com.sg:8089/ws color: #66CC33
+[04:03:15.120] Browser INFO    %cJsSIP:UA %cnew() [configuration:%o]%c +0ms color: #FF9933 color: inherit {"authorization_user":"nishiraj.mane@demandifymedia.com","display_name":"nishiraj.mane@demandifymedia.com","password":"Nishi@2003","register":true,"sockets":[{"_sip_uri":"sip:pbx2.telxio.com.sg:8089;transport=ws","_url":"wss://pbx2.telxio.com.sg:8089/ws","_via_transport":"WSS","_ws":null}],"uri":"sip:nishiraj.mane@demandifymedia.com@pbx2.telxio.com.sg"} color: #FF9933
+[04:03:15.120] Browser ERROR   SIP configuration error {"code":1,"message":"Invalid value \"sip:nishiraj.mane@demandifymedia.com@pbx2.telxio.com.sg\" for parameter \"uri\"","name":"CONFIGURATION_ERROR","parameter":"uri","value":"sip:nishiraj.mane@demandifymedia.com@pbx2.telxio.com.sg"}
+[04:03:16.090] Browser INFO    %cJsSIP:WebSocketInterface %cnew() [url:"%s"]%c +983ms color: #66CC33 color: inherit wss://pbx2.telxio.com.sg:8089/ws color: #66CC33
+[04:03:16.090] Browser INFO    %cJsSIP:UA %cnew() [configuration:%o]%c +982ms color: #FF9933 color: inherit {"authorization_user":"nishiraj.mane@demandifymedia.com","display_name":"nishiraj.mane@demandifymedia.com","password":"Nishi@2003","register":true,"sockets":[{"_sip_uri":"sip:pbx2.telxio.com.sg:8089;transport=ws","_url":"wss://pbx2.telxio.com.sg:8089/ws","_via_transport":"WSS","_ws":null}],"uri":"sip:nishiraj.mane@demandifymedia.com@pbx2.telxio.com.sg"} color: #FF9933
+[04:03:16.090] Browser ERROR   SIP configuration error {"code":1,"message":"Invalid value \"sip:nishiraj.mane@demandifymedia.com@pbx2.telxio.com.sg\" for parameter \"uri\"","name":"CONFIGURATION_ERROR","parameter":"uri","value":"sip:nishiraj.mane@demandifymedia.com@pbx2.telxio.com.sg"}
+[04:03:17.915] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[04:04:05.139] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[04:04:05.257] Browser ERROR   A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch `if (typeof window !== 'undefined')`.
+- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
+- Date formatting in a user's locale which doesn't match the server.
+- External changing data without sending a snapshot of it along with the HTML.
+- Invalid HTML tag nesting.
+
+It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+
+%s%s https://react.dev/link/hydration-mismatch 
+
+  ...
+    <HotReload globalError={[...]} webSocket={WebSocket} staticIndicatorState={{pathname:null, ...}}>
+      <AppDevOverlayErrorBoundary globalError={[...]}>
+        <ReplaySsrOnlyErrors>
+        <DevRootHTTPAccessFallbackBoundary>
+          <HTTPAccessFallbackBoundary notFound={<NotAllowedRootHTTPFallbackError>}>
+            <HTTPAccessFallbackErrorBoundary pathname="/dashboard..." notFound={<NotAllowedRootHTTPFallbackError>} ...>
+              <RedirectBoundary>
+                <RedirectErrorBoundary router={{...}}>
+                  <Head>
+                  <__next_root_layout_boundary__>
+                    <SegmentViewNode type="layout" pagePath="/apps/fron...">
+                      <SegmentTrieNode>
+                      <link>
+                      <script>
+                      <script>
+                      <RootLayout>
+                        <html lang="en" suppressHydrationWarning={true}>
+                          <body
+                            className="geist_a71539c9-module__T19VSG__variable geist_mono_8d43a2aa-module__8Li5zG__var..."
+-                           cz-shortcut-listen="true"
+                          >
+                  ...
+
+[04:04:07.470] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[04:05:04.406] Server  LOG      ✓ Compiled in 125ms
+[04:05:11.526] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[04:05:14.615] Browser INFO    %cJsSIP:WebSocketInterface %cnew() [url:"%s"]%c +0ms color: #66CC33 color: inherit wss://pbx2.telxio.com.sg:8089/ws color: #66CC33
+[04:05:14.615] Browser INFO    %cJsSIP:UA %cnew() [configuration:%o]%c +0ms color: #FF9933 color: inherit {"authorization_user":"nishiraj.mane@demandifymedia.com","display_name":"nishiraj.mane@demandifymedia.com","password":"Nishi@2003","register":true,"sockets":[{"_sip_uri":"sip:pbx2.telxio.com.sg:8089;transport=ws","_url":"wss://pbx2.telxio.com.sg:8089/ws","_via_transport":"WSS","_ws":null}],"uri":"sip:nishiraj.mane@demandifymedia.com@pbx2.telxio.com.sg"} color: #FF9933
+[04:05:14.615] Browser ERROR   SIP configuration error {"code":1,"message":"Invalid value \"sip:nishiraj.mane@demandifymedia.com@pbx2.telxio.com.sg\" for parameter \"uri\"","name":"CONFIGURATION_ERROR","parameter":"uri","value":"sip:nishiraj.mane@demandifymedia.com@pbx2.telxio.com.sg"}
+[04:05:15.595] Browser INFO    %cJsSIP:WebSocketInterface %cnew() [url:"%s"]%c +982ms color: #66CC33 color: inherit wss://pbx2.telxio.com.sg:8089/ws color: #66CC33
+[04:05:15.595] Browser INFO    %cJsSIP:UA %cnew() [configuration:%o]%c +979ms color: #FF9933 color: inherit {"authorization_user":"nishiraj.mane@demandifymedia.com","display_name":"nishiraj.mane@demandifymedia.com","password":"Nishi@2003","register":true,"sockets":[{"_sip_uri":"sip:pbx2.telxio.com.sg:8089;transport=ws","_url":"wss://pbx2.telxio.com.sg:8089/ws","_via_transport":"WSS","_ws":null}],"uri":"sip:nishiraj.mane@demandifymedia.com@pbx2.telxio.com.sg"} color: #FF9933
+[04:05:15.595] Browser ERROR   SIP configuration error {"code":1,"message":"Invalid value \"sip:nishiraj.mane@demandifymedia.com@pbx2.telxio.com.sg\" for parameter \"uri\"","name":"CONFIGURATION_ERROR","parameter":"uri","value":"sip:nishiraj.mane@demandifymedia.com@pbx2.telxio.com.sg"}
+[04:14:59.400] Server  ERROR    ⨯ ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx:1:1
+Module not found: Can't resolve '../../components/ManualDialer'
+> 1 | import Dialer from "../../components/ManualDialer"
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  2 | import { AgentSidebar } from "../../components/AgentSidebar"
+  3 | import { Separator } from "@/components/ui/separator"
+  4 | import {
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+[04:14:59.402] Server  ERROR    ⨯ ./apps/frontend/src/app/dashboard/agent/dialer/manual/page.tsx:1:1
+Module not found: Can't resolve '../../components/ManualDialer'
+> 1 | import Dialer from "../../components/ManualDialer"
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  2 | import { AgentSidebar } from "../../components/AgentSidebar"
+  3 | import { Separator } from "@/components/ui/separator"
+  4 | import {
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+[04:15:13.730] Server  LOG      ✓ Compiled in 36ms
