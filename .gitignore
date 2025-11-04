@@ -16,9 +16,12 @@
 # next.js
 /.next/
 /out/
+apps/frontend/.next/
+**/.next/
 
 # production
 /build
+apps/backend/dist/
 
 # misc
 .DS_Store
@@ -39,3 +42,4 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+apps/backend/uploads/
