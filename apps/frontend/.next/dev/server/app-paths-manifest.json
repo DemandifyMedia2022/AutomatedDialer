@@ -1,11 +1,1 @@
-{
-  "/dashboard/agent/campaigns/active/page": "app/dashboard/agent/campaigns/active/page.js",
-  "/dashboard/agent/campaigns/campaign-history/page": "app/dashboard/agent/campaigns/campaign-history/page.js",
-  "/dashboard/agent/dialer/manual/page": "app/dashboard/agent/dialer/manual/page.js",
-  "/dashboard/agent/page": "app/dashboard/agent/page.js",
-  "/dashboard/agent/settings/profile/page": "app/dashboard/agent/settings/profile/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/superadmin/page": "app/dashboard/superadmin/page.js",
-  "/login/page": "app/login/page.js",
-  "/page": "app/page.js"
-}
+{}

@@ -1,6 +1,6 @@
 var R=require("../../../../../chunks/ssr/[turbopack]_runtime.js")("server/app/dashboard/agent/dialer/manual/page.js")
-R.c("server/chunks/ssr/node_modules_1655b4ea._.js")
-R.c("server/chunks/ssr/[root-of-the-server]__5366cecc._.js")
+R.c("server/chunks/ssr/node_modules_next_dist_1f109d2f._.js")
+R.c("server/chunks/ssr/[root-of-the-server]__85ec113f._.js")
 R.c("server/chunks/ssr/node_modules_eb7ec0ea._.js")
 R.c("server/chunks/ssr/[root-of-the-server]__e8a2741f._.js")
 R.c("server/chunks/ssr/apps_frontend_src_app_9c932531._.js")
