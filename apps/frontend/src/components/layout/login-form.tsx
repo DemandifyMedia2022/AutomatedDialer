@@ -70,11 +70,10 @@ export function LoginForm({
                 </p>
               </div>
               <Field>
-                <FieldLabel htmlFor="email">Email</FieldLabel>
+                <FieldLabel htmlFor="email">Email or User ID</FieldLabel>
                 <Input
                   id="email"
-                  type="email"
-                  placeholder="m@example.com"
+                  placeholder="m@example.com or DM-AB-0001"
                   required
                   name="email"
                 />

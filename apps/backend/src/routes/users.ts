@@ -44,7 +44,7 @@ router.get('/', listLimiter, async (_req, res, next) => {
   try {
     const users = await db.users.findMany({
       orderBy: { created_at: 'desc' },
-      select: { id: true, username: true, usermail: true, role: true, status: true, created_at: true },
+      select: { id: true, username: true, usermail: true, role: true, status: true, created_at: true, unique_user_id: true },
     })
     res.json({ success: true, users })
   } catch (e) {
@@ -64,9 +64,35 @@ router.post('/', ...protectIfCookie, mutateLimiter, async (req, res, next) => {
     if (existing) return res.status(409).json({ success: false, message: 'User already exists' })
 
     const hash = await bcrypt.hash(password, 10)
+
+    // Build initials from username (fallback to first two chars of email local part)
+    const initFromName = (name: string) => name.split(/\s+/).filter(Boolean).map(w => w[0] || '').join('')
+    const rawInitials = (initFromName(username || '') || (email.split('@')[0] || ''))
+    const lettersOnly = rawInitials.replace(/[^A-Za-z]/g, '')
+    const initials = (lettersOnly || 'XX').slice(0, 2).toUpperCase()
+
+    // Compute next serial using lexicographic max of zero-padded suffix
+    const prefix = `DM-${initials}-`
+    const last = await db.users.findFirst({
+      where: { unique_user_id: { startsWith: prefix } },
+      select: { unique_user_id: true },
+      orderBy: { unique_user_id: 'desc' },
+    })
+    const lastNum = last?.unique_user_id?.match(/^(?:DM-[A-Z]{1,2}-)(\d{4})$/)?.[1]
+    let next = (lastNum ? parseInt(lastNum, 10) + 1 : 1)
+    let uniqueId = ''
+    // Increment until we find a free ID (handles race conditions and gaps)
+    for (let attempts = 0; attempts < 1000; attempts++) {
+      const candidate = `${prefix}${String(next).padStart(4, '0')}`
+      const exists = await db.users.findFirst({ where: { unique_user_id: candidate }, select: { id: true } })
+      if (!exists) { uniqueId = candidate; break }
+      next += 1
+    }
+    if (!uniqueId) uniqueId = `${prefix}${String(Date.now()).slice(-4)}`
+
     const user = await db.users.create({
-      data: { username, usermail: email, password: hash, role, status: 'active' },
-      select: { id: true, username: true, usermail: true, role: true, status: true, created_at: true },
+      data: { username, usermail: email, password: hash, role, status: 'active', unique_user_id: uniqueId },
+      select: { id: true, username: true, usermail: true, role: true, status: true, created_at: true, unique_user_id: true },
     })
     res.status(201).json({ success: true, user })
   } catch (e) {

@@ -19,6 +19,7 @@ type User = {
   role: string | null
   status: string | null
   created_at: string
+  unique_user_id?: string | null
 }
 
 type UsersResponse = { success: true; users: User[] }
@@ -85,7 +86,7 @@ export default function UsersPage() {
         throw new Error(err.message || 'Create failed')
       }
       const data = (await res.json()) as CreateResponse
-      setUsers((prev) => [data.user, ...prev])
+      setUsers((prev) => [data.user as User, ...prev])
       setForm({ username: '', email: '', password: '', role: 'agent' })
     } catch (e: any) {
       setError(e?.message || 'Create failed')
@@ -187,6 +188,7 @@ export default function UsersPage() {
                     <tr className="text-left border-b">
                       <th className="py-2 pr-4">ID</th>
                       <th className="py-2 pr-4">Username</th>
+                      <th className="py-2 pr-4">User ID</th>
                       <th className="py-2 pr-4">Email</th>
                       <th className="py-2 pr-4">Role</th>
                       <th className="py-2 pr-4">Status</th>
@@ -204,6 +206,7 @@ export default function UsersPage() {
                         <tr key={u.id} className="border-b last:border-0">
                           <td className="py-2 pr-4">{u.id}</td>
                           <td className="py-2 pr-4">{u.username || '-'}</td>
+                          <td className="py-2 pr-4 font-mono">{u.unique_user_id || '-'}</td>
                           <td className="py-2 pr-4">{u.usermail || '-'}</td>
                           <td className="py-2 pr-4">{u.role || '-'}</td>
                           <td className="py-2 pr-4">{u.status || '-'}</td>

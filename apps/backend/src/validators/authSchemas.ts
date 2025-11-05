@@ -1,7 +1,10 @@
 import { z } from 'zod'
 
 export const LoginSchema = z.object({
-  email: z.string().email(),
+  email: z.union([
+    z.string().email(),
+    z.string().regex(/^DM-[A-Za-z]{1,2}-\d{4}$/),
+  ]),
   password: z.string().min(1),
 })
 

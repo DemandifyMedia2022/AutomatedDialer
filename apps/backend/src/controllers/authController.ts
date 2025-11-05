@@ -34,16 +34,31 @@ export async function setupSuperadmin(req: Request, res: Response) {
 
     const hash = await bcrypt.hash(password, 10);
 
+    // Generate unique_user_id as DM-<INITIALS>-#### using last serial per initials
+    const initFromName = (name: string) => name.split(/\s+/).filter(Boolean).map(w => w[0] || '').join('')
+    const rawInitials = (initFromName(username || '') || (usermail.split('@')[0] || ''))
+    const lettersOnly = rawInitials.replace(/[^A-Za-z]/g, '')
+    const initials = (lettersOnly || 'XX').slice(0, 2).toUpperCase()
+    const prefix = `DM-${initials}-`
+    const last = await db.users.findFirst({
+      where: { unique_user_id: { startsWith: prefix } },
+      select: { unique_user_id: true },
+      orderBy: { unique_user_id: 'desc' },
+    })
+    const lastNum = last?.unique_user_id?.match(/^(?:DM-[A-Z]{1,2}-)(\d{4})$/)?.[1]
+    const next = (lastNum ? parseInt(lastNum, 10) + 1 : 1)
+    const uniqueId = `${prefix}${String(next).padStart(4, '0')}`
+
     const user = await db.users.create({
       data: {
         role: 'superadmin',
-        unique_user_id: randomUUID(),
+        unique_user_id: uniqueId,
         username,
         usermail,
         password: hash,
         status: 'active',
       },
-      select: { id: true, role: true, username: true, usermail: true, created_at: true },
+      select: { id: true, role: true, username: true, usermail: true, created_at: true, unique_user_id: true },
     });
 
     return res.status(201).json({ success: true, user });
@@ -64,7 +79,8 @@ export async function login(req: Request, res: Response) {
 
     const { email, password } = parsed.data;
 
-    const user = await db.users.findFirst({ where: { usermail: email } });
+    // Allow login via email OR unique_user_id
+    const user = await db.users.findFirst({ where: { OR: [ { usermail: email }, { unique_user_id: email } ] } });
     if (!user || !user.password) {
       console.warn('[auth] failed login (no user)', { email });
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
