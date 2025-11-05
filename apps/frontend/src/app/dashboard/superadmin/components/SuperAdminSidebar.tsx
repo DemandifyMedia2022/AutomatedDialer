@@ -41,7 +41,7 @@ const data = {
       url: "#",
       icon: Users,
       items: [
-        { title: "All Users", url: "#" },
+        { title: "All Users", url: "/dashboard/superadmin/users" },
         { title: "Roles", url: "#" },
         { title: "Permissions", url: "#" },
       ],

@@ -3,6 +3,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Script from "next/script"
 import { Phone, PhoneOff, Mic, MicOff } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { AgentSidebar } from "../../components/AgentSidebar"
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 
 declare global {
   interface Window {
@@ -445,78 +453,109 @@ export default function ManualDialerPage() {
   const backspace = () => setNumber((prev) => prev.slice(0, -1))
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <Script src="/js/jssip.min.js" strategy="afterInteractive" onLoad={() => setIsLoaded(true)} />
+    <SidebarProvider>
+      <AgentSidebar />
+      <SidebarInset>
+        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+          <div className="flex items-center gap-2 px-4 w-full">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator className="hidden md:block" />
+                <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbLink href="/dashboard/agent">Dialer</BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator className="hidden md:block" />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Manual</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+            <div className="ml-auto flex items-center gap-2">
+              <span className={`text-xs px-2 py-1 rounded ${status.includes("Registered") ? "bg-emerald-100 text-emerald-800" : status.includes("Connected") ? "bg-blue-100 text-blue-800" : status.includes("Call") ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-800"}`}>{status}</span>
+              {step === "dialer" && (
+                <Button variant="outline" size="sm" onClick={logout}>Logout</Button>
+              )}
+            </div>
+          </div>
+        </header>
 
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Manual Dialer</h1>
-        <div className="flex items-center gap-3">
-          <span className={`text-xs px-2 py-1 rounded ${status.includes("Registered") ? "bg-emerald-100 text-emerald-800" : status.includes("Connected") ? "bg-blue-100 text-blue-800" : status.includes("Call") ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-800"}`}>{status}</span>
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+          <Script src="/js/jssip.min.js" strategy="afterInteractive" onLoad={() => setIsLoaded(true)} />
+
+          {error && (
+            <Card className="border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error}</Card>
+          )}
+
+          {step === "login" && (
+            <div className="max-w-md">
+              <Card className="p-5">
+                <form onSubmit={onLogin} className="grid gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="ext">Extension</Label>
+                    <Input id="ext" value={ext} onChange={(e) => setExt(e.target.value)} placeholder="1001" autoFocus />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="pwd">SIP Password</Label>
+                    <Input id="pwd" type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} placeholder="••••••" />
+                  </div>
+                  <Button type="submit" disabled={!isLoaded} className="w-full">
+                    {isLoaded ? "Login" : "Loading JsSIP..."}
+                  </Button>
+                </form>
+              </Card>
+            </div>
+          )}
+
           {step === "dialer" && (
-            <button onClick={logout} className="h-8 px-3 rounded border bg-white text-sm">Logout</button>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card className="p-5">
+                <div className="mb-4 flex items-center gap-2">
+                  <Input className="flex-1 text-lg tracking-widest" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Enter number" />
+                  <Button variant="outline" onClick={backspace}>⌫</Button>
+                  <Button variant="outline" onClick={() => setNumber("")}>Clear</Button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  {["1","2","3","4","5","6","7","8","9","*","0","#"].map((d) => (
+                    <Button key={d} variant="outline" className="h-14 text-lg font-medium" onClick={() => onDigit(d)}>
+                      {d}
+                    </Button>
+                  ))}
+                </div>
+
+                <div className="mt-5 flex items-center gap-3">
+                  <Button onClick={placeCall} className="gap-2" disabled={!number || !uaRef.current || !status.includes("Registered") || status.startsWith("In Call") }>
+                    <Phone className="h-4 w-4" /> Call
+                  </Button>
+                  <Button onClick={hangup} variant="destructive" className="gap-2" disabled={!sessionRef.current}>
+                    <PhoneOff className="h-4 w-4" /> Hang Up
+                  </Button>
+                  <Button onClick={toggleMute} variant="outline" className="gap-2" disabled={!sessionRef.current}>
+                    {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />} {isMuted ? "Unmute" : "Mute"}
+                  </Button>
+                </div>
+
+                <audio ref={remoteAudioRef} autoPlay playsInline controls className="mt-4 w-full" />
+              </Card>
+
+              <Card className="p-5">
+                <div className="text-sm text-muted-foreground">Call Info</div>
+                <div className="mt-2 space-y-2 text-sm">
+                  <div className="flex justify-between"><span>Status</span><span>{status}</span></div>
+                  <div className="flex justify-between"><span>Extension</span><span>{ext || "-"}</span></div>
+                  <div className="flex justify-between"><span>Last dialed</span><span>{typeof window !== "undefined" ? (localStorage.getItem("lastDialedNumber") || "-") : "-"}</span></div>
+                </div>
+              </Card>
+            </div>
           )}
         </div>
-      </div>
-
-      {error && <div className="mb-4 rounded border border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error}</div>}
-
-      {step === "login" && (
-        <form onSubmit={onLogin} className="max-w-md rounded-lg border bg-white p-5 shadow-sm">
-          <div className="mb-4">
-            <label className="block text-sm mb-1">Extension</label>
-            <input className="w-full border rounded px-3 py-2" value={ext} onChange={(e) => setExt(e.target.value)} placeholder="1001" autoFocus />
-          </div>
-          <div className="mb-5">
-            <label className="block text-sm mb-1">SIP Password</label>
-            <input type="password" className="w-full border rounded px-3 py-2" value={pwd} onChange={(e) => setPwd(e.target.value)} placeholder="••••••" />
-          </div>
-          <button type="submit" disabled={!isLoaded} className="w-full h-10 rounded bg-blue-600 text-white disabled:opacity-50">{isLoaded ? "Login" : "Loading JsSIP..."}</button>
-        </form>
-      )}
-
-      {step === "dialer" && (
-        <div className="grid gap-6 md:grid-cols-2">
-          <div className="rounded-lg border bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
-              <input className="flex-1 border rounded px-3 py-3 text-lg tracking-widest" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Enter number" />
-              <button onClick={backspace} className="h-10 px-3 rounded border bg-gray-50">⌫</button>
-              <button onClick={() => setNumber("")} className="h-10 px-3 rounded border bg-gray-50">Clear</button>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              {["1","2","3","4","5","6","7","8","9","*","0","#"].map((d) => (
-                <button key={d} onClick={() => onDigit(d)} className="h-14 rounded-lg border bg-white text-lg font-medium hover:bg-gray-50 active:scale-[0.99]">
-                  {d}
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-5 flex items-center gap-3">
-              <button onClick={placeCall} className="flex items-center gap-2 h-11 px-4 rounded-lg bg-green-600 text-white disabled:opacity-50" disabled={!number || !uaRef.current || !status.includes("Registered") || status.startsWith("In Call") }>
-                <Phone className="h-4 w-4" /> Call
-              </button>
-              <button onClick={hangup} className="flex items-center gap-2 h-11 px-4 rounded-lg bg-red-600 text-white" disabled={!sessionRef.current}>
-                <PhoneOff className="h-4 w-4" /> Hang Up
-              </button>
-              <button onClick={toggleMute} className="flex items-center gap-2 h-11 px-4 rounded-lg border bg-white" disabled={!sessionRef.current}>
-                {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />} {isMuted ? "Unmute" : "Mute"}
-              </button>
-            </div>
-
-            <audio ref={remoteAudioRef} autoPlay playsInline controls className="mt-4 w-full" />
-          </div>
-
-          <div className="rounded-lg border bg-white p-5 shadow-sm">
-            <div className="text-sm text-gray-500">Call Info</div>
-            <div className="mt-2 space-y-2 text-sm">
-              <div className="flex justify-between"><span>Status</span><span>{status}</span></div>
-              <div className="flex justify-between"><span>Extension</span><span>{ext || "-"}</span></div>
-              <div className="flex justify-between"><span>Last dialed</span><span>{typeof window !== "undefined" ? (localStorage.getItem("lastDialedNumber") || "-") : "-"}</span></div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
 

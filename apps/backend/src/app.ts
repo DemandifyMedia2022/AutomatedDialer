@@ -8,7 +8,11 @@ import { env } from './config/env';
 
 export function createApp() {
   const app = express();
-  app.use(cors());
+  app.set('trust proxy', 1);
+  app.use(cors({
+    origin: env.CORS_ORIGIN,
+    credentials: env.USE_AUTH_COOKIE,
+  }));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 

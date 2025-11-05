@@ -2,6 +2,9 @@
 
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { API_BASE } from "@/lib/api"
+import { USE_AUTH_COOKIE, setToken } from "@/lib/auth"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -17,10 +20,41 @@ export function LoginForm({
   ...props
 }: React.ComponentProps<"div">) {
   const router = useRouter()
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    router.push("/dashboard")
+    if (submitting) return
+    setSubmitting(true)
+    setError(null)
+    const form = e.target as HTMLFormElement
+    const fd = new FormData(form)
+    const email = String(fd.get("email") || "")
+    const password = String(fd.get("password") || "")
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+        credentials: USE_AUTH_COOKIE ? "include" : "omit",
+      })
+      if (!res.ok) {
+        const msg = (await res.json()).message || "Login failed"
+        setError(msg)
+        return
+      }
+      const data = await res.json()
+      if (data.token) setToken(data.token)
+      const role = String((data.user?.role || "")).toLowerCase()
+      if (role === "manager") router.replace("/dashboard/manager")
+      else if (role === "superadmin") router.replace("/dashboard/superadmin")
+      else router.replace("/dashboard/agent")
+    } catch {
+      setError("Network error")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -42,6 +76,7 @@ export function LoginForm({
                   type="email"
                   placeholder="m@example.com"
                   required
+                  name="email"
                 />
               </Field>
               <Field>
@@ -54,11 +89,14 @@ export function LoginForm({
                     Forgot your password?
                   </a>
                 </div>
-                <Input id="password" type="password" required />
+                <Input id="password" type="password" required name="password" />
               </Field>
               <Field>
-                <Button type="submit">Login</Button>
+                <Button type="submit" disabled={submitting}>{submitting ? "Logging in..." : "Login"}</Button>
               </Field>
+              {error ? (
+                <p className="text-destructive text-sm">{error}</p>
+              ) : null}
               <FieldDescription className="text-center">
                 Don&apos;t have an account? <a href="#">Sign up</a>
               </FieldDescription>

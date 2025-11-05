@@ -11,6 +11,7 @@ import {
   Sun,
 } from "lucide-react"
 import { useTheme } from "next-themes"
+import { logout } from "@/lib/auth"
 
 import {
   Avatar,
@@ -113,7 +114,7 @@ export function NavUser({
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => logout()}>
               <LogOut />
               Log out
             </DropdownMenuItem>

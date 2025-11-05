@@ -1,15 +1,20 @@
 import { Router } from 'express';
 import { health } from '../controllers/healthController';
 import auth from './auth';
+import users from './users';
 import { env } from '../config/env';
 import multer from 'multer';
 import path from 'path';
 import { db } from '../db/prisma';
+import { requireAuth, requireRoles } from '../middlewares/auth';
+import { csrfProtect } from '../middlewares/csrf';
+import { z } from 'zod';
 
 const router = Router();
 
 router.get('/health', health);
 router.use('/auth', auth);
+router.use('/users', users);
 
 router.get('/sip/config', (_req, res) => {
   res.json({
@@ -33,34 +38,83 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Save call detail and recording
-router.post('/calls', upload.single('recording'), async (req, res, next) => {
+// Save call detail and recording (Authenticated: agent/manager/superadmin). CSRF required when using cookie auth.
+// Lightweight in-memory rate limiter for this route
+function makeLimiter({ windowMs, limit }: { windowMs: number; limit: number }) {
+  const buckets = new Map<string, { c: number; t: number }>();
+  return function limiter(req: any, res: any, next: any) {
+    const now = Date.now();
+    const key = `${req.ip || req.headers['x-forwarded-for'] || 'ip'}:${req.path}`;
+    const b = buckets.get(key);
+    if (!b || now - b.t > windowMs) {
+      buckets.set(key, { c: 1, t: now });
+      return next();
+    }
+    if (b.c >= limit) {
+      return res.status(429).json({ success: false, message: 'Too many requests' });
+    }
+    b.c += 1;
+    return next();
+  };
+}
+const callsLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 60 });
+
+const CallsSchema = z.object({
+  campaign_name: z.string().trim().min(1).optional().nullable(),
+  useremail: z.string().email().optional().nullable(),
+  username: z.string().trim().min(1).optional().nullable(),
+  unique_id: z.string().trim().min(1).optional().nullable(),
+  start_time: z.coerce.date().optional().nullable(),
+  answer_time: z.coerce.date().optional().nullable(),
+  end_time: z.coerce.date().optional().nullable(),
+  call_duration: z.coerce.number().int().nonnegative().optional().nullable(),
+  billed_duration: z.coerce.number().int().nonnegative().optional().nullable(),
+  source: z.string().optional().nullable(),
+  extension: z.string().optional().nullable(),
+  region: z.string().optional().nullable(),
+  charges: z.coerce.number().optional().nullable(),
+  direction: z.string().optional().nullable(),
+  destination: z.string().optional().nullable(),
+  disposition: z.string().optional().nullable(),
+  platform: z.string().optional().nullable(),
+  recording_url: z.string().url().optional().nullable(),
+  call_type: z.string().optional().nullable(),
+  remarks: z.string().optional().nullable(),
+  prospect_name: z.string().optional().nullable(),
+  prospect_email: z.string().email().optional().nullable(),
+  prospect_company: z.string().optional().nullable(),
+  job_title: z.string().optional().nullable(),
+  job_level: z.string().optional().nullable(),
+  data_source_type: z.string().optional().nullable(),
+});
+
+const callsHandler = async (req: any, res: any, next: any) => {
   try {
-    const b = req.body as any;
-    const file = req.file;
+    const parsed = CallsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, message: 'Invalid payload', issues: parsed.error.flatten() });
+    }
+    const b = parsed.data as any;
+    const file = (req as any).file;
 
     const recording_url = file
       ? `${env.PUBLIC_BASE_URL}/uploads/${file.filename}`
       : b.recording_url || null;
-
-    const parseDate = (v: any) => (v ? new Date(v) : null);
-    const toInt = (v: any) => (v === undefined || v === null || v === '' ? null : parseInt(String(v), 10));
-    const toDecimal = (v: any) => (v === undefined || v === null || v === '' ? null : Number(v));
 
     const data = {
       campaign_name: b.campaign_name || null,
       useremail: b.useremail || null,
       username: b.username || null,
       unique_id: b.unique_id || null,
-      start_time: parseDate(b.start_time) || new Date(),
-      answer_time: parseDate(b.answer_time),
-      end_time: parseDate(b.end_time),
-      call_duration: toInt(b.call_duration),
-      billed_duration: toInt(b.billed_duration),
+      start_time: b.start_time || new Date(),
+      answer_time: b.answer_time ?? null,
+      end_time: b.end_time ?? null,
+      call_duration: b.call_duration ?? null,
+      billed_duration: b.billed_duration ?? null,
       source: b.source || null,
       extension: b.extension || null,
       region: b.region || null,
-      charges: toDecimal(b.charges),
+      charges: b.charges ?? null,
       direction: b.direction || null,
       destination: b.destination || null,
       disposition: b.disposition || null,
@@ -82,6 +136,36 @@ router.post('/calls', upload.single('recording'), async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+};
+
+if (env.USE_AUTH_COOKIE) {
+  router.post(
+    '/calls',
+    callsLimiter,
+    requireAuth,
+    requireRoles(['agent', 'manager', 'superadmin']),
+    csrfProtect,
+    upload.single('recording'),
+    callsHandler
+  );
+} else {
+  router.post(
+    '/calls',
+    callsLimiter,
+    requireAuth,
+    requireRoles(['agent', 'manager', 'superadmin']),
+    upload.single('recording'),
+    callsHandler
+  );
+}
+
+// Example protected routes (Manager+)
+router.get('/campaigns', requireAuth, requireRoles(['manager', 'superadmin']), async (_req, res) => {
+  res.json({ success: true, items: [] });
+});
+
+router.get('/monitoring/live', requireAuth, requireRoles(['manager', 'superadmin']), async (_req, res) => {
+  res.json({ success: true, calls: [] });
 });
 
 export default router;
