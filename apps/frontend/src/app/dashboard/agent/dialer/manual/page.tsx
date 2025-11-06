@@ -38,6 +38,7 @@ export default function ManualDialerPage() {
   const timerRef = useRef<number | null>(null)
   const hasAnsweredRef = useRef<boolean>(false)
   const uploadedOnceRef = useRef<boolean>(false)
+  const dialStartRef = useRef<number | null>(null)
 
   // Recording refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -331,6 +332,7 @@ export default function ManualDialerPage() {
       // reset per-call state
       hasAnsweredRef.current = false
       uploadedOnceRef.current = false
+      dialStartRef.current = Date.now()
       await ensureAudioCtx()
       lastDialDestinationRef.current = number || null
       uaRef.current.call(numberToSipUri(number, ext), options)
@@ -442,8 +444,8 @@ export default function ManualDialerPage() {
 
     // Prepare metadata
     const now = new Date()
-    const start_time = new Date((sessionRef.current?._created || Date.now())) // fallback
-    const answer_time = callStartRef.current ? new Date(callStartRef.current) : null
+    const start_time = new Date((dialStartRef.current || sessionRef.current?._created || Date.now()))
+    const answer_time = hasAnsweredRef.current && callStartRef.current ? new Date(callStartRef.current) : null
     const end_time = now
     const call_duration = answer_time ? Math.max(0, Math.floor((end_time.getTime() - answer_time.getTime()) / 1000)) : null
 

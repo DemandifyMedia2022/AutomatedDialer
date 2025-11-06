@@ -126,15 +126,37 @@ const callsHandler = async (req: any, res: any, next: any) => {
       } catch {}
     }
 
+    // Normalize and compute times/duration
+    const startRaw: Date = b.start_time || new Date()
+    const endRaw: Date = b.end_time || new Date()
+    let startNorm = startRaw
+    let endNorm = endRaw
+    if (endNorm < startNorm) {
+      // swap if client provided inverted values
+      const t = startNorm; startNorm = endNorm; endNorm = t
+    }
+
+    // Ensure answer_time: prefer provided, else derive from end - call_duration
+    const computedAnswer: Date | null = (b.answer_time
+      ? b.answer_time
+      : ((b.call_duration ?? null) !== null)
+        ? new Date(endNorm.getTime() - (Number(b.call_duration) || 0) * 1000)
+        : null)
+
+    // Ensure call_duration: prefer provided, else compute from answer/end if available
+    const computedDuration: number | null = (b.call_duration ?? null) !== null
+      ? Number(b.call_duration)
+      : (computedAnswer ? Math.max(0, Math.floor((endNorm.getTime() - computedAnswer.getTime()) / 1000)) : null)
+
     const data = {
       campaign_name: b.campaign_name || null,
       useremail: b.useremail || null,
       username: usernameVal,
       unique_id: b.unique_id || null,
-      start_time: b.start_time || new Date(),
-      answer_time: b.answer_time ?? null,
-      end_time: b.end_time ?? null,
-      call_duration: b.call_duration ?? null,
+      start_time: startNorm,
+      answer_time: computedAnswer,
+      end_time: endNorm,
+      call_duration: computedDuration,
       billed_duration: b.billed_duration ?? null,
       source: b.source || null,
       extension: extensionVal,
