@@ -25,35 +25,36 @@ model agent_stats {
 }
 
 model calls {
-  id               BigInt    @id @default(autoincrement())
-  campaign_name    String?   @db.VarChar(255)
-  useremail        String?   @db.VarChar(255)
-  username         String?   @db.VarChar(255)
-  unique_id        String?   @db.VarChar(255)
-  start_time       DateTime  @default(now()) @db.Timestamp(0)
-  answer_time      DateTime? @db.Timestamp(0)
-  end_time         DateTime? @db.Timestamp(0)
+  id               BigInt        @id @default(autoincrement())
+  campaign_name    String?       @db.VarChar(255)
+  useremail        String?       @db.VarChar(255)
+  username         String?       @db.VarChar(255)
+  unique_id        String?       @db.VarChar(255)
+  start_time       DateTime      @default(now()) @db.Timestamp(0)
+  answer_time      DateTime?     @db.Timestamp(0)
+  end_time         DateTime?     @db.Timestamp(0)
   call_duration    Int?
   billed_duration  Int?
-  source           String?   @db.VarChar(255)
-  extension        String?   @db.VarChar(255)
-  region           String?   @db.VarChar(255)
-  charges          Decimal?  @db.Decimal(10, 2)
-  direction        String?   @db.VarChar(255)
-  destination      String?   @db.VarChar(255)
-  disposition      String?   @db.VarChar(255)
-  platform         String?   @db.VarChar(255)
-  recording_url    String?   @db.VarChar(2000)
-  call_type        String?   @db.VarChar(255)
-  remarks          String?   @db.VarChar(22)
-  prospect_name    String?   @db.VarChar(55)
-  prospect_email   String?   @db.VarChar(55)
-  prospect_company String?   @db.VarChar(100)
-  job_title        String?   @db.VarChar(55)
-  job_level        String?   @db.VarChar(255)
-  data_source_type String?   @db.VarChar(255)
-  created_at       DateTime  @default(now()) @db.Timestamp(0)
-  updated_at       DateTime  @default(now()) @db.Timestamp(0)
+  source           String?       @db.VarChar(255)
+  extension        String?       @db.VarChar(255)
+  region           String?       @db.VarChar(255)
+  charges          Decimal?      @db.Decimal(10, 2)
+  direction        String?       @db.VarChar(255)
+  destination      String?       @db.VarChar(255)
+  disposition      String?       @db.VarChar(255)
+  platform         String?       @db.VarChar(255)
+  recording_url    String?       @db.VarChar(2000)
+  call_type        String?       @db.VarChar(255)
+  remarks          String?       @db.VarChar(22)
+  prospect_name    String?       @db.VarChar(55)
+  prospect_email   String?       @db.VarChar(55)
+  prospect_company String?       @db.VarChar(100)
+  job_title        String?       @db.VarChar(55)
+  job_level        String?       @db.VarChar(255)
+  data_source_type String?       @db.VarChar(255)
+  created_at       DateTime      @default(now()) @db.Timestamp(0)
+  updated_at       DateTime      @default(now()) @db.Timestamp(0)
+  transcripts      transcripts[]
 }
 
 model campaigns {
@@ -92,4 +93,17 @@ model users {
   status         String?   @db.VarChar(255)
   created_at     DateTime? @db.Timestamp(6)
   updated_at     DateTime? @db.Timestamp(6)
+}
+
+model transcripts {
+  id         BigInt   @id @default(autoincrement())
+  call_id    BigInt
+  ts         DateTime @default(now()) @db.Timestamp(0)
+  speaker    String   @db.VarChar(32)
+  text       String   @db.VarChar(2000)
+  sentiment  String?  @db.VarChar(32)
+  confidence Float?
+  calls      calls    @relation(fields: [call_id], references: [id], onDelete: Cascade)
+
+  @@index([call_id, ts])
 }

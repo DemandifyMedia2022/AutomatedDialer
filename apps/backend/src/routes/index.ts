@@ -4,6 +4,7 @@ import auth from './auth';
 import users from './users';
 import extensions from './extensions';
 import agents from './agents';
+import campaigns from './campaigns';
 import { env } from '../config/env';
 import multer from 'multer';
 import path from 'path';
@@ -19,6 +20,7 @@ router.use('/auth', auth);
 router.use('/users', users);
 router.use('/extensions', extensions);
 router.use('/agents', agents);
+router.use('/campaigns', campaigns);
 
 router.get('/sip/config', (_req, res) => {
   res.json({
@@ -211,15 +213,11 @@ if (env.USE_AUTH_COOKIE) {
   );
 }
 
-// Example protected routes (Manager+)
-router.get('/campaigns', requireAuth, requireRoles(['manager', 'superadmin']), async (_req, res) => {
-  res.json({ success: true, items: [] });
-});
-
 router.get('/monitoring/live', requireAuth, requireRoles(['manager', 'superadmin']), async (_req, res) => {
   res.json({ success: true, calls: [] });
 });
 
+<<<<<<< HEAD
 // List calls from the calls table (all), with optional filters and pagination
 router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
@@ -305,3 +303,6 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
 })
 
 export default router;
+=======
+export default router;
+>>>>>>> 32be066714aa11b2db0826a48310e5052372deb4
