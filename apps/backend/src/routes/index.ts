@@ -217,7 +217,6 @@ router.get('/monitoring/live', requireAuth, requireRoles(['manager', 'superadmin
   res.json({ success: true, calls: [] });
 });
 
-<<<<<<< HEAD
 // List calls from the calls table (all), with optional filters and pagination
 router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
@@ -303,6 +302,3 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
 })
 
 export default router;
-=======
-export default router;
->>>>>>> 32be066714aa11b2db0826a48310e5052372deb4
