@@ -5,6 +5,7 @@ import { csrfProtect } from '../middlewares/csrf'
 import { env } from '../config/env'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
+import { getPool } from '../db/pool'
 
 // Lightweight in-memory rate limiter
 function makeLimiter({ windowMs, limit }: { windowMs: number; limit: number }) {
@@ -69,6 +70,16 @@ router.post('/', ...protectIfCookie, mutateLimiter, async (req, res, next) => {
     const existing = await db.users.findFirst({ where: { usermail: email } })
     if (existing) return res.status(409).json({ success: false, message: 'User already exists' })
 
+    // If creating an agent, extension is mandatory and must be available in extensions table
+    if (role === 'agent') {
+      if (!extension) return res.status(400).json({ success: false, message: 'Extension is required for agent' })
+      const pool = getPool()
+      const [extRows]: any = await pool.query('SELECT extension_id FROM extensions WHERE extension_id = ? LIMIT 1', [extension])
+      if (!extRows || extRows.length === 0) return res.status(400).json({ success: false, message: 'Extension not found' })
+      const assigned = await db.users.findFirst({ where: { extension } })
+      if (assigned) return res.status(400).json({ success: false, message: 'Extension already assigned' })
+    }
+
     const hash = await bcrypt.hash(password, 10)
 
     // Build initials from username (fallback to first two chars of email local part)
@@ -115,7 +126,15 @@ router.patch('/:id', ...protectIfCookie, mutateLimiter, async (req, res, next) =
 
     const data: any = {}
     if (parsed.data.role) data.role = parsed.data.role
-    if (parsed.data.extension) data.extension = parsed.data.extension
+    if (parsed.data.extension) {
+      const ext = parsed.data.extension
+      const pool = getPool()
+      const [extRows]: any = await pool.query('SELECT extension_id FROM extensions WHERE extension_id = ? LIMIT 1', [ext])
+      if (!extRows || extRows.length === 0) return res.status(400).json({ success: false, message: 'Extension not found' })
+      const assigned = await db.users.findFirst({ where: { extension: ext, NOT: { id } } })
+      if (assigned) return res.status(400).json({ success: false, message: 'Extension already assigned' })
+      data.extension = ext
+    }
     if (Object.keys(data).length === 0) return res.status(400).json({ success: false, message: 'No changes provided' })
 
     const updated = await db.users.update({

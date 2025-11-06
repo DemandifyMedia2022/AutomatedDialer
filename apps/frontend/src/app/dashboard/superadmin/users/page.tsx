@@ -13,6 +13,7 @@ import { SuperAdminSidebar } from '../components/SuperAdminSidebar'
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Checkbox } from '@/components/ui/checkbox'
+import { MoreVertical } from 'lucide-react'
 
 type User = {
   id: number
@@ -28,6 +29,7 @@ type User = {
 type UsersResponse = { success: true; users: User[] }
 type CreateResponse = { success: true; user: User }
 type ApiError = { success: false; message: string; issues?: any }
+type ExtRow = { extensionId: string }
 
 export default function UsersPage() {
   const [loading, setLoading] = useState(true)
@@ -39,6 +41,8 @@ export default function UsersPage() {
   const [confirmCreate, setConfirmCreate] = useState(false)
   const [openCreate, setOpenCreate] = useState(false)
   const [query, setQuery] = useState('')
+  const [availableExts, setAvailableExts] = useState<ExtRow[]>([])
+  const [editingIds, setEditingIds] = useState<Set<number>>(new Set())
 
   const headers = useMemo(() => {
     const h: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -68,6 +72,16 @@ export default function UsersPage() {
 
   useEffect(() => {
     fetchUsers()
+    // load available extensions for dropdowns
+    ;(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/extensions/available`, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
+        if (res.ok) {
+          const data = await res.json() as { success: true; extensions: ExtRow[] }
+          setAvailableExts(data.extensions)
+        }
+      } catch {}
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -76,6 +90,10 @@ export default function UsersPage() {
     setSubmitting(true)
     setError(null)
     try {
+      // Require extension if role is agent
+      if (form.role === 'agent' && !form.extension) {
+        throw new Error('Please select an extension for the agent')
+      }
       const res = await fetch(`${API_BASE}/api/users`, {
         method: 'POST',
         headers,
@@ -97,6 +115,11 @@ export default function UsersPage() {
       setForm({ username: '', email: '', password: '', role: 'agent', extension: '' })
       setConfirmCreate(false)
       setOpenCreate(false)
+      // refresh available extensions after assignment
+      try {
+        const res2 = await fetch(`${API_BASE}/api/extensions/available`, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
+        if (res2.ok) setAvailableExts(((await res2.json()) as any).extensions)
+      } catch {}
     } catch (e: any) {
       setError(e?.message || 'Create failed')
     } finally {
@@ -138,6 +161,11 @@ export default function UsersPage() {
       }
       const data = await res.json()
       setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...data.user } : u)))
+      // refresh available extensions after (re)assignment
+      try {
+        const res2 = await fetch(`${API_BASE}/api/extensions/available`, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
+        if (res2.ok) setAvailableExts(((await res2.json()) as any).extensions)
+      } catch {}
     } catch (e: any) {
       setError(e?.message || 'Update failed')
     }
@@ -225,7 +253,24 @@ export default function UsersPage() {
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="extension">Extension</Label>
-                    <Input id="extension" value={form.extension} onChange={(e) => setForm((f) => ({ ...f, extension: e.target.value }))} placeholder="1001" />
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button id="extension" variant="outline" className="justify-between">
+                          {form.extension ? form.extension : 'Select extension'}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="max-h-64 overflow-auto">
+                        {availableExts.length === 0 ? (
+                          <DropdownMenuItem disabled>No extensions available</DropdownMenuItem>
+                        ) : (
+                          availableExts.map((ex) => (
+                            <DropdownMenuItem key={ex.extensionId} onClick={() => setForm((f) => ({ ...f, extension: ex.extensionId }))}>
+                              {ex.extensionId}
+                            </DropdownMenuItem>
+                          ))
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                   <div className="grid gap-2">
                     <Label>Role</Label>
@@ -281,16 +326,16 @@ export default function UsersPage() {
                   ) : filtered.length === 0 ? (
                     <tr><td colSpan={9} className="py-6 text-center text-muted-foreground">No users found</td></tr>
                   ) : (
-                    filtered.map((u) => (
+                    filtered.map((u, idx) => (
                       <tr key={u.id} className="border-b last:border-0">
-                        <td className="py-2 pr-4">{u.id}</td>
+                        <td className="py-2 pr-4">{idx + 1}</td>
                         <td className="py-2 pr-4">{u.username || '-'}</td>
                         <td className="py-2 pr-4 font-mono">{u.unique_user_id || '-'}</td>
                         <td className="py-2 pr-4">{u.usermail || '-'}</td>
                         <td className="py-2 pr-4">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="outline" size="sm">{toTitle(u.role)}</Button>
+                              <Button variant="outline" size="sm" disabled={!editingIds.has(u.id)}>{toTitle(u.role)}</Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
                               <DropdownMenuLabel>Change role</DropdownMenuLabel>
@@ -302,23 +347,42 @@ export default function UsersPage() {
                           </DropdownMenu>
                         </td>
                         <td className="py-2 pr-4">
-                          <Input
-                            className="h-8 w-28"
-                            defaultValue={u.extension || ''}
-                            onBlur={(e) => {
-                              const val = e.currentTarget.value.trim()
-                              if (val !== (u.extension || '')) updateUser(u.id, { extension: val })
-                            }}
-                          />
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="sm" disabled={!editingIds.has(u.id)} className="w-32 justify-between">
+                                {u.extension || 'Unassigned'}
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" className="max-h-64 overflow-auto">
+                              <DropdownMenuItem onClick={() => updateUser(u.id, { extension: '' })}>Unassigned</DropdownMenuItem>
+                              {/* include current extension if not in available list */}
+                              {u.extension && !availableExts.some(ex => ex.extensionId === u.extension) ? (
+                                <DropdownMenuItem onClick={() => updateUser(u.id, { extension: u.extension! })}>{u.extension}</DropdownMenuItem>
+                              ) : null}
+                              {availableExts.map((ex) => (
+                                <DropdownMenuItem key={ex.extensionId} onClick={() => updateUser(u.id, { extension: ex.extensionId })}>
+                                  {ex.extensionId}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </td>
                         <td className="py-2 pr-4">{toTitle(u.status)}</td>
                         <td className="py-2 pr-4">{fmtDate(u.created_at)}</td>
                         <td className="py-2 pr-4">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="outline" size="sm">Actions</Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => {
+                                setEditingIds((prev) => {
+                                  const n = new Set(prev)
+                                  if (n.has(u.id)) n.delete(u.id)
+                                  else n.add(u.id)
+                                  return n
+                                })
+                              }}>{editingIds.has(u.id) ? 'Stop Editing' : 'Edit'}</DropdownMenuItem>
                               <DropdownMenuItem className="text-red-600" onClick={() => onDelete(u.id)}>Delete</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>

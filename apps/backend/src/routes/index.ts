@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { health } from '../controllers/healthController';
 import auth from './auth';
 import users from './users';
+import extensions from './extensions';
+import agents from './agents';
 import { env } from '../config/env';
 import multer from 'multer';
 import path from 'path';
@@ -15,6 +17,8 @@ const router = Router();
 router.get('/health', health);
 router.use('/auth', auth);
 router.use('/users', users);
+router.use('/extensions', extensions);
+router.use('/agents', agents);
 
 router.get('/sip/config', (_req, res) => {
   res.json({

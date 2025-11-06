@@ -11,6 +11,8 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { AgentSidebar } from "../../components/AgentSidebar"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
+import { API_BASE } from "@/lib/api"
+import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
 
 declare global {
   interface Window {
@@ -18,10 +20,9 @@ declare global {
   }
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000/api"
+const API_PREFIX = `${API_BASE}/api`
 
 export default function ManualDialerPage() {
-  const [step, setStep] = useState<"login" | "dialer">("login")
   const [ext, setExt] = useState("")
   const [pwd, setPwd] = useState("")
   const [number, setNumber] = useState("")
@@ -59,21 +60,38 @@ export default function ManualDialerPage() {
     if (lastDialedNumber && !number) setNumber(lastDialedNumber)
   }, [lastDialedNumber, number])
 
-  // Auto-login if credentials are stored
+  // Auto-fetch agent SIP credentials from backend and auto-login
   useEffect(() => {
-    if (!isLoaded || step !== "login") return
-    try {
-      const storedExt = localStorage.getItem("sipExt")
-      const storedPwd = localStorage.getItem("sipPwd")
-      if (storedExt && storedPwd) {
-        setExt(storedExt)
-        setPwd(storedPwd)
-        startUA(storedExt, storedPwd)
-          .then(() => setStep("dialer"))
-          .catch((e) => setError(e?.message || "Auto login failed"))
+    if (!isLoaded) return
+    let aborted = false
+    const run = async () => {
+      try {
+        setError(null)
+        const headers: Record<string, string> = {}
+        if (!USE_AUTH_COOKIE) {
+          const t = getToken()
+          if (t) headers['Authorization'] = `Bearer ${t}`
+        }
+        const res = await fetch(`${API_PREFIX}/agents/me/credentials`, {
+          method: 'GET',
+          credentials: USE_AUTH_COOKIE ? 'include' : 'omit',
+          headers,
+        })
+        if (!res.ok) {
+          throw new Error('Failed to get SIP credentials. Ensure an extension is assigned to your account.')
+        }
+        const data = await res.json() as { success: true; extensionId: string; password: string }
+        if (aborted) return
+        setExt(data.extensionId)
+        setPwd(data.password)
+        await startUA(data.extensionId, data.password)
+      } catch (e: any) {
+        if (!aborted) setError(e?.message || 'Auto login failed')
       }
-    } catch {}
-  }, [isLoaded, step])
+    }
+    run()
+    return () => { aborted = true }
+  }, [isLoaded])
 
   const teardownUA = useCallback(() => {
     try {
@@ -127,7 +145,7 @@ export default function ManualDialerPage() {
   }, [])
 
   const fetchSipConfig = useCallback(async () => {
-    const res = await fetch(`${API_BASE}/sip/config`)
+    const res = await fetch(`${API_PREFIX}/sip/config`)
     if (!res.ok) throw new Error(`Failed to load SIP config: ${res.status}`)
     return (await res.json()) as { wssUrl: string; domain: string; stunServer?: string }
   }, [])
@@ -222,20 +240,7 @@ export default function ManualDialerPage() {
     return `${mm}:${ss}`
   }
 
-  const onLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      if (!ext || !pwd) throw new Error("Enter extension and password")
-      await startUA(ext, pwd)
-      try {
-        localStorage.setItem("sipExt", ext)
-        localStorage.setItem("sipPwd", pwd)
-      } catch {}
-      setStep("dialer")
-    } catch (err: any) {
-      setError(err?.message || "Failed to initialize SIP")
-    }
-  }
+  const onLogin = async (_e?: React.FormEvent) => {}
 
   const ensureAudioCtx = async () => {
     if (!audioCtxRef.current) {
@@ -319,16 +324,11 @@ export default function ManualDialerPage() {
   }
 
   const logout = () => {
-    try {
-      localStorage.removeItem("sipExt")
-      localStorage.removeItem("sipPwd")
-    } catch {}
     setError(null)
     setStatus("Idle")
     setNumber("")
     setIsMuted(false)
     teardownUA()
-    setStep("login")
   }
 
   const toggleMute = () => {
@@ -428,7 +428,7 @@ export default function ManualDialerPage() {
     if (blob) form.append('recording', blob, `call_${Date.now()}.webm`)
 
     try {
-      await fetch(`${API_BASE}/calls`, { method: 'POST', body: form })
+      await fetch(`${API_PREFIX}/calls`, { method: 'POST', body: form })
     } catch (e) {
       console.warn('Failed to upload call record', e)
     }
@@ -477,9 +477,6 @@ export default function ManualDialerPage() {
             </Breadcrumb>
             <div className="ml-auto flex items-center gap-2">
               <span className={`text-xs px-2 py-1 rounded ${status.includes("Registered") ? "bg-emerald-100 text-emerald-800" : status.includes("Connected") ? "bg-blue-100 text-blue-800" : status.includes("Call") ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-800"}`}>{status}</span>
-              {step === "dialer" && (
-                <Button variant="outline" size="sm" onClick={logout}>Logout</Button>
-              )}
             </div>
           </div>
         </header>
@@ -491,27 +488,7 @@ export default function ManualDialerPage() {
             <Card className="border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error}</Card>
           )}
 
-          {step === "login" && (
-            <div className="max-w-md">
-              <Card className="p-5">
-                <form onSubmit={onLogin} className="grid gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="ext">Extension</Label>
-                    <Input id="ext" value={ext} onChange={(e) => setExt(e.target.value)} placeholder="1001" autoFocus />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="pwd">SIP Password</Label>
-                    <Input id="pwd" type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} placeholder="••••••" />
-                  </div>
-                  <Button type="submit" disabled={!isLoaded} className="w-full">
-                    {isLoaded ? "Login" : "Loading JsSIP..."}
-                  </Button>
-                </form>
-              </Card>
-            </div>
-          )}
-
-          {step === "dialer" && (
+          {(
             <div className="grid gap-4 md:grid-cols-2">
               <Card className="p-5">
                 <div className="mb-4 flex items-center gap-2">
