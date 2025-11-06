@@ -1,3 +1,5 @@
+"use client"
+
 import React from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -5,8 +7,119 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { Separator } from "@/components/ui/separator";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { AgentSidebar } from "../../components/AgentSidebar";
+import { API_BASE } from "@/lib/api";
+import { USE_AUTH_COOKIE, getToken } from "@/lib/auth";
+import { Download } from "lucide-react";
+
+type CallRow = {
+  id: number | string
+  extension: string | null
+  destination: string | null
+  source: string | null
+  start_time: string
+  end_time: string | null
+  call_duration: number | null
+  disposition: string | null
+  recording_url?: string | null
+}
 
 const CallHistory = () => {
+  const [items, setItems] = React.useState<CallRow[]>([])
+  const [page, setPage] = React.useState(1)
+  const [pageSize] = React.useState(20)
+  const [total, setTotal] = React.useState(0)
+  const [loading, setLoading] = React.useState(false)
+
+  const fetchMine = React.useCallback(async (p: number) => {
+    setLoading(true)
+    try {
+      const qs = new URLSearchParams({ page: String(p), pageSize: String(pageSize) })
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const res = await fetch(`${API_BASE}/api/calls?${qs.toString()}`, { headers, credentials })
+      if (res.ok) {
+        const data = await res.json()
+        const rows: any[] = data?.items || []
+        setItems(rows.map(r => ({
+          id: r.id,
+          extension: r.extension ?? null,
+          destination: r.destination ?? null,
+          source: r.source ?? null,
+          start_time: r.start_time,
+          end_time: r.end_time ?? null,
+          call_duration: r.call_duration ?? null,
+          disposition: (r.disposition || '') as string,
+          recording_url: r.recording_url ?? null,
+        })))
+        setTotal(Number(data?.total || rows.length))
+        setPage(Number(data?.page || p))
+      } else {
+        setItems([])
+        setTotal(0)
+      }
+    } catch {
+      setItems([])
+      setTotal(0)
+    } finally {
+      setLoading(false)
+    }
+  }, [pageSize])
+
+  React.useEffect(() => { fetchMine(page) }, [fetchMine, page])
+
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const toUtc = (iso?: string | null) => {
+    if (!iso) return '-'
+    try {
+      const d = new Date(iso)
+      const yyyy = d.getUTCFullYear()
+      const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
+      const dd = String(d.getUTCDate()).padStart(2, '0')
+      const hh = String(d.getUTCHours()).padStart(2, '0')
+      const mi = String(d.getUTCMinutes()).padStart(2, '0')
+      const ss = String(d.getUTCSeconds()).padStart(2, '0')
+      return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`
+    } catch { return iso }
+  }
+  const fmtDur = (n?: number | null) => (n ?? null) !== null ? `${n} Sec` : '-'
+
+  const guessExt = (ct: string | null) => {
+    if (!ct) return '.webm'
+    const m: Record<string, string> = {
+      'audio/webm': '.webm',
+      'audio/ogg': '.ogg',
+      'audio/mpeg': '.mp3',
+      'audio/wav': '.wav',
+      'video/webm': '.webm',
+    }
+    return m[ct] || '.webm'
+  }
+
+  const downloadRecording = React.useCallback(async (url: string, id: string | number) => {
+    try {
+      const res = await fetch(url, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
+      if (!res.ok) throw new Error(String(res.status))
+      const ct = res.headers.get('content-type')
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = `recording_${id}${guessExt(ct)}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(objectUrl)
+    } catch {
+      // no-op
+    }
+  }, [])
+
   return (
     <SidebarProvider>
       <AgentSidebar />
@@ -88,26 +201,55 @@ const CallHistory = () => {
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">End Time (UTC)</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Call Duration</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Call Disposition</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Recording</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  <tr className="hover:bg-accent/50">
-                    <td className="px-4 py-3">151974</td>
-                    <td className="px-4 py-3">1033204</td>
-                    <td className="px-4 py-3">91972779416</td>
-                    <td className="px-4 py-3">13236595567</td>
-                    <td className="px-4 py-3">2025-11-05 05:55:33</td>
-                    <td className="px-4 py-3">2025-11-05 05:56:33</td>
-                    <td className="px-4 py-3">60 Sec</td>
-                    <td className="px-4 py-3">NO ANSWER</td>
-                  </tr>
+                  {items.length === 0 && (
+                    <tr>
+                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={8}>
+                        {loading ? 'Loading…' : 'No records'}
+                      </td>
+                    </tr>
+                  )}
+                  {items.map((row) => (
+                    <tr key={row.id} className="hover:bg-accent/50">
+                      <td className="px-4 py-3">{row.id}</td>
+                      <td className="px-4 py-3">{row.extension || '-'}</td>
+                      <td className="px-4 py-3">{row.destination || '-'}</td>
+                      <td className="px-4 py-3">{row.source || '-'}</td>
+                      <td className="px-4 py-3">{toUtc(row.start_time)}</td>
+                      <td className="px-4 py-3">{toUtc(row.end_time)}</td>
+                      <td className="px-4 py-3">{fmtDur(row.call_duration)}</td>
+                      <td className="px-4 py-3">{(row.disposition || '').toUpperCase() || '-'}</td>
+                      <td className="px-4 py-3">
+                        {row.recording_url ? (
+                          <div className="flex items-center gap-2">
+                            <audio src={row.recording_url || undefined} controls preload="none" className="h-8" />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1"
+                              onClick={() => downloadRecording(row.recording_url!, row.id)}
+                            >
+                              <Download className="h-4 w-4" /> Download
+                            </Button>
+                          </div>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
             <div className="flex justify-center mt-4 gap-2">
-              <Button variant="outline" size="sm">1</Button>
-              <Button variant="outline" size="sm">2</Button>
-              <Button variant="outline" size="sm">3</Button>
+              {Array.from({ length: pageCount }).map((_, i) => (
+                <Button key={i} variant="outline" size="sm" onClick={() => setPage(i + 1)} disabled={page === i + 1}>
+                  {i + 1}
+                </Button>
+              ))}
             </div>
           </div>
         </div>

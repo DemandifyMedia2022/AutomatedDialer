@@ -143,10 +143,13 @@ const callsHandler = async (req: any, res: any, next: any) => {
         ? new Date(endNorm.getTime() - (Number(b.call_duration) || 0) * 1000)
         : null)
 
-    // Ensure call_duration: prefer provided, else compute from answer/end if available
-    const computedDuration: number | null = (b.call_duration ?? null) !== null
+    // Ensure call_duration: prefer provided, else compute from answer/end; fallback to start/end
+    let computedDuration: number | null = (b.call_duration ?? null) !== null
       ? Number(b.call_duration)
       : (computedAnswer ? Math.max(0, Math.floor((endNorm.getTime() - computedAnswer.getTime()) / 1000)) : null)
+    if (computedDuration === null) {
+      computedDuration = Math.max(0, Math.floor((endNorm.getTime() - startNorm.getTime()) / 1000))
+    }
 
     const data = {
       campaign_name: b.campaign_name || null,
@@ -216,5 +219,89 @@ router.get('/campaigns', requireAuth, requireRoles(['manager', 'superadmin']), a
 router.get('/monitoring/live', requireAuth, requireRoles(['manager', 'superadmin']), async (_req, res) => {
   res.json({ success: true, calls: [] });
 });
+
+// List calls from the calls table (all), with optional filters and pagination
+router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
+  try {
+    const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1)
+    const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize || '20'), 10) || 20))
+    const skip = (page - 1) * pageSize
+
+    const where: any = { AND: [] as any[] }
+    const from = req.query.from ? new Date(String(req.query.from)) : null
+    const to = req.query.to ? new Date(String(req.query.to)) : null
+    if (from || to) where.AND.push({ start_time: { gte: from || undefined, lte: to || undefined } })
+    const qDest = (req.query.destination || req.query.phone || '').toString().trim()
+    if (qDest) where.AND.push({ destination: { contains: qDest } })
+    const qExt = (req.query.extension || '').toString().trim()
+    if (qExt) where.AND.push({ extension: qExt })
+    const qStatus = (req.query.status || '').toString().trim()
+    if (qStatus) where.AND.push({ disposition: { equals: qStatus } })
+    const qDir = (req.query.direction || '').toString().trim()
+    if (qDir) where.AND.push({ direction: qDir })
+
+    const [total, items] = await Promise.all([
+      (db as any).calls.count({ where }),
+      (db as any).calls.findMany({ where, orderBy: { start_time: 'desc' }, skip, take: pageSize }),
+    ])
+
+    const safeItems = items.map((r: any) => ({
+      ...r,
+      id: typeof r.id === 'bigint' ? Number(r.id) : r.id,
+    }))
+    res.json({ success: true, page, pageSize, total: Number(total), items: safeItems })
+  } catch (e) {
+    next(e)
+  }
+})
+
+// Return calls that belong to the logged-in user (by username, useremail, or extension)
+router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => {
+  try {
+    const userId = req.user?.userId
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
+
+    const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true } })
+    const username = me?.username || undefined
+    const usermail = me?.usermail || undefined
+    const extension = me?.extension || undefined
+
+    // Build base where
+    const where: any = { OR: [] as any[], AND: [] as any[] }
+    if (username) where.OR.push({ username })
+    if (usermail) where.OR.push({ useremail: usermail })
+    if (extension) where.OR.push({ extension })
+    if (where.OR.length === 0) {
+      // No identifiers -> no results (enforce privacy)
+      where.OR.push({ id: -1 })
+    }
+
+    // Optional filters
+    const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1)
+    const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize || '20'), 10) || 20))
+    const skip = (page - 1) * pageSize
+
+    const from = req.query.from ? new Date(String(req.query.from)) : null
+    const to = req.query.to ? new Date(String(req.query.to)) : null
+    if (from || to) where.AND.push({ start_time: { gte: from || undefined, lte: to || undefined } })
+    const qDest = (req.query.destination || req.query.phone || '').toString().trim()
+    if (qDest) where.AND.push({ destination: { contains: qDest } })
+    const qExt = (req.query.extension || '').toString().trim()
+    if (qExt) where.AND.push({ extension: qExt })
+    const qStatus = (req.query.status || '').toString().trim()
+    if (qStatus) where.AND.push({ disposition: { equals: qStatus } })
+    const qDir = (req.query.direction || '').toString().trim()
+    if (qDir) where.AND.push({ direction: qDir })
+
+    const [total, items] = await Promise.all([
+      (db as any).calls.count({ where }),
+      (db as any).calls.findMany({ where, orderBy: { start_time: 'desc' }, skip, take: pageSize }),
+    ])
+
+    res.json({ success: true, page, pageSize, total, items })
+  } catch (e) {
+    next(e)
+  }
+})
 
 export default router;
