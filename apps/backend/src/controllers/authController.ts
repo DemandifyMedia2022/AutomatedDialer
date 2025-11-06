@@ -127,7 +127,12 @@ export async function login(req: Request, res: Response) {
 export async function me(req: Request, res: Response) {
   const u = req.user;
   if (!u) return res.status(401).json({ success: false, message: 'Unauthorized' });
-  return res.json({ success: true, user: { id: u.userId, role: u.role, email: u.email } });
+  try {
+    const user = await db.users.findUnique({ where: { id: u.userId }, select: { username: true, usermail: true, role: true, id: true } });
+    return res.json({ success: true, user: { id: user?.id || u.userId, role: user?.role || u.role, username: user?.username || null, email: user?.usermail || u.email } });
+  } catch {
+    return res.json({ success: true, user: { id: u.userId, role: u.role, username: null, email: u.email } });
+  }
 }
 
 export async function logout(_req: Request, res: Response) {

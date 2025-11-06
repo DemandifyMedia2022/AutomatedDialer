@@ -12,7 +12,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { AgentSidebar } from "../../components/AgentSidebar"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { API_BASE } from "@/lib/api"
-import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
+import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
 
 declare global {
   interface Window {
@@ -36,6 +36,8 @@ export default function ManualDialerPage() {
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
   const callStartRef = useRef<number | null>(null)
   const timerRef = useRef<number | null>(null)
+  const hasAnsweredRef = useRef<boolean>(false)
+  const uploadedOnceRef = useRef<boolean>(false)
 
   // Recording refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -44,6 +46,7 @@ export default function ManualDialerPage() {
   const mixDestRef = useRef<MediaStreamAudioDestinationNode | null>(null)
   const lastRemoteStreamRef = useRef<MediaStream | null>(null)
   const localMicStreamRef = useRef<MediaStream | null>(null)
+  const lastDialDestinationRef = useRef<string | null>(null)
 
   // Ringback tone helpers
   const ringGainRef = useRef<GainNode | null>(null)
@@ -55,6 +58,13 @@ export default function ManualDialerPage() {
     if (typeof window === "undefined") return null
     return localStorage.getItem("lastDialedNumber")
   }, [])
+
+  function mapFailedDisposition(cause: any): 'Busy' | 'No Answer' | 'Failed' {
+    const c = String(cause || '').toLowerCase()
+    if (c.includes('busy') || c.includes('486')) return 'Busy'
+    if (c.includes('timeout') || c.includes('480') || c.includes('temporarily unavailable') || c.includes('no answer')) return 'No Answer'
+    return 'Failed'
+  }
 
   useEffect(() => {
     if (lastDialedNumber && !number) setNumber(lastDialedNumber)
@@ -200,6 +210,7 @@ export default function ManualDialerPage() {
         stopRingback()
         setStatus("In Call")
         callStartRef.current = Date.now()
+        hasAnsweredRef.current = true
         if (timerRef.current) window.clearInterval(timerRef.current)
         timerRef.current = window.setInterval(() => {
           setStatus((s) => (s.startsWith("In Call") ? `In Call ${elapsed()}` : s))
@@ -212,13 +223,21 @@ export default function ManualDialerPage() {
         setStatus("Call Failed")
         setError(e?.cause || "Call failed")
         clearTimer()
-        await stopRecordingAndUpload({ disposition: "failed" })
+        if (!uploadedOnceRef.current) {
+          uploadedOnceRef.current = true
+          const disp = mapFailedDisposition(e?.cause)
+          await stopRecordingAndUpload({ disposition: disp })
+        }
       })
       session.on("ended", async () => {
         stopRingback()
         setStatus("Call Ended")
         clearTimer()
-        await stopRecordingAndUpload({ disposition: "completed" })
+        if (!uploadedOnceRef.current) {
+          uploadedOnceRef.current = true
+          const disp: 'Answered' | 'No Answer' = hasAnsweredRef.current ? 'Answered' : 'No Answer'
+          await stopRecordingAndUpload({ disposition: disp })
+        }
       })
     })
 
@@ -309,7 +328,11 @@ export default function ManualDialerPage() {
     }
 
     try {
+      // reset per-call state
+      hasAnsweredRef.current = false
+      uploadedOnceRef.current = false
       await ensureAudioCtx()
+      lastDialDestinationRef.current = number || null
       uaRef.current.call(numberToSipUri(number, ext), options)
       localStorage.setItem("lastDialedNumber", number)
     } catch (e: any) {
@@ -320,7 +343,11 @@ export default function ManualDialerPage() {
   const hangup = async () => {
     try { sessionRef.current?.terminate() } catch {}
     stopRingback()
-    await stopRecordingAndUpload({ disposition: "hangup" })
+    if (!uploadedOnceRef.current) {
+      uploadedOnceRef.current = true
+      const disp: 'Answered' | 'No Answer' = hasAnsweredRef.current ? 'Answered' : 'No Answer'
+      await stopRecordingAndUpload({ disposition: disp })
+    }
   }
 
   const logout = () => {
@@ -328,6 +355,8 @@ export default function ManualDialerPage() {
     setStatus("Idle")
     setNumber("")
     setIsMuted(false)
+    hasAnsweredRef.current = false
+    uploadedOnceRef.current = false
     teardownUA()
   }
 
@@ -376,6 +405,26 @@ export default function ManualDialerPage() {
     } catch {}
   }
 
+  async function fetchLoggedUsername(): Promise<string | null> {
+    try {
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const res = await fetch(`${API_PREFIX}/auth/me`, { method: 'GET', headers, credentials })
+      if (!res.ok) return null
+      const data = await res.json().catch(() => null) as any
+      const name: string | null = data?.user?.username || null
+      return name
+    } catch {
+      return null
+    }
+  }
+
   async function stopRecordingAndUpload(extra: { disposition: string }) {
     try {
       const rec = mediaRecorderRef.current
@@ -399,36 +448,55 @@ export default function ManualDialerPage() {
     const call_duration = answer_time ? Math.max(0, Math.floor((end_time.getTime() - answer_time.getTime()) / 1000)) : null
 
     const form = new FormData()
-    form.append('campaign_name', '')
-    form.append('useremail', '')
-    form.append('username', '')
+    // Only append non-empty optional fields to satisfy backend validation
+    const loggedName = await fetchLoggedUsername()
+    if (loggedName) form.append('username', loggedName)
+    else if (ext) form.append('username', ext) // fallback to extension
     form.append('unique_id', String(sessionRef.current?.id || cryptoRandom()))
     form.append('start_time', start_time.toISOString())
     if (answer_time) form.append('answer_time', answer_time.toISOString())
     form.append('end_time', end_time.toISOString())
     if (call_duration !== null) form.append('call_duration', String(call_duration))
-    form.append('billed_duration', call_duration !== null ? String(call_duration) : '')
+    // billed_duration same as call_duration for now
+    if (call_duration !== null) form.append('billed_duration', String(call_duration))
     form.append('source', 'web')
-    form.append('extension', ext)
-    form.append('region', '')
-    form.append('charges', '')
+    if (ext) form.append('extension', ext)
+    // Determine destination from current state, last dialed, or JsSIP session
+    const sess = sessionRef.current
+    const sipUser = (() => {
+      try {
+        return (
+          sess?.remote_identity?.uri?.user ||
+          sess?.request?.to?.uri?.user ||
+          sess?.remote_identity?._uri?._user ||
+          null
+        )
+      } catch { return null }
+    })()
+    const destination = (number || lastDialDestinationRef.current || sipUser || '').toString()
+    if (destination) form.append('destination', destination)
     form.append('direction', 'outbound')
-    form.append('destination', number)
     form.append('disposition', extra.disposition)
     form.append('platform', 'web')
-    form.append('call_type', 'manual')
-    form.append('remarks', '')
-    form.append('prospect_name', '')
-    form.append('prospect_email', '')
-    form.append('prospect_company', '')
-    form.append('job_title', '')
-    form.append('job_level', '')
-    form.append('data_source_type', '')
 
     if (blob) form.append('recording', blob, `call_${Date.now()}.webm`)
 
     try {
-      await fetch(`${API_PREFIX}/calls`, { method: 'POST', body: form })
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies()
+        if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const res = await fetch(`${API_PREFIX}/calls`, { method: 'POST', body: form, headers, credentials })
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        console.warn('Upload call record failed', res.status, text)
+      }
     } catch (e) {
       console.warn('Failed to upload call record', e)
     }

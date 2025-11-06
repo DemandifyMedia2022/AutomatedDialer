@@ -105,10 +105,31 @@ const callsHandler = async (req: any, res: any, next: any) => {
       ? `${env.PUBLIC_BASE_URL}/uploads/${file.filename}`
       : b.recording_url || null;
 
+    try { console.log('[calls] incoming body', b); } catch {}
+    try { console.log('[calls] file', !!file, 'recording_url', recording_url); } catch {}
+
+    // Fallback: if username not provided, use authenticated user's name
+    let usernameVal = b.username || null;
+    if (!usernameVal && req.user?.userId) {
+      try {
+        const u = await db.users.findUnique({ where: { id: req.user.userId }, select: { username: true } });
+        usernameVal = u?.username || null;
+      } catch {}
+    }
+
+    // Fallback: if extension not provided, use authenticated user's assigned extension
+    let extensionVal = b.extension || null;
+    if (!extensionVal && req.user?.userId) {
+      try {
+        const u = await db.users.findUnique({ where: { id: req.user.userId }, select: { extension: true } });
+        extensionVal = u?.extension || null;
+      } catch {}
+    }
+
     const data = {
       campaign_name: b.campaign_name || null,
       useremail: b.useremail || null,
-      username: b.username || null,
+      username: usernameVal,
       unique_id: b.unique_id || null,
       start_time: b.start_time || new Date(),
       answer_time: b.answer_time ?? null,
@@ -116,7 +137,7 @@ const callsHandler = async (req: any, res: any, next: any) => {
       call_duration: b.call_duration ?? null,
       billed_duration: b.billed_duration ?? null,
       source: b.source || null,
-      extension: b.extension || null,
+      extension: extensionVal,
       region: b.region || null,
       charges: b.charges ?? null,
       direction: b.direction || null,
@@ -136,8 +157,10 @@ const callsHandler = async (req: any, res: any, next: any) => {
     } as any;
 
     const saved = await (db as any).calls.create({ data });
+    try { console.log('[calls] saved id', saved?.id); } catch {}
     res.status(201).json(saved);
   } catch (err) {
+    try { console.error('[calls] error', err); } catch {}
     next(err);
   }
 };
