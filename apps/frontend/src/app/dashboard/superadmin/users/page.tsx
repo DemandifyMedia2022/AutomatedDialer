@@ -11,6 +11,8 @@ import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { SuperAdminSidebar } from '../components/SuperAdminSidebar'
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Checkbox } from '@/components/ui/checkbox'
 
 type User = {
   id: number
@@ -20,6 +22,7 @@ type User = {
   status: string | null
   created_at: string
   unique_user_id?: string | null
+  extension?: string | null
 }
 
 type UsersResponse = { success: true; users: User[] }
@@ -31,8 +34,11 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null)
   const [users, setUsers] = useState<User[]>([])
 
-  const [form, setForm] = useState({ username: '', email: '', password: '', role: 'agent' })
+  const [form, setForm] = useState({ username: '', email: '', password: '', role: 'agent', extension: '' })
   const [submitting, setSubmitting] = useState(false)
+  const [confirmCreate, setConfirmCreate] = useState(false)
+  const [openCreate, setOpenCreate] = useState(false)
+  const [query, setQuery] = useState('')
 
   const headers = useMemo(() => {
     const h: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -79,6 +85,7 @@ export default function UsersPage() {
           email: form.email,
           password: form.password,
           role: form.role,
+          extension: form.extension || undefined,
         }),
       })
       if (!res.ok) {
@@ -87,7 +94,9 @@ export default function UsersPage() {
       }
       const data = (await res.json()) as CreateResponse
       setUsers((prev) => [data.user as User, ...prev])
-      setForm({ username: '', email: '', password: '', role: 'agent' })
+      setForm({ username: '', email: '', password: '', role: 'agent', extension: '' })
+      setConfirmCreate(false)
+      setOpenCreate(false)
     } catch (e: any) {
       setError(e?.message || 'Create failed')
     } finally {
@@ -114,6 +123,48 @@ export default function UsersPage() {
     }
   }
 
+  async function updateUser(id: number, patch: Partial<{ role: string; extension: string }>) {
+    setError(null)
+    try {
+      const res = await fetch(`${API_BASE}/api/users/${id}`, {
+        method: 'PATCH',
+        headers,
+        credentials: USE_AUTH_COOKIE ? 'include' : 'omit',
+        body: JSON.stringify(patch),
+      })
+      if (!res.ok) {
+        const err = (await res.json()) as ApiError
+        throw new Error(err.message || 'Update failed')
+      }
+      const data = await res.json()
+      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...data.user } : u)))
+    } catch (e: any) {
+      setError(e?.message || 'Update failed')
+    }
+  }
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return users
+    return users.filter((u) =>
+      [u.username, u.usermail, u.unique_user_id, u.role, u.extension]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q))
+    )
+  }, [users, query])
+
+  const toTitle = (s?: string | null) => {
+    if (!s) return '-'
+    const v = String(s)
+    return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase()
+  }
+
+  const fmtDate = (s?: string | null) => {
+    if (!s) return '-'
+    const d = new Date(s)
+    return isNaN(d.getTime()) ? '-' : d.toLocaleString()
+  }
+
   return (
     <SidebarProvider>
       <SuperAdminSidebar />
@@ -137,91 +188,148 @@ export default function UsersPage() {
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
+              <Input
+                placeholder="Search users..."
+                className="w-64"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
               <Button variant="outline" size="sm" onClick={() => { setLoading(true); fetchUsers() }} disabled={loading}>
                 {loading ? 'Refreshing...' : 'Refresh'}
               </Button>
+              <Button size="sm" onClick={() => setOpenCreate(true)}>Add User</Button>
             </div>
           </div>
         </header>
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+          {/* Centered Modal */}
+          {openCreate ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+              <div className="absolute inset-0 bg-black/50" onClick={() => !submitting && setOpenCreate(false)} />
+              <Card className="relative z-10 w-[92vw] max-w-md p-5">
+                <div className="text-base font-semibold mb-2">Add User</div>
+                <form onSubmit={onCreate} className="grid gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="username">Username</Label>
+                    <Input id="username" value={form.username} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} placeholder="Jane Doe" required />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input id="email" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="jane@example.com" required />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input id="password" type="password" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder="••••••" minLength={6} required />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="extension">Extension</Label>
+                    <Input id="extension" value={form.extension} onChange={(e) => setForm((f) => ({ ...f, extension: e.target.value }))} placeholder="1001" />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Role</Label>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="justify-between">{toTitle(form.role)}<span className="sr-only">select</span></Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        {(['agent','manager','superadmin'] as const).map(r => (
+                          <DropdownMenuItem key={r} onClick={() => setForm((f) => ({ ...f, role: r }))}>{toTitle(r)}</DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="confirm" checked={confirmCreate} onCheckedChange={(v) => setConfirmCreate(Boolean(v))} />
+                    <Label htmlFor="confirm" className="text-sm text-muted-foreground">I confirm to create this user</Label>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="submit" disabled={submitting || !confirmCreate} className="flex-1">
+                      {submitting ? 'Adding...' : 'Add User'}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => !submitting && setOpenCreate(false)} className="flex-1">Cancel</Button>
+                  </div>
+                </form>
+              </Card>
+            </div>
+          ) : null}
           {error && (
             <Card className="border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error}</Card>
           )}
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card className="p-5">
-              <div className="text-sm font-medium mb-4">Add User</div>
-              <form onSubmit={onCreate} className="grid gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="username">Username</Label>
-                  <Input id="username" value={form.username} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} placeholder="Jane Doe" required />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="jane@example.com" required />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input id="password" type="password" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder="••••••" minLength={6} required />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="role">Role</Label>
-                  <select id="role" className="w-full border rounded px-3 py-2 bg-background" value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}>
-                    <option value="agent">Agent</option>
-                    <option value="manager">Manager</option>
-                    <option value="superadmin">Superadmin</option>
-                  </select>
-                </div>
-                <Button type="submit" disabled={submitting} className="w-full">
-                  {submitting ? 'Adding...' : 'Add User'}
-                </Button>
-              </form>
-            </Card>
-
-            <Card className="p-5">
-              <div className="text-sm font-medium mb-4">All Users</div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="text-left border-b">
-                      <th className="py-2 pr-4">ID</th>
-                      <th className="py-2 pr-4">Username</th>
-                      <th className="py-2 pr-4">User ID</th>
-                      <th className="py-2 pr-4">Email</th>
-                      <th className="py-2 pr-4">Role</th>
-                      <th className="py-2 pr-4">Status</th>
-                      <th className="py-2 pr-4">Created</th>
-                      <th className="py-2 pr-4">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loading ? (
-                      <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">Loading...</td></tr>
-                    ) : users.length === 0 ? (
-                      <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">No users found</td></tr>
-                    ) : (
-                      users.map((u) => (
-                        <tr key={u.id} className="border-b last:border-0">
-                          <td className="py-2 pr-4">{u.id}</td>
-                          <td className="py-2 pr-4">{u.username || '-'}</td>
-                          <td className="py-2 pr-4 font-mono">{u.unique_user_id || '-'}</td>
-                          <td className="py-2 pr-4">{u.usermail || '-'}</td>
-                          <td className="py-2 pr-4">{u.role || '-'}</td>
-                          <td className="py-2 pr-4">{u.status || '-'}</td>
-                          <td className="py-2 pr-4">{new Date(u.created_at).toLocaleString()}</td>
-                          <td className="py-2 pr-4">
-                            <Button variant="destructive" size="sm" onClick={() => onDelete(u.id)}>Delete</Button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
+          <Card className="p-5">
+            <div className="text-sm font-medium mb-4">All Users</div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b">
+                    <th className="py-2 pr-4">ID</th>
+                    <th className="py-2 pr-4">Username</th>
+                    <th className="py-2 pr-4">User ID</th>
+                    <th className="py-2 pr-4">Email</th>
+                    <th className="py-2 pr-4">Role</th>
+                    <th className="py-2 pr-4">Extension</th>
+                    <th className="py-2 pr-4">Status</th>
+                    <th className="py-2 pr-4">Created</th>
+                    <th className="py-2 pr-4">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan={9} className="py-6 text-center text-muted-foreground">Loading...</td></tr>
+                  ) : filtered.length === 0 ? (
+                    <tr><td colSpan={9} className="py-6 text-center text-muted-foreground">No users found</td></tr>
+                  ) : (
+                    filtered.map((u) => (
+                      <tr key={u.id} className="border-b last:border-0">
+                        <td className="py-2 pr-4">{u.id}</td>
+                        <td className="py-2 pr-4">{u.username || '-'}</td>
+                        <td className="py-2 pr-4 font-mono">{u.unique_user_id || '-'}</td>
+                        <td className="py-2 pr-4">{u.usermail || '-'}</td>
+                        <td className="py-2 pr-4">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="sm">{toTitle(u.role)}</Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start">
+                              <DropdownMenuLabel>Change role</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              {['agent','manager','superadmin'].map((r) => (
+                                <DropdownMenuItem key={r} onClick={() => updateUser(u.id, { role: r })}>{toTitle(r)}</DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
+                        <td className="py-2 pr-4">
+                          <Input
+                            className="h-8 w-28"
+                            defaultValue={u.extension || ''}
+                            onBlur={(e) => {
+                              const val = e.currentTarget.value.trim()
+                              if (val !== (u.extension || '')) updateUser(u.id, { extension: val })
+                            }}
+                          />
+                        </td>
+                        <td className="py-2 pr-4">{toTitle(u.status)}</td>
+                        <td className="py-2 pr-4">{fmtDate(u.created_at)}</td>
+                        <td className="py-2 pr-4">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="sm">Actions</Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem className="text-red-600" onClick={() => onDelete(u.id)}>Delete</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         </div>
       </SidebarInset>
     </SidebarProvider>

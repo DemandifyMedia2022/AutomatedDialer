@@ -33,6 +33,12 @@ const CreateUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   role: z.enum(['agent', 'manager', 'superadmin']).default('agent'),
+  extension: z.string().trim().min(1).optional().nullable(),
+})
+
+const UpdateUserSchema = z.object({
+  role: z.enum(['agent', 'manager', 'superadmin']).optional(),
+  extension: z.string().trim().min(1).optional(),
 })
 
 const router = Router()
@@ -44,7 +50,7 @@ router.get('/', listLimiter, async (_req, res, next) => {
   try {
     const users = await db.users.findMany({
       orderBy: { created_at: 'desc' },
-      select: { id: true, username: true, usermail: true, role: true, status: true, created_at: true, unique_user_id: true },
+      select: { id: true, username: true, usermail: true, role: true, status: true, created_at: true, unique_user_id: true, extension: true },
     })
     res.json({ success: true, users })
   } catch (e) {
@@ -58,7 +64,7 @@ router.post('/', ...protectIfCookie, mutateLimiter, async (req, res, next) => {
   try {
     const parsed = CreateUserSchema.safeParse(req.body)
     if (!parsed.success) return res.status(400).json({ success: false, message: 'Invalid payload', issues: parsed.error.flatten() })
-    const { username, email, password, role } = parsed.data
+    const { username, email, password, role, extension } = parsed.data
 
     const existing = await db.users.findFirst({ where: { usermail: email } })
     if (existing) return res.status(409).json({ success: false, message: 'User already exists' })
@@ -91,10 +97,33 @@ router.post('/', ...protectIfCookie, mutateLimiter, async (req, res, next) => {
     if (!uniqueId) uniqueId = `${prefix}${String(Date.now()).slice(-4)}`
 
     const user = await db.users.create({
-      data: { username, usermail: email, password: hash, role, status: 'active', unique_user_id: uniqueId },
-      select: { id: true, username: true, usermail: true, role: true, status: true, created_at: true, unique_user_id: true },
+      data: { username, usermail: email, password: hash, role, status: 'active', unique_user_id: uniqueId, extension: extension || null },
+      select: { id: true, username: true, usermail: true, role: true, status: true, created_at: true, unique_user_id: true, extension: true },
     })
     res.status(201).json({ success: true, user })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.patch('/:id', ...protectIfCookie, mutateLimiter, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isFinite(id)) return res.status(400).json({ success: false, message: 'Invalid id' })
+    const parsed = UpdateUserSchema.safeParse(req.body)
+    if (!parsed.success) return res.status(400).json({ success: false, message: 'Invalid payload', issues: parsed.error.flatten() })
+
+    const data: any = {}
+    if (parsed.data.role) data.role = parsed.data.role
+    if (parsed.data.extension) data.extension = parsed.data.extension
+    if (Object.keys(data).length === 0) return res.status(400).json({ success: false, message: 'No changes provided' })
+
+    const updated = await db.users.update({
+      where: { id },
+      data,
+      select: { id: true, username: true, usermail: true, role: true, status: true, created_at: true, unique_user_id: true, extension: true },
+    })
+    res.json({ success: true, user: updated })
   } catch (e) {
     next(e)
   }
