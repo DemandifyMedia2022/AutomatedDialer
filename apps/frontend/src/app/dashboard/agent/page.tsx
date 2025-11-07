@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useState } from "react"
 import { AgentSidebar } from "./components/AgentSidebar"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -17,17 +17,10 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { API_BASE } from "@/lib/api"
-import { ArrowDownRight, ArrowUpRight, PhoneCall, PhoneIncoming, Voicemail, UsersRound } from "lucide-react"
-
-type Filters = {
-  from: string
-  to: string
-  team?: string
-  campaign?: string
-}
+import { ArrowDownRight, ArrowUpRight, PhoneCall, PhoneIncoming, Voicemail, UsersRound, Crown, Medal, Award } from "lucide-react"
 
 type MetricResponse = {
   callsDialed: number
@@ -38,54 +31,19 @@ type MetricResponse = {
   connectRate: number
   conversationRate: number
   dispositions: { name: string; count: number }[]
-  leaderboard: { name: string; successRate: number }[]
+  leaderboard: { name: string; successRate: number; avatar?: string }[]
 }
 
 export default function Page() {
-  const today = new Date()
-  const weekAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)
-  const fmt = (d: Date) => d.toISOString().slice(0, 10)
-
-  const [filters, setFilters] = useState<Filters>({ from: fmt(weekAgo), to: fmt(today), team: "", campaign: "" })
-  const [teams, setTeams] = useState<string[]>([])
-  const [campaigns, setCampaigns] = useState<string[]>([])
+  
   const [loading, setLoading] = useState<boolean>(false)
   const [data, setData] = useState<MetricResponse | null>(null)
-
-  useEffect(() => {
-    let ignore = false
-    async function loadFilters() {
-      try {
-        const [tRes, cRes] = await Promise.all([
-          fetch(`${API_BASE}/team-members`).catch(() => null),
-          fetch(`${API_BASE}/campaigns`).catch(() => null),
-        ])
-        const t = tRes && tRes.ok ? (await tRes.json()) as { name: string }[] : []
-        const c = cRes && cRes.ok ? (await cRes.json()) as { name: string }[] : []
-        if (!ignore) {
-          setTeams(t.length ? t.map(x => x.name) : ["Team A", "Team B", "Team C"]) 
-          setCampaigns(c.length ? c.map(x => x.name) : ["Q4 Blast", "Follow-up", "Nurture"]) 
-        }
-      } catch {
-        if (!ignore) {
-          setTeams(["Team A", "Team B", "Team C"]) 
-          setCampaigns(["Q4 Blast", "Follow-up", "Nurture"]) 
-        }
-      }
-    }
-    loadFilters()
-    return () => { ignore = true }
-  }, [])
+  
 
   const fetchMetrics = async () => {
     setLoading(true)
     try {
-      const qs = new URLSearchParams()
-      if (filters.from) qs.set("from", filters.from)
-      if (filters.to) qs.set("to", filters.to)
-      if (filters.team) qs.set("team", String(filters.team))
-      if (filters.campaign) qs.set("campaign", String(filters.campaign))
-      const res = await fetch(`${API_BASE}/analytics/agent?` + qs.toString())
+      const res = await fetch(`${API_BASE}/analytics/agent`)
       if (res.ok) {
         const json = await res.json()
         setData(json as MetricResponse)
@@ -127,11 +85,7 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const totals = useMemo(() => {
-    if (!data) return { total: 0 }
-    const total = data.dispositions.reduce((a, b) => a + b.count, 0)
-    return { total }
-  }, [data])
+  
 
   return (
     <SidebarProvider>
@@ -152,88 +106,45 @@ export default function Page() {
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
-            <div className="ml-auto flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={fetchMetrics} disabled={loading}>
-                Refresh
-              </Button>
-            </div>
           </div>
         </header>
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          
-            <CardContent className="pt-6">
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">From</label>
-                  <Input type="date" value={filters.from} onChange={(e) => setFilters(f => ({ ...f, from: e.target.value }))} />
-                </div>
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">To</label>
-                  <Input type="date" value={filters.to} onChange={(e) => setFilters(f => ({ ...f, to: e.target.value }))} />
-                </div>
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">Team Member</label>
-                  <select
-                    className="border h-9 rounded-md bg-transparent px-3 py-1 text-sm"
-                    value={filters.team}
-                    onChange={(e) => setFilters(f => ({ ...f, team: e.target.value }))}
-                  >
-                    <option value="">All</option>
-                    {teams.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">Campaign</label>
-                  <select
-                    className="border h-9 rounded-md bg-transparent px-3 py-1 text-sm"
-                    value={filters.campaign}
-                    onChange={(e) => setFilters(f => ({ ...f, campaign: e.target.value }))}
-                  >
-                    <option value="">All</option>
-                    {campaigns.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div className="flex items-end gap-2">
-                  <Button onClick={fetchMetrics} disabled={loading} className="w-full">Search</Button>
-                </div>
-                <div className="flex items-end gap-2">
-                  <Button variant="outline" onClick={() => setFilters({ from: fmt(weekAgo), to: fmt(today), team: "", campaign: "" })} className="w-full">Reset</Button>
-                </div>
-              </div>
-            </CardContent>
-        
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="flex flex-1 flex-col gap-6 p-6 pt-0">
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             <StatCard
               title="Connect Rate"
               value={(data?.connectRate ?? 0) + "%"}
               icon={<ArrowUpRight className="text-emerald-600" />}
               tone="emerald"
             />
+
             <StatCard
               title="Calls Dialed"
               value={String(data?.callsDialed ?? 0)}
               icon={<PhoneCall className="text-blue-600" />}
               tone="blue"
             />
+
             <StatCard
               title="Answered Calls"
               value={String(data?.answered ?? 0)}
               icon={<PhoneIncoming className="text-violet-600" />}
               tone="violet"
             />
+
             <StatCard
               title="Conversation Rate"
               value={(data?.conversationRate ?? 0) + "%"}
               icon={<UsersRound className="text-amber-600" />}
               tone="amber"
             />
+
             <StatCard
               title="Voicemail Dropped"
               value={String(data?.voicemail ?? 0)}
               icon={<Voicemail className="text-fuchsia-600" />}
               tone="fuchsia"
             />
+
             <StatCard
               title="Unanswered Calls"
               value={String(data?.unanswered ?? 0)}
@@ -242,29 +153,13 @@ export default function Page() {
             />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-6 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle>Call Disposition Analytics</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {(data?.dispositions ?? []).map((d) => {
-                    const pct = totals.total ? Math.round((d.count / totals.total) * 100) : 0
-                    return (
-                      <div key={d.name} className="grid grid-cols-[140px_1fr_auto] items-center gap-3">
-                        <div className="text-sm text-muted-foreground">{d.name}</div>
-                        <div className="h-2 rounded bg-muted overflow-hidden">
-                          <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
-                        </div>
-                        <div className="text-xs tabular-nums text-muted-foreground">{pct}% • {d.count}</div>
-                      </div>
-                    )
-                  })}
-                  {!data && (
-                    <div className="text-sm text-muted-foreground">Loading analytics…</div>
-                  )}
-                </div>
+                <DispositionRadar dispositions={data?.dispositions ?? []} />
               </CardContent>
             </Card>
 
@@ -273,14 +168,20 @@ export default function Page() {
                 <CardTitle>Leaderboard</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {(data?.leaderboard ?? []).map((row, idx) => (
                     <div key={row.name} className="grid grid-cols-[1fr_auto] items-center gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="size-6 rounded-full bg-accent text-xs grid place-items-center">{idx + 1}</div>
-                        <div className="text-sm">{row.name}</div>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Avatar className="h-7 w-7">
+                          <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(row.name)}`} alt={row.name} />
+                          <AvatarFallback>{row.name.split(" ").map(s=>s[0]).slice(0,2).join("")}</AvatarFallback>
+                        </Avatar>
+                        <div className="truncate text-sm font-medium">{row.name}</div>
+                        {idx < 3 && (
+                          <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full border bg-primary/5 text-primary border-primary/20">#{idx + 1}</span>
+                        )}
                       </div>
-                      <div className="text-sm font-medium tabular-nums">{row.successRate}%</div>
+                      <span className="text-sm font-medium tabular-nums px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">{row.successRate}%</span>
                     </div>
                   ))}
                   {!data && (
@@ -298,15 +199,15 @@ export default function Page() {
 
 function StatCard({ title, value, icon, tone }: { title: string; value: string; icon: React.ReactNode; tone: "emerald" | "blue" | "violet" | "amber" | "fuchsia" | "rose" }) {
   const toneBg = {
-    emerald: "bg-emerald-50 text-emerald-700 border-emerald-100",
-    blue: "bg-blue-50 text-blue-700 border-blue-100",
-    violet: "bg-violet-50 text-violet-700 border-violet-100",
-    amber: "bg-amber-50 text-amber-700 border-amber-100",
-    fuchsia: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100",
-    rose: "bg-rose-50 text-rose-700 border-rose-100",
+    emerald: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
+    blue: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+    violet: "bg-violet-500/10 text-violet-700 border-violet-500/20",
+    amber: "bg-amber-500/10 text-amber-700 border-amber-500/20",
+    fuchsia: "bg-fuchsia-500/10 text-fuchsia-700 border-fuchsia-500/20",
+    rose: "bg-rose-500/10 text-rose-700 border-rose-500/20",
   }[tone]
   return (
-    <Card className="p-0">
+    <Card className="p-0 border shadow-sm hover:shadow-md transition-shadow">
       <CardContent className="p-6">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
@@ -319,5 +220,70 @@ function StatCard({ title, value, icon, tone }: { title: string; value: string; 
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function DispositionRadar({ dispositions }: { dispositions: { name: string; count: number }[] }) {
+  const items = dispositions && dispositions.length ? dispositions : []
+  const max = items.reduce((m, i) => Math.max(m, i.count), 1)
+  const points = ((() => {
+    const n = items.length || 5
+    const radius = 120
+    const cx = 140
+    const cy = 140
+    return items.map((it, idx) => {
+      const angle = (Math.PI * 2 * idx) / n - Math.PI / 2
+      const r = (it.count / max) * radius
+      const x = cx + r * Math.cos(angle)
+      const y = cy + r * Math.sin(angle)
+      return `${x},${y}`
+    }).join(" ")
+  })())
+  const ring = (r: number) => (
+    <circle key={r} cx={140} cy={140} r={r} className="fill-none stroke-muted" strokeDasharray={4} />
+  )
+  const total = dispositions.reduce((a,b)=>a+b.count,0)
+  return (
+    <div className="w-full flex items-center justify-center">
+      <svg viewBox="0 0 320 280" className="w-full max-w-sm">
+        { [30, 60, 90, 120].map(r => ring(r)) }
+        <g className="fill-blue-500/30 stroke-blue-500/50">
+          {points && <polygon points={points} />}
+        </g>
+        {dispositions.map((it, idx) => {
+          const n = dispositions.length || 1
+          const angle = (Math.PI * 2 * idx) / n - Math.PI / 2
+          const r = max ? (it.count / max) * 120 : 0
+          const x = 140 + r * Math.cos(angle)
+          const y = 140 + r * Math.sin(angle)
+          const pct = total ? Math.round((it.count / total) * 100) : 0
+          return (
+            <g key={it.name}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <circle cx={x} cy={y} r={4} className="fill-primary stroke-background/70 cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent sideOffset={6}>
+                  <div className="text-xs">
+                    <div className="font-medium">{it.name}</div>
+                    <div className="tabular-nums">{pct}% • {it.count}</div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+              {(() => {
+                const labelRadius = 112
+                const lx = 140 + labelRadius * Math.cos(angle)
+                const ly = 140 + labelRadius * Math.sin(angle)
+                return (
+                  <text x={lx} y={ly} textAnchor={Math.cos(angle) > 0.1 ? "start" : Math.cos(angle) < -0.1 ? "end" : "middle"} dominantBaseline="middle" className="text-[10px] fill-muted-foreground select-none pointer-events-none">
+                    {it.name}
+                  </text>
+                )
+              })()}
+            </g>
+          )
+        })}
+      </svg>
+    </div>
   )
 }
