@@ -19,7 +19,7 @@ type CallRow = {
   id: number | string
   extension: string | null
   destination: string | null
-  source: string | null
+ 
   start_time: string
   end_time: string | null
   call_duration: number | null
@@ -55,7 +55,7 @@ const CallHistory = () => {
           id: r.id,
           extension: r.extension ?? null,
           destination: r.destination ?? null,
-          source: r.source ?? null,
+          
           start_time: r.start_time,
           end_time: r.end_time ?? null,
           call_duration: r.call_duration ?? null,
@@ -90,7 +90,7 @@ const CallHistory = () => {
     return items.filter((row) => {
       const ext = (row.extension || '').toLowerCase()
       const dest = (row.destination || '').toLowerCase()
-      const src = (row.source || '').toLowerCase()
+     
       const idStr = String(row.id || '').toLowerCase()
       return (
         ext.includes(term) ||
@@ -244,7 +244,7 @@ const CallHistory = () => {
                       <TableHead>ID</TableHead>
                       <TableHead>Extension</TableHead>
                       <TableHead>Destination Number</TableHead>
-                      <TableHead>Source</TableHead>
+                     
                       <TableHead>Start Time (UTC)</TableHead>
                       <TableHead>End Time (UTC)</TableHead>
                       <TableHead>Call Duration</TableHead>
@@ -265,7 +265,7 @@ const CallHistory = () => {
                         <TableCell>{row.id}</TableCell>
                         <TableCell>{row.extension || '-'}</TableCell>
                         <TableCell>{row.destination || '-'}</TableCell>
-                        <TableCell>{row.source || '-'}</TableCell>
+                     
                         <TableCell>{toUtc(row.start_time)}</TableCell>
                         <TableCell>{toUtc(row.end_time)}</TableCell>
                         <TableCell>{fmtDur(row.call_duration)}</TableCell>
