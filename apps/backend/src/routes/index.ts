@@ -93,6 +93,10 @@ const CallsSchema = z.object({
   job_title: z.string().optional().nullable(),
   job_level: z.string().optional().nullable(),
   data_source_type: z.string().optional().nullable(),
+  // optional signaling details to infer disposition
+  hangup_cause: z.string().optional().nullable(),
+  sip_status: z.coerce.number().int().optional().nullable(),
+  sip_reason: z.string().optional().nullable(),
 });
 
 const callsHandler = async (req: any, res: any, next: any) => {
@@ -154,6 +158,38 @@ const callsHandler = async (req: any, res: any, next: any) => {
       computedDuration = Math.max(0, Math.floor((endNorm.getTime() - startNorm.getTime()) / 1000))
     }
 
+    // Infer/normalize disposition from signals and optionally override bad client values
+    const inferDisposition = (): string => {
+      const status = Number(b.sip_status ?? 0);
+      const cause = String(b.hangup_cause ?? '').toLowerCase();
+      const reason = String(b.sip_reason ?? '').toLowerCase();
+      const answered = !!computedAnswer && (computedDuration ?? 0) > 0;
+      // Busy / Rejected signals: 486 Busy Here, 603 Decline, explicit busy/decline/reject labels
+      if (
+        status === 486 || status === 603 ||
+        cause.includes('busy') || reason.includes('busy') ||
+        cause.includes('decline') || reason.includes('decline') ||
+        cause.includes('reject') || reason.includes('reject')
+      ) return 'BUSY';
+      // No-Answer signals: not answered; also 408 Request Timeout, 480 Temporarily Unavailable, 487 Request Terminated
+      if (!answered || status === 408 || status === 480 || status === 487) return 'NO ANSWER';
+      return 'ANSWERED';
+    };
+
+    const normalizeDisposition = (): string => {
+      const raw = String(b.disposition ?? '').trim().toUpperCase();
+      // If client sent a trustworthy final state, keep it; otherwise infer
+      if (raw === 'BUSY' || raw === 'NO ANSWER' || raw === 'ANSWERED' || raw === 'VOICEMAIL') return raw;
+      // Treat FAILED/FAIL/ERROR/REJECTED/DECLINED as hints -> infer from signals
+      if (raw === 'FAILED' || raw === 'FAIL' || raw === 'ERROR' || raw === 'REJECTED' || raw === 'DECLINED') return inferDisposition();
+      // Unknown/empty -> infer
+      if (!raw) return inferDisposition();
+      // Default: keep raw
+      return raw;
+    };
+
+    const dispositionFinal = normalizeDisposition();
+
     const data = {
       campaign_name: b.campaign_name || null,
       useremail: b.useremail || null,
@@ -170,7 +206,7 @@ const callsHandler = async (req: any, res: any, next: any) => {
       charges: b.charges ?? null,
       direction: b.direction || null,
       destination: b.destination || null,
-      disposition: b.disposition || null,
+      disposition: dispositionFinal || null,
       platform: b.platform || 'web',
       recording_url,
       call_type: b.call_type || 'manual',

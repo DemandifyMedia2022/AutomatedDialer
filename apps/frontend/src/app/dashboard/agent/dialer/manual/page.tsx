@@ -54,17 +54,21 @@ export default function ManualDialerPage() {
   const ringOsc1Ref = useRef<OscillatorNode | null>(null)
   const ringOsc2Ref = useRef<OscillatorNode | null>(null)
   const ringTimerRef = useRef<number | null>(null)
+  // Busy tone helpers
+  const busyGainRef = useRef<GainNode | null>(null)
+  const busyOsc1Ref = useRef<OscillatorNode | null>(null)
+  const busyOsc2Ref = useRef<OscillatorNode | null>(null)
+  const busyTimerRef = useRef<number | null>(null)
 
   const lastDialedNumber = useMemo(() => {
     if (typeof window === "undefined") return null
     return localStorage.getItem("lastDialedNumber")
   }, [])
 
-  function mapFailedDisposition(cause: any): 'Busy' | 'No Answer' | 'Failed' {
+  function isBusyCause(cause: any, code?: number, reason?: string): boolean {
     const c = String(cause || '').toLowerCase()
-    if (c.includes('busy') || c.includes('486')) return 'Busy'
-    if (c.includes('timeout') || c.includes('480') || c.includes('temporarily unavailable') || c.includes('no answer')) return 'No Answer'
-    return 'Failed'
+    const r = String(reason || '').toLowerCase()
+    return c.includes('busy') || c.includes('486') || code === 486 || code === 603 || r.includes('busy') || r.includes('decline')
   }
 
   useEffect(() => {
@@ -226,8 +230,14 @@ export default function ManualDialerPage() {
         clearTimer()
         if (!uploadedOnceRef.current) {
           uploadedOnceRef.current = true
-          const disp = mapFailedDisposition(e?.cause)
-          await stopRecordingAndUpload({ disposition: disp })
+          const code = Number(e?.response?.status_code || 0)
+          const reason = e?.response?.reason_phrase || String(e?.cause || '')
+          const isBusy = isBusyCause(e?.cause, code, reason)
+          if (isBusy) {
+            try { await startBusyTone(); setTimeout(() => stopBusyTone(), 3000) } catch {}
+          }
+          // Do NOT send disposition; let backend infer BUSY/NO ANSWER from hints
+          await stopRecordingAndUpload({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : undefined })
         }
       })
       session.on("ended", async () => {
@@ -236,8 +246,8 @@ export default function ManualDialerPage() {
         clearTimer()
         if (!uploadedOnceRef.current) {
           uploadedOnceRef.current = true
-          const disp: 'Answered' | 'No Answer' = hasAnsweredRef.current ? 'Answered' : 'No Answer'
-          await stopRecordingAndUpload({ disposition: disp })
+          // Do NOT send disposition; backend will infer ANSWERED vs NO ANSWER from timings
+          await stopRecordingAndUpload({})
         }
       })
     })
@@ -314,6 +324,50 @@ export default function ManualDialerPage() {
     ringGainRef.current = null
   }
 
+  // Play a local busy tone to the agent on reject/busy
+  const startBusyTone = async () => {
+    try {
+      await ensureAudioCtx()
+      const ctx = audioCtxRef.current
+      if (!ctx) return
+      stopBusyTone()
+      const gain = ctx.createGain()
+      const osc1 = ctx.createOscillator()
+      const osc2 = ctx.createOscillator()
+      // NA busy tone approx: 480Hz + 620Hz, 0.5s on / 0.5s off
+      osc1.frequency.value = 480
+      osc2.frequency.value = 620
+      osc1.connect(gain)
+      osc2.connect(gain)
+      gain.connect(ctx.destination)
+      gain.gain.value = 0
+      osc1.start()
+      osc2.start()
+      busyGainRef.current = gain
+      busyOsc1Ref.current = osc1
+      busyOsc2Ref.current = osc2
+      let on = false
+      const tick = () => {
+        on = !on
+        if (busyGainRef.current) busyGainRef.current.gain.value = on ? 0.15 : 0
+        busyTimerRef.current = window.setTimeout(tick, 500)
+      }
+      tick()
+    } catch {}
+  }
+
+  const stopBusyTone = () => {
+    if (busyTimerRef.current) { window.clearTimeout(busyTimerRef.current); busyTimerRef.current = null }
+    try { busyOsc1Ref.current?.stop() } catch {}
+    try { busyOsc2Ref.current?.stop() } catch {}
+    try { busyOsc1Ref.current?.disconnect() } catch {}
+    try { busyOsc2Ref.current?.disconnect() } catch {}
+    try { busyGainRef.current?.disconnect() } catch {}
+    busyOsc1Ref.current = null
+    busyOsc2Ref.current = null
+    busyGainRef.current = null
+  }
+
   const placeCall = async () => {
     setError(null)
     if (!uaRef.current) return setError("UA not ready")
@@ -347,8 +401,7 @@ export default function ManualDialerPage() {
     stopRingback()
     if (!uploadedOnceRef.current) {
       uploadedOnceRef.current = true
-      const disp: 'Answered' | 'No Answer' = hasAnsweredRef.current ? 'Answered' : 'No Answer'
-      await stopRecordingAndUpload({ disposition: disp })
+      await stopRecordingAndUpload({})
     }
   }
 
@@ -427,7 +480,7 @@ export default function ManualDialerPage() {
     }
   }
 
-  async function stopRecordingAndUpload(extra: { disposition: string }) {
+  async function stopRecordingAndUpload(extra: { sip_status?: number; sip_reason?: string; hangup_cause?: string } = {}) {
     try {
       const rec = mediaRecorderRef.current
       if (rec && rec.state !== 'inactive') {
@@ -478,7 +531,9 @@ export default function ManualDialerPage() {
     const destination = (number || lastDialDestinationRef.current || sipUser || '').toString()
     if (destination) form.append('destination', destination)
     form.append('direction', 'outbound')
-    form.append('disposition', extra.disposition)
+    if (typeof extra.sip_status === 'number') form.append('sip_status', String(extra.sip_status))
+    if (extra.sip_reason) form.append('sip_reason', extra.sip_reason)
+    if (extra.hangup_cause) form.append('hangup_cause', extra.hangup_cause)
     form.append('platform', 'web')
 
     if (blob) form.append('recording', blob, `call_${Date.now()}.webm`)

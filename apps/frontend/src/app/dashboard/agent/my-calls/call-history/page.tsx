@@ -10,10 +10,6 @@ import { AgentSidebar } from "../../components/AgentSidebar";
 import { API_BASE } from "@/lib/api";
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth";
 import { Download } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 type CallRow = {
   id: number | string
@@ -33,12 +29,30 @@ const CallHistory = () => {
   const [pageSize] = React.useState(20)
   const [total, setTotal] = React.useState(0)
   const [loading, setLoading] = React.useState(false)
-  const [searchTerm, setSearchTerm] = React.useState("")
+  const [fromDate, setFromDate] = React.useState('')
+  const [toDate, setToDate] = React.useState('')
+  const [phone, setPhone] = React.useState('')
+  const [extension, setExtension] = React.useState('')
+  const [status, setStatus] = React.useState('')
+  const [direction, setDirection] = React.useState('')
 
   const fetchMine = React.useCallback(async (p: number) => {
     setLoading(true)
     try {
       const qs = new URLSearchParams({ page: String(p), pageSize: String(pageSize) })
+      // apply filters if present
+      const toIso = (d: string, endOfDay = false) => {
+        try {
+          if (!d) return ''
+          return endOfDay ? `${d}T23:59:59.999Z` : `${d}T00:00:00.000Z`
+        } catch { return d }
+      }
+      if (fromDate) qs.set('from', toIso(fromDate))
+      if (toDate) qs.set('to', toIso(toDate, true))
+      if (phone) qs.set('destination', phone)
+      if (extension) qs.set('extension', extension)
+      if (status) qs.set('status', status)
+      if (direction) qs.set('direction', direction)
       const headers: Record<string, string> = {}
       let credentials: RequestCredentials = 'omit'
       if (USE_AUTH_COOKIE) {
@@ -61,12 +75,7 @@ const CallHistory = () => {
           call_duration: r.call_duration ?? null,
           disposition: (r.disposition || '') as string,
           recording_url: r.recording_url ?? null,
-        })).sort((a: CallRow, b: CallRow) => {
-          const an = Number(a.id); const bn = Number(b.id)
-          const aIsNum = !Number.isNaN(an); const bIsNum = !Number.isNaN(bn)
-          if (aIsNum && bIsNum) return an - bn
-          return String(a.id).localeCompare(String(b.id))
-        }))
+        })))
         setTotal(Number(data?.total || rows.length))
         setPage(Number(data?.page || p))
       } else {
@@ -79,11 +88,12 @@ const CallHistory = () => {
     } finally {
       setLoading(false)
     }
-  }, [pageSize])
+  }, [pageSize, fromDate, toDate, phone, extension, status, direction])
 
   React.useEffect(() => { fetchMine(page) }, [fetchMine, page])
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
+<<<<<<< HEAD
   const filteredItems = React.useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
     if (!term) return items
@@ -100,6 +110,8 @@ const CallHistory = () => {
       )
     })
   }, [items, searchTerm])
+=======
+>>>>>>> 19d71d3d39aed6ba36936c9cbcc0e623c6f88035
   const toUtc = (iso?: string | null) => {
     if (!iso) return '-'
     try {
@@ -176,62 +188,57 @@ const CallHistory = () => {
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
-          <Card className="w-full">
-            <CardHeader>
-           
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6 items-end">
-                <div className="flex flex-col gap-1">
-                  <Label>From Date</Label>
-                  <Input type="date" placeholder="From Date" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <Label>To Date</Label>
-                  <Input type="date" placeholder="To Date" />
-                </div>
-                <div className="flex flex-col gap-1 lg:col-span-1">
-                  <Label>Search</Label>
-                  <Input
-                    placeholder="Search"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <Label>Status</Label>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="justify-between">
-                        Select Status
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuLabel>Status</DropdownMenuLabel>
-                      <DropdownMenuItem>ANSWERED</DropdownMenuItem>
-                      <DropdownMenuItem>NO ANSWER</DropdownMenuItem>
-                      <DropdownMenuItem>BUSY</DropdownMenuItem>
-                      <DropdownMenuItem>FAILED</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <Label>Call Type</Label>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="justify-between">
-                        Select Call Type
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuLabel>Call Type</DropdownMenuLabel>
-                      <DropdownMenuItem>Inbound</DropdownMenuItem>
-                      <DropdownMenuItem>Outbound</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0"> 
+          
+          <div className="p-6">
+           <h1 className="text-2xl font-bold mb-3">Call History</h1>
+            <div className="flex justify-between items-center mb-4">
+              
+              <div className="flex space-x-2">
+                <Input type="date" placeholder="From Date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+                <Input type="date" placeholder="To Date" value={toDate} onChange={e => setToDate(e.target.value)} />
+                <Input placeholder="Phone No." value={phone} onChange={e => setPhone(e.target.value)} />
+                <Input placeholder="Extension" value={extension} onChange={e => setExtension(e.target.value)} />
+                <select
+                  className="border h-9 rounded-md bg-transparent px-3 py-1 text-sm"
+                  value={status}
+                  onChange={e => setStatus(e.target.value)}
+                  aria-label="Status"
+                >
+                  <option value="">Select Status</option>
+                  <option value="ANSWERED">ANSWERED</option>
+                  <option value="NO ANSWER">NO ANSWER</option>
+                  <option value="BUSY">BUSY</option>
+                  <option value="FAILED">FAILED</option>
+                </select>
+                <select
+                  className="border h-9 rounded-md bg-transparent px-3 py-1 text-sm"
+                  value={direction}
+                  onChange={e => setDirection(e.target.value)}
+                  aria-label="Call Type"
+                >
+                  <option value="">Select Call Type</option>
+                  <option value="inbound">Inbound</option>
+                  <option value="outbound">Outbound</option>
+                </select>
+                <Button onClick={() => { setPage(1); fetchMine(1) }}>Search</Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setFromDate('')
+                    setToDate('')
+                    setPhone('')
+                    setExtension('')
+                    setStatus('')
+                    setDirection('')
+                    setPage(1)
+                    fetchMine(1)
+                  }}
+                >
+                  Reset
+                </Button>
               </div>
+<<<<<<< HEAD
               <div className="mt-4 flex gap-2">
                 <Button>Search</Button>
                 <Button variant="outline">Reset</Button>
@@ -302,6 +309,72 @@ const CallHistory = () => {
               </div>
             </CardContent>
           </Card>
+=======
+            </div>
+            <div className="mt-4 overflow-x-auto rounded-lg border">
+              <table className="min-w-full text-sm">
+                <thead className="bg-muted sticky top-0 z-10">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Extension</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Destination Number</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Source</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Start Time (UTC)</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">End Time (UTC)</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Call Duration</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Call Disposition</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Recording</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {items.length === 0 && (
+                    <tr>
+                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={8}>
+                        {loading ? 'Loading…' : 'No records'}
+                      </td>
+                    </tr>
+                  )}
+                  {items.map((row) => (
+                    <tr key={row.id} className="hover:bg-accent/50">
+                      <td className="px-4 py-3">{row.id}</td>
+                      <td className="px-4 py-3">{row.extension || '-'}</td>
+                      <td className="px-4 py-3">{row.destination || '-'}</td>
+                      <td className="px-4 py-3">{row.source || '-'}</td>
+                      <td className="px-4 py-3">{toUtc(row.start_time)}</td>
+                      <td className="px-4 py-3">{toUtc(row.end_time)}</td>
+                      <td className="px-4 py-3">{fmtDur(row.call_duration)}</td>
+                      <td className="px-4 py-3">{(row.disposition || '').toUpperCase() || '-'}</td>
+                      <td className="px-4 py-3">
+                        {row.recording_url ? (
+                          <div className="flex items-center gap-2">
+                            <audio src={row.recording_url || undefined} controls preload="none" className="h-8" />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1"
+                              onClick={() => downloadRecording(row.recording_url!, row.id)}
+                            >
+                              <Download className="h-4 w-4" /> Download
+                            </Button>
+                          </div>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-center mt-4 gap-2">
+              {Array.from({ length: pageCount }).map((_, i) => (
+                <Button key={i} variant="outline" size="sm" onClick={() => setPage(i + 1)} disabled={page === i + 1}>
+                  {i + 1}
+                </Button>
+              ))}
+            </div>
+          </div>
+>>>>>>> 19d71d3d39aed6ba36936c9cbcc0e623c6f88035
         </div>
       </SidebarInset>
     </SidebarProvider>
