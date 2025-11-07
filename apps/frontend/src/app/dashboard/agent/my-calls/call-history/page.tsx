@@ -10,6 +10,10 @@ import { AgentSidebar } from "../../components/AgentSidebar";
 import { API_BASE } from "@/lib/api";
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth";
 import { Download } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 type CallRow = {
   id: number | string
@@ -29,6 +33,7 @@ const CallHistory = () => {
   const [pageSize] = React.useState(20)
   const [total, setTotal] = React.useState(0)
   const [loading, setLoading] = React.useState(false)
+  const [searchTerm, setSearchTerm] = React.useState("")
 
   const fetchMine = React.useCallback(async (p: number) => {
     setLoading(true)
@@ -56,7 +61,12 @@ const CallHistory = () => {
           call_duration: r.call_duration ?? null,
           disposition: (r.disposition || '') as string,
           recording_url: r.recording_url ?? null,
-        })))
+        })).sort((a: CallRow, b: CallRow) => {
+          const an = Number(a.id); const bn = Number(b.id)
+          const aIsNum = !Number.isNaN(an); const bIsNum = !Number.isNaN(bn)
+          if (aIsNum && bIsNum) return an - bn
+          return String(a.id).localeCompare(String(b.id))
+        }))
         setTotal(Number(data?.total || rows.length))
         setPage(Number(data?.page || p))
       } else {
@@ -74,6 +84,22 @@ const CallHistory = () => {
   React.useEffect(() => { fetchMine(page) }, [fetchMine, page])
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const filteredItems = React.useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
+    if (!term) return items
+    return items.filter((row) => {
+      const ext = (row.extension || '').toLowerCase()
+      const dest = (row.destination || '').toLowerCase()
+      const src = (row.source || '').toLowerCase()
+      const idStr = String(row.id || '').toLowerCase()
+      return (
+        ext.includes(term) ||
+        dest.includes(term) ||
+        src.includes(term) ||
+        idStr.includes(term)
+      )
+    })
+  }, [items, searchTerm])
   const toUtc = (iso?: string | null) => {
     if (!iso) return '-'
     try {
@@ -150,108 +176,132 @@ const CallHistory = () => {
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0"> 
-          
-          <div className="p-6">
-           <h1 className="text-2xl font-bold mb-3">Call History</h1>
-            <div className="flex justify-between items-center mb-4">
-              
-              <div className="flex space-x-2">
-                <Input type="date" placeholder="From Date" />
-                <Input type="date" placeholder="To Date" />
-                <Input placeholder="Phone No." />
-                <Input placeholder="Extension" />
-                <select
-                  className="border h-9 rounded-md bg-transparent px-3 py-1 text-sm"
-                  defaultValue=""
-                  aria-label="Status"
-                >
-                  <option value="" disabled>
-                    Select Status
-                  </option>
-                  <option>ANSWERED</option>
-                  <option>NO ANSWER</option>
-                  <option>BUSY</option>
-                  <option>FAILED</option>
-                </select>
-                <select
-                  className="border h-9 rounded-md bg-transparent px-3 py-1 text-sm"
-                  defaultValue=""
-                  aria-label="Call Type"
-                >
-                  <option value="" disabled>
-                    Select Call Type
-                  </option>
-                  <option>Inbound</option>
-                  <option>Outbound</option>
-                </select>
-                <Button>Search</Button>
-                <Button>Reset</Button>
+        <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
+          <Card className="w-full">
+            <CardHeader>
+           
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6 items-end">
+                <div className="flex flex-col gap-1">
+                  <Label>From Date</Label>
+                  <Input type="date" placeholder="From Date" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label>To Date</Label>
+                  <Input type="date" placeholder="To Date" />
+                </div>
+                <div className="flex flex-col gap-1 lg:col-span-1">
+                  <Label>Search</Label>
+                  <Input
+                    placeholder="Search"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label>Status</Label>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="justify-between">
+                        Select Status
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuLabel>Status</DropdownMenuLabel>
+                      <DropdownMenuItem>ANSWERED</DropdownMenuItem>
+                      <DropdownMenuItem>NO ANSWER</DropdownMenuItem>
+                      <DropdownMenuItem>BUSY</DropdownMenuItem>
+                      <DropdownMenuItem>FAILED</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label>Call Type</Label>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="justify-between">
+                        Select Call Type
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuLabel>Call Type</DropdownMenuLabel>
+                      <DropdownMenuItem>Inbound</DropdownMenuItem>
+                      <DropdownMenuItem>Outbound</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
-            </div>
-            <div className="mt-4 overflow-x-auto rounded-lg border">
-              <table className="min-w-full text-sm">
-                <thead className="bg-muted sticky top-0 z-10">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Extension</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Destination Number</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Source</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Start Time (UTC)</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">End Time (UTC)</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Call Duration</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Call Disposition</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Recording</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {items.length === 0 && (
-                    <tr>
-                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={8}>
-                        {loading ? 'Loading…' : 'No records'}
-                      </td>
-                    </tr>
-                  )}
-                  {items.map((row) => (
-                    <tr key={row.id} className="hover:bg-accent/50">
-                      <td className="px-4 py-3">{row.id}</td>
-                      <td className="px-4 py-3">{row.extension || '-'}</td>
-                      <td className="px-4 py-3">{row.destination || '-'}</td>
-                      <td className="px-4 py-3">{row.source || '-'}</td>
-                      <td className="px-4 py-3">{toUtc(row.start_time)}</td>
-                      <td className="px-4 py-3">{toUtc(row.end_time)}</td>
-                      <td className="px-4 py-3">{fmtDur(row.call_duration)}</td>
-                      <td className="px-4 py-3">{(row.disposition || '').toUpperCase() || '-'}</td>
-                      <td className="px-4 py-3">
-                        {row.recording_url ? (
-                          <div className="flex items-center gap-2">
-                            <audio src={row.recording_url || undefined} controls preload="none" className="h-8" />
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="gap-1"
-                              onClick={() => downloadRecording(row.recording_url!, row.id)}
-                            >
-                              <Download className="h-4 w-4" /> Download
-                            </Button>
-                          </div>
-                        ) : (
-                          '-'
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="flex justify-center mt-4 gap-2">
-              {Array.from({ length: pageCount }).map((_, i) => (
-                <Button key={i} variant="outline" size="sm" onClick={() => setPage(i + 1)} disabled={page === i + 1}>
-                  {i + 1}
-                </Button>
-              ))}
-            </div>
-          </div>
+              <div className="mt-4 flex gap-2">
+                <Button>Search</Button>
+                <Button variant="outline">Reset</Button>
+              </div>
+
+              <div className="mt-6 overflow-x-auto rounded-lg border">
+                <Table>
+                  <TableHeader className="bg-muted sticky top-0 z-10">
+                    <TableRow>
+                      <TableHead>ID</TableHead>
+                      <TableHead>Extension</TableHead>
+                      <TableHead>Destination Number</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead>Start Time (UTC)</TableHead>
+                      <TableHead>End Time (UTC)</TableHead>
+                      <TableHead>Call Duration</TableHead>
+                      <TableHead>Call Disposition</TableHead>
+                      <TableHead>Recording</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredItems.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
+                          {loading ? 'Loading…' : 'No records'}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {filteredItems.map((row) => (
+                      <TableRow key={row.id} className="hover:bg-accent/50">
+                        <TableCell>{row.id}</TableCell>
+                        <TableCell>{row.extension || '-'}</TableCell>
+                        <TableCell>{row.destination || '-'}</TableCell>
+                        <TableCell>{row.source || '-'}</TableCell>
+                        <TableCell>{toUtc(row.start_time)}</TableCell>
+                        <TableCell>{toUtc(row.end_time)}</TableCell>
+                        <TableCell>{fmtDur(row.call_duration)}</TableCell>
+                        <TableCell>{(row.disposition || '').toUpperCase() || '-'}</TableCell>
+                        <TableCell>
+                          {row.recording_url ? (
+                            <div className="flex items-center gap-1" >
+                              <audio src={row.recording_url || undefined} controls preload="none" className="h-8" />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1"
+                                onClick={() => downloadRecording(row.recording_url!, row.id)}
+                              >
+                                <Download className="h-4 w-4" /> 
+                              </Button>
+                            </div>
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="mt-4 flex justify-center gap-2">
+                {Array.from({ length: pageCount }).map((_, i) => (
+                  <Button key={i} variant={page === i + 1 ? "default" : "outline"} size="sm" onClick={() => setPage(i + 1)}>
+                    {i + 1}
+                  </Button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </SidebarInset>
     </SidebarProvider>
