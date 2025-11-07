@@ -9,6 +9,7 @@ import { env } from '../config/env';
 import multer from 'multer';
 import path from 'path';
 import { db } from '../db/prisma';
+import { getPool } from '../db/pool';
 import { requireAuth, requireRoles } from '../middlewares/auth';
 import { csrfProtect } from '../middlewares/csrf';
 import { z } from 'zod';
@@ -217,7 +218,262 @@ router.get('/monitoring/live', requireAuth, requireRoles(['manager', 'superadmin
   res.json({ success: true, calls: [] });
 });
 
-// List calls from the calls table (all), with optional filters and pagination
+router.get('/analytics/agent/dispositions', requireAuth, requireRoles(['agent']), async (req: any, res: any, next: any) => {
+  try {
+    const userId = req.user?.userId
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
+
+    const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true } })
+    const username = me?.username || null
+    const usermail = me?.usermail || null
+    const extension = me?.extension || null
+    const from = req.query.from ? new Date(String(req.query.from)) : null
+    const to = req.query.to ? new Date(String(req.query.to)) : null
+    const pool = getPool()
+
+    const idParts: string[] = []
+    const params: any[] = []
+    if (username) { idParts.push('username = ?'); params.push(username) }
+    if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
+    if (extension) { idParts.push('extension = ?'); params.push(extension) }
+    if (idParts.length === 0) return res.json({})
+    const timeParts: string[] = []
+    if (from) { timeParts.push('start_time >= ?'); params.push(from) }
+    if (to) { timeParts.push('start_time <= ?'); params.push(to) }
+    const where = ['(', idParts.join(' OR '), ')', timeParts.length ? 'AND ' + timeParts.join(' AND ') : ''].join(' ').trim()
+    const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`
+    const [rows]: any = await pool.query(sql, params)
+    const items = (rows || []).map((r: any) => ({
+      name: String(r.disp || '') || 'UNKNOWN',
+      count: Number(r.cnt || 0),
+    }))
+    return res.json({ items })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/analytics/agent/dispositions/stream', requireAuth, requireRoles(['agent']), async (req: any, res: any, next: any) => {
+  try {
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache, no-transform')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders?.()
+
+    const userId = req.user?.userId
+    if (!userId) return res.status(401).end()
+    const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true } })
+    const username = me?.username || null
+    const usermail = me?.usermail || null
+    const extension = me?.extension || null
+    const from = req.query.from ? new Date(String(req.query.from)) : null
+    const to = req.query.to ? new Date(String(req.query.to)) : null
+    const pool = getPool()
+
+    const build = () => {
+      const idParts: string[] = []
+      const params: any[] = []
+      if (username) { idParts.push('username = ?'); params.push(username) }
+      if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
+      if (extension) { idParts.push('extension = ?'); params.push(extension) }
+      if (idParts.length === 0) return { sql: null as any, params }
+      const timeParts: string[] = []
+      if (from) { timeParts.push('start_time >= ?'); params.push(from) }
+      if (to) { timeParts.push('start_time <= ?'); params.push(to) }
+      const where = ['(', idParts.join(' OR '), ')', timeParts.length ? 'AND ' + timeParts.join(' AND ') : ''].join(' ').trim()
+      const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`
+      return { sql, params }
+    }
+
+    let last = ''
+    const tick = async () => {
+      try {
+        const b = build()
+        if (!b.sql) { res.write(`data: {"items":[]}\n\n`); return }
+        const [rows]: any = await pool.query(b.sql, b.params)
+        const items = (rows || []).map((r: any) => ({ name: String(r.disp || '') || 'UNKNOWN', count: Number(r.cnt || 0) }))
+        const payload = JSON.stringify({ items })
+        if (payload !== last) { last = payload; res.write(`data: ${payload}\n\n`) }
+      } catch {}
+    }
+
+    await tick()
+    const timer = setInterval(tick, 3000)
+    req.on('close', () => { try { clearInterval(timer) } catch {} })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/analytics/agent', requireAuth, requireRoles(['agent']), async (req: any, res: any, next: any) => {
+  try {
+    const userId = req.user?.userId
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
+    const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true } })
+    const username = me?.username || null
+    const usermail = me?.usermail || null
+    const extension = me?.extension || null
+    const from = req.query.from ? new Date(String(req.query.from)) : null
+    const to = req.query.to ? new Date(String(req.query.to)) : null
+    const pool = getPool()
+    const idParts: string[] = []
+    const params: any[] = []
+    if (username) { idParts.push('username = ?'); params.push(username) }
+    if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
+    if (extension) { idParts.push('extension = ?'); params.push(extension) }
+    if (idParts.length === 0) return res.json({ callsDialed: 0, answered: 0, voicemail: 0, unanswered: 0, conversations: 0, connectRate: 0, conversationRate: 0 })
+    const timeParts: string[] = []
+    if (from) { timeParts.push('start_time >= ?'); params.push(from) }
+    if (to) { timeParts.push('start_time <= ?'); params.push(to) }
+    const where = ['(', idParts.join(' OR '), ')', timeParts.length ? 'AND ' + timeParts.join(' AND ') : ''].join(' ').trim()
+    const sqlTotal = `SELECT COUNT(*) AS cnt FROM calls WHERE ${where}`
+    const sqlAnswered = `SELECT COUNT(*) AS cnt FROM calls WHERE ${where} AND UPPER(COALESCE(disposition,'')) = 'ANSWERED'`
+    const sqlVoicemail = `SELECT COUNT(*) AS cnt FROM calls WHERE ${where} AND UPPER(COALESCE(disposition,'')) = 'VOICEMAIL'`
+    const [[t]]: any = await pool.query(sqlTotal, params)
+    const [[a]]: any = await pool.query(sqlAnswered, params)
+    const [[v]]: any = await pool.query(sqlVoicemail, params)
+    const callsDialed = Number(t?.cnt || 0)
+    const answered = Number(a?.cnt || 0)
+    const voicemail = Number(v?.cnt || 0)
+    const unanswered = Math.max(0, callsDialed - answered - voicemail)
+    const conversations = answered
+    const connectRate = callsDialed ? Math.round((answered / callsDialed) * 100) : 0
+    const conversationRate = callsDialed ? Math.round((conversations / callsDialed) * 100) : 0
+    res.json({ callsDialed, answered, voicemail, unanswered, conversations, connectRate, conversationRate })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/analytics/agent/stream', requireAuth, requireRoles(['agent']), async (req: any, res: any, next: any) => {
+  try {
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache, no-transform')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders?.()
+
+    const userId = req.user?.userId
+    if (!userId) return res.status(401).end()
+    const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true } })
+    const username = me?.username || null
+    const usermail = me?.usermail || null
+    const extension = me?.extension || null
+    const from = req.query.from ? new Date(String(req.query.from)) : null
+    const to = req.query.to ? new Date(String(req.query.to)) : null
+    const pool = getPool()
+
+    const build = () => {
+      const idParts: string[] = []
+      const params: any[] = []
+      if (username) { idParts.push('username = ?'); params.push(username) }
+      if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
+      if (extension) { idParts.push('extension = ?'); params.push(extension) }
+      if (idParts.length === 0) return { sqls: null as any, params }
+      const timeParts: string[] = []
+      if (from) { timeParts.push('start_time >= ?'); params.push(from) }
+      if (to) { timeParts.push('start_time <= ?'); params.push(to) }
+      const where = ['(', idParts.join(' OR '), ')', timeParts.length ? 'AND ' + timeParts.join(' AND ') : ''].join(' ').trim()
+      const sqlTotal = `SELECT COUNT(*) AS cnt FROM calls WHERE ${where}`
+      const sqlAnswered = `SELECT COUNT(*) AS cnt FROM calls WHERE ${where} AND UPPER(COALESCE(disposition,'')) = 'ANSWERED'`
+      const sqlVoicemail = `SELECT COUNT(*) AS cnt FROM calls WHERE ${where} AND UPPER(COALESCE(disposition,'')) = 'VOICEMAIL'`
+      return { sqls: { sqlTotal, sqlAnswered, sqlVoicemail }, params }
+    }
+
+    let last = ''
+    const tick = async () => {
+      try {
+        const b = build()
+        if (!b.sqls) { res.write(`data: {"callsDialed":0,"answered":0,"voicemail":0,"unanswered":0,"conversations":0,"connectRate":0,"conversationRate":0}\n\n`); return }
+        const [[t]]: any = await pool.query(b.sqls.sqlTotal, b.params)
+        const [[a]]: any = await pool.query(b.sqls.sqlAnswered, b.params)
+        const [[v]]: any = await pool.query(b.sqls.sqlVoicemail, b.params)
+        const callsDialed = Number(t?.cnt || 0)
+        const answered = Number(a?.cnt || 0)
+        const voicemail = Number(v?.cnt || 0)
+        const unanswered = Math.max(0, callsDialed - answered - voicemail)
+        const conversations = answered
+        const connectRate = callsDialed ? Math.round((answered / callsDialed) * 100) : 0
+        const conversationRate = callsDialed ? Math.round((conversations / callsDialed) * 100) : 0
+        const payload = JSON.stringify({ callsDialed, answered, voicemail, unanswered, conversations, connectRate, conversationRate })
+        if (payload !== last) { last = payload; res.write(`data: ${payload}\n\n`) }
+      } catch {}
+    }
+
+    await tick()
+    const timer = setInterval(tick, 3000)
+    req.on('close', () => { try { clearInterval(timer) } catch {} })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/analytics/leaderboard', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
+  try {
+    const from = req.query.from ? new Date(String(req.query.from)) : null
+    const to = req.query.to ? new Date(String(req.query.to)) : null
+    const pool = getPool()
+    const params: any[] = []
+    const timeParts: string[] = []
+    if (from) { timeParts.push('start_time >= ?'); params.push(from) }
+    if (to) { timeParts.push('start_time <= ?'); params.push(to) }
+    const where = timeParts.length ? `WHERE ${timeParts.join(' AND ')}` : ''
+    const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
+                 FROM calls ${where}
+                 GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
+                 ORDER BY cnt DESC
+                 LIMIT 10`
+    const [rows]: any = await pool.query(sql, params)
+    const items = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
+    return res.json({ items })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/analytics/leaderboard/stream', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
+  try {
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache, no-transform')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders?.()
+
+    const from = req.query.from ? new Date(String(req.query.from)) : null
+    const to = req.query.to ? new Date(String(req.query.to)) : null
+    const pool = getPool()
+
+    const build = () => {
+      const params: any[] = []
+      const timeParts: string[] = []
+      if (from) { timeParts.push('start_time >= ?'); params.push(from) }
+      if (to) { timeParts.push('start_time <= ?'); params.push(to) }
+      const where = timeParts.length ? `WHERE ${timeParts.join(' AND ')}` : ''
+      const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
+                   FROM calls ${where}
+                   GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
+                   ORDER BY cnt DESC
+                   LIMIT 10`
+      return { sql, params }
+    }
+
+    let last = ''
+    const tick = async () => {
+      try {
+        const b = build()
+        const [rows]: any = await pool.query(b.sql, b.params)
+        const items = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
+        const payload = JSON.stringify({ items })
+        if (payload !== last) { last = payload; res.write(`data: ${payload}\n\n`) }
+      } catch {}
+    }
+
+    await tick()
+    const timer = setInterval(tick, 3000)
+    req.on('close', () => { try { clearInterval(timer) } catch {} })
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1)

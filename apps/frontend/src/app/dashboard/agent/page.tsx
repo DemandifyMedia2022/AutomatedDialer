@@ -20,6 +20,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { API_BASE } from "@/lib/api"
+import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
+
 import { ArrowDownRight, ArrowUpRight, PhoneCall, PhoneIncoming, Voicemail, UsersRound, Crown, Medal, Award } from "lucide-react"
 
 type MetricResponse = {
@@ -31,7 +33,7 @@ type MetricResponse = {
   connectRate: number
   conversationRate: number
   dispositions: { name: string; count: number }[]
-  leaderboard: { name: string; successRate: number; avatar?: string }[]
+  leaderboard: { name: string; count: number; avatar?: string }[]
 }
 
 export default function Page() {
@@ -43,10 +45,18 @@ export default function Page() {
   const fetchMetrics = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/analytics/agent`)
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const res = await fetch(`${API_BASE}/api/analytics/agent`, { headers, credentials })
       if (res.ok) {
         const json = await res.json()
-        setData(json as MetricResponse)
+        setData((prev) => ({ ...(prev || json), ...json }))
       } else {
         throw new Error(String(res.status))
       }
@@ -68,10 +78,10 @@ export default function Page() {
           { name: "Failed", count: 10 },
         ],
         leaderboard: [
-          { name: "Alex Johnson", successRate: 38 },
-          { name: "Priya Singh", successRate: 35 },
-          { name: "Rahul Mehta", successRate: 32 },
-          { name: "Sara Lee", successRate: 29 },
+          { name: "Alex Johnson", count: 52 },
+          { name: "Priya Singh", count: 49 },
+          { name: "Rahul Mehta", count: 45 },
+          { name: "Sara Lee", count: 42 },
         ],
       }
       setData(fallback)
@@ -83,6 +93,172 @@ export default function Page() {
   useEffect(() => {
     fetchMetrics()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    let stop: (() => void) | null = null
+    const apply = (j: Partial<MetricResponse>) => {
+      setData((prev) => ({
+        callsDialed: j.callsDialed ?? prev?.callsDialed ?? 0,
+        answered: j.answered ?? prev?.answered ?? 0,
+        voicemail: j.voicemail ?? prev?.voicemail ?? 0,
+        unanswered: j.unanswered ?? prev?.unanswered ?? 0,
+        conversations: j.conversations ?? prev?.conversations ?? 0,
+        connectRate: j.connectRate ?? prev?.connectRate ?? 0,
+        conversationRate: j.conversationRate ?? prev?.conversationRate ?? 0,
+        dispositions: prev?.dispositions ?? [],
+        leaderboard: prev?.leaderboard ?? [],
+      }))
+    }
+    const fetchOnce = async () => {
+      try {
+        const headers: Record<string, string> = {}
+        let credentials: RequestCredentials = 'omit'
+        if (USE_AUTH_COOKIE) {
+          credentials = 'include'
+        } else {
+          const t = getToken()
+          if (t) headers['Authorization'] = `Bearer ${t}`
+        }
+        const res = await fetch(`${API_BASE}/api/analytics/agent`, { headers, credentials })
+        if (res.ok) {
+          const j = await res.json()
+          apply(j)
+        }
+      } catch {}
+    }
+    const start = async () => {
+      await fetchOnce()
+      if (USE_AUTH_COOKIE) {
+        const es = new EventSource(`${API_BASE}/api/analytics/agent/stream`, { withCredentials: true })
+        es.onmessage = (ev) => {
+          try { apply(JSON.parse(ev.data)) } catch {}
+        }
+        es.onerror = () => {}
+        stop = () => { try { es.close() } catch {} }
+      } else {
+        const id = window.setInterval(fetchOnce, 3000)
+        stop = () => { window.clearInterval(id) }
+      }
+    }
+    start()
+    return () => { if (stop) stop() }
+  }, [])
+
+  useEffect(() => {
+    let stop: (() => void) | null = null
+    const apply = (items: { name: string; count: number }[]) => {
+      setData((prev) => {
+        const base: MetricResponse = prev || {
+          callsDialed: 0,
+          answered: 0,
+          voicemail: 0,
+          unanswered: 0,
+          conversations: 0,
+          connectRate: 0,
+          conversationRate: 0,
+          dispositions: [],
+          leaderboard: [],
+        }
+        return { ...base, leaderboard: items }
+      })
+    }
+    const fetchOnce = async () => {
+      try {
+        const headers: Record<string, string> = {}
+        let credentials: RequestCredentials = 'omit'
+        if (USE_AUTH_COOKIE) {
+          credentials = 'include'
+        } else {
+          const t = getToken()
+          if (t) headers['Authorization'] = `Bearer ${t}`
+        }
+        const res = await fetch(`${API_BASE}/api/analytics/leaderboard`, { headers, credentials })
+        if (res.ok) {
+          const j = await res.json()
+          const items = (j?.items || []) as { name: string; count: number }[]
+          apply(items)
+        }
+      } catch {}
+    }
+    const start = async () => {
+      await fetchOnce()
+      if (USE_AUTH_COOKIE) {
+        const es = new EventSource(`${API_BASE}/api/analytics/leaderboard/stream`, { withCredentials: true })
+        es.onmessage = (ev) => {
+          try {
+            const j = JSON.parse(ev.data)
+            const items = (j?.items || []) as { name: string; count: number }[]
+            apply(items)
+          } catch {}
+        }
+        es.onerror = () => {}
+        stop = () => { try { es.close() } catch {} }
+      } else {
+        const id = window.setInterval(fetchOnce, 3000)
+        stop = () => { window.clearInterval(id) }
+      }
+    }
+    start()
+    return () => { if (stop) stop() }
+  }, [])
+
+  useEffect(() => {
+    let stop: (() => void) | null = null
+    const apply = (items: { name: string; count: number }[]) => {
+      setData((prev) => {
+        const base: MetricResponse = prev || {
+          callsDialed: 0,
+          answered: 0,
+          voicemail: 0,
+          unanswered: 0,
+          conversations: 0,
+          connectRate: 0,
+          conversationRate: 0,
+          dispositions: [],
+          leaderboard: [],
+        }
+        return { ...base, dispositions: items }
+      })
+    }
+    const fetchOnce = async () => {
+      try {
+        const headers: Record<string, string> = {}
+        let credentials: RequestCredentials = 'omit'
+        if (USE_AUTH_COOKIE) {
+          credentials = 'include'
+        } else {
+          const t = getToken()
+          if (t) headers['Authorization'] = `Bearer ${t}`
+        }
+        const res = await fetch(`${API_BASE}/api/analytics/agent/dispositions`, { headers, credentials })
+        if (res.ok) {
+          const j = await res.json()
+          const items = (j?.items || []) as { name: string; count: number }[]
+          apply(items)
+        }
+      } catch {}
+    }
+    const start = async () => {
+      await fetchOnce()
+      if (USE_AUTH_COOKIE) {
+        const es = new EventSource(`${API_BASE}/api/analytics/agent/dispositions/stream`, { withCredentials: true })
+        es.onmessage = (ev) => {
+          try {
+            const j = JSON.parse(ev.data)
+            const items = (j?.items || []) as { name: string; count: number }[]
+            apply(items)
+          } catch {}
+        }
+        es.onerror = () => {}
+        stop = () => { try { es.close() } catch {} }
+      } else {
+        const id = window.setInterval(fetchOnce, 3000)
+        stop = () => { window.clearInterval(id) }
+      }
+    }
+    start()
+    return () => { if (stop) stop() }
   }, [])
 
   
@@ -181,7 +357,7 @@ export default function Page() {
                           <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full border bg-primary/5 text-primary border-primary/20">#{idx + 1}</span>
                         )}
                       </div>
-                      <span className="text-sm font-medium tabular-nums px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">{row.successRate}%</span>
+                      <span className="text-sm font-medium tabular-nums px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-700 border border-blue-500/20">{row.count}</span>
                     </div>
                   ))}
                   {!data && (
