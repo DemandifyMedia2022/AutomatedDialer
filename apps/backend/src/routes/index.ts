@@ -5,6 +5,8 @@ import users from './users';
 import extensions from './extensions';
 import agents from './agents';
 import campaigns from './campaigns';
+import calls from './calls';
+import staff from './staff';
 import { env } from '../config/env';
 import multer from 'multer';
 import path from 'path';
@@ -22,6 +24,8 @@ router.use('/users', users);
 router.use('/extensions', extensions);
 router.use('/agents', agents);
 router.use('/campaigns', campaigns);
+router.use('/', calls);
+router.use('/staff', staff);
 
 router.get('/sip/config', (_req, res) => {
   res.json({
