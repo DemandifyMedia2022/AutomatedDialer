@@ -13,6 +13,11 @@ import * as Dialog from "@radix-ui/react-dialog"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { ChevronDownIcon, RefreshCcw, Search as SearchIcon } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { type DateRange } from "react-day-picker"
 
 type User = {
   id: number
@@ -34,7 +39,13 @@ export default function AgentPage() {
 
   const [from, setFrom] = useState<string>(() => new Date().toISOString().slice(0,10))
   const [to, setTo] = useState<string>(() => new Date().toISOString().slice(0,10))
+  const [range, setRange] = useState<DateRange | undefined>(() => {
+    const today = new Date()
+    return { from: today, to: today }
+  })
   const [totals, setTotals] = useState<Record<number, number>>({})
+
+  const [q, setQ] = useState<string>("")
 
   const [viewUser, setViewUser] = useState<User | null>(null)
   const [editUser, setEditUser] = useState<User | null>(null)
@@ -46,6 +57,7 @@ export default function AgentPage() {
       const t = getToken()
       if (t) h['Authorization'] = `Bearer ${t}`
     }
+
     return h
   }, [])
 
@@ -112,10 +124,6 @@ export default function AgentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to])
 
-  const onRefreshTotals = async () => {
-    await computeTotals(users)
-  }
-
   const onDelete = async (id: number) => {
     if (!confirm('Delete this user?')) return
     setError(null)
@@ -170,6 +178,15 @@ export default function AgentPage() {
     }
   }
 
+  const visible = users.filter(u => {
+    const query = q.toLowerCase()
+    return (
+      (u.username || '').toLowerCase().includes(query) ||
+      (u.usermail || '').toLowerCase().includes(query) ||
+      (u.extension || '').toLowerCase().includes(query)
+    )
+  })
+
   return (
     <SidebarProvider>
       <ManagerSidebar />
@@ -205,44 +222,83 @@ export default function AgentPage() {
             <Card className="border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error}</Card>
           )}
 
-          <Card className="p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
-              <div className="grid gap-1">
-                <Label htmlFor="from">From</Label>
-                <Input id="from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-              </div>
-              <div className="grid gap-1">
-                <Label htmlFor="to">To</Label>
-                <Input id="to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-              </div>
-              <div className="sm:col-span-2 flex items-end gap-2">
-                <Button onClick={onRefreshTotals}>Refresh Totals</Button>
-                <Button variant="secondary" onClick={fetchUsers}>Reload Users</Button>
+          <Card className="p-4 shadow-sm">
+            <div className="mb-4 rounded-md border bg-muted/20 p-3 relative">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex flex-col gap-1">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button id="dates" variant="outline" className="h-9 w-full sm:w-[280px] justify-between font-normal">
+                        {range?.from && range?.to
+                          ? `${range.from.toLocaleDateString()} - ${range.to.toLocaleDateString()}`
+                          : "Select date"}
+                        <ChevronDownIcon className="ml-2 size-4" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="range"
+                        selected={range}
+                        captionLayout="dropdown"
+                        onSelect={(r) => {
+                          setRange(r)
+                          const f = r?.from ? new Date(r.from) : undefined
+                          const t = r?.to ? new Date(r.to) : r?.from ? new Date(r.from) : undefined
+                          if (f) setFrom(f.toISOString().slice(0,10))
+                          if (t) setTo(t.toISOString().slice(0,10))
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="relative w-full sm:max-w-[420px]">
+                  <SearchIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    className="pl-9 h-9"
+                    placeholder="Search users..."
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex items-center justify-end absolute right-3 top-3">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-9 w-9" onClick={fetchUsers} aria-label="Refresh">
+                          <RefreshCcw className="size-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Refresh</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
               </div>
             </div>
 
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left border-b">
-                    <th className="py-2 pr-4">Username</th>
-                    <th className="py-2 pr-4">Extension</th>
-                    <th className="py-2 pr-4">Status</th>
-                    <th className="py-2 pr-4">Total Calls</th>
-                    <th className="py-2 pr-0 text-right">Actions</th>
+                <thead className="sticky top-0 z-10">
+                  <tr className="text-left border-b bg-muted/10">
+                    <th className="py-3 pr-4 font-medium text-muted-foreground">Username</th>
+                    <th className="py-3 pr-4 font-medium text-muted-foreground">Extension</th>
+                    <th className="py-3 pr-4 font-medium text-muted-foreground">Status</th>
+                    <th className="py-3 pr-4 font-medium text-muted-foreground">Total Calls</th>
+                    <th className="py-3 pr-0 text-right font-medium text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td className="py-3" colSpan={5}>Loading...</td></tr>
-                  ) : users.length === 0 ? (
-                    <tr><td className="py-3" colSpan={5}>No users</td></tr>
+                    <tr><td className="py-8 text-center text-muted-foreground" colSpan={5}>Loading…</td></tr>
+                  ) : visible.length === 0 ? (
+                    <tr><td className="py-8 text-center text-muted-foreground" colSpan={5}>No users found</td></tr>
                   ) : (
-                    users.map((u) => (
-                      <tr key={u.id} className="border-b hover:bg-muted/30">
-                        <td className="py-2 pr-4">{u.username ?? '-'}</td>
-                        <td className="py-2 pr-4">{u.extension ?? '-'}</td>
-                        <td className="py-2 pr-4">
+                    visible.map((u, i) => (
+                      <tr key={u.id} className="border-b hover:bg-muted/30 even:bg-muted/5">
+                        <td className="py-2.5 pr-4">{u.username ?? '-'}</td>
+                        <td className="py-2.5 pr-4">{u.extension ?? '-'}</td>
+                        <td className="py-2.5 pr-4">
                           {u.status ? (
                             u.status.toLowerCase() === 'active' ? (
                               <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Active</span>
@@ -253,18 +309,22 @@ export default function AgentPage() {
                             )
                           ) : '-'}
                         </td>
-                        <td className="py-2 pr-4">{totals[u.id] ?? 0}</td>
-                        <td className="py-2 pr-0 text-right">
+                        <td className="py-2.5 pr-4">{totals[u.id] ?? 0}</td>
+                        <td className="py-2.5 pr-0 text-right">
                           <DropdownMenu.Root>
                             <DropdownMenu.Trigger asChild>
-                              <Button variant="ghost">⋯</Button>
+                              <Button variant="ghost" size="icon" aria-label="More">
+                                ⋯
+                              </Button>
                             </DropdownMenu.Trigger>
-                            <DropdownMenu.Content className="min-w-[160px] rounded-md border bg-background p-1 shadow-md">
-                              <DropdownMenu.Item className="px-2 py-1.5 rounded hover:bg-muted cursor-pointer" onSelect={() => setViewUser(u)}>View</DropdownMenu.Item>
-                              <DropdownMenu.Item className="px-2 py-1.5 rounded hover:bg-muted cursor-pointer" onSelect={() => openEdit(u)}>Edit</DropdownMenu.Item>
-                              <DropdownMenu.Separator className="my-1 h-px bg-border" />
-                              <DropdownMenu.Item className="px-2 py-1.5 rounded hover:bg-red-100 text-red-700 cursor-pointer" onSelect={() => onDelete(u.id)}>Delete</DropdownMenu.Item>
-                            </DropdownMenu.Content>
+                            <DropdownMenu.Portal>
+                              <DropdownMenu.Content align="end" sideOffset={4} className="min-w-[160px] rounded-md border bg-background p-1 shadow-md">
+                                <DropdownMenu.Item className="px-2 py-1.5 rounded hover:bg-muted cursor-pointer" onSelect={() => setViewUser(u)}>View</DropdownMenu.Item>
+                                <DropdownMenu.Item className="px-2 py-1.5 rounded hover:bg-muted cursor-pointer" onSelect={() => openEdit(u)}>Edit</DropdownMenu.Item>
+                                <DropdownMenu.Separator className="my-1 h-px bg-border" />
+                                <DropdownMenu.Item className="px-2 py-1.5 rounded hover:bg-red-100 text-red-700 cursor-pointer" onSelect={() => onDelete(u.id)}>Delete</DropdownMenu.Item>
+                              </DropdownMenu.Content>
+                            </DropdownMenu.Portal>
                           </DropdownMenu.Root>
                         </td>
                       </tr>

@@ -10,6 +10,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
 import * as Dialog from "@radix-ui/react-dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { CalendarIcon, Check, ChevronsUpDown, Pencil, Trash2, Plus } from "lucide-react"
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
+
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
 
@@ -46,6 +52,9 @@ export default function CampaignsPage() {
     status: "",
     method: [] as string[],
   })
+
+  const [methodFilter, setMethodFilter] = useState("")
+  const [statusOpen, setStatusOpen] = useState(false)
 
   const headers = useMemo(() => {
     const h: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -122,6 +131,8 @@ export default function CampaignsPage() {
     'Webinar',
   ]
 
+  const filteredMethods = methodOptions.filter((m) => m.toLowerCase().includes(methodFilter.toLowerCase()))
+
   const formatDateInput = (d?: string | null) => {
     if (!d) return ""
     const dt = new Date(d)
@@ -193,7 +204,10 @@ export default function CampaignsPage() {
             <div className="ml-auto">
               <Dialog.Root open={open} onOpenChange={(v) => { if (!v) { setEditingId(null); setForm({ campaign_id: "", campaign_name: "", start_date: "", end_date: "", allocations: "", assigned_to: "", status: "", method: [] }) }; setOpen(v) }}>
                 <Dialog.Trigger asChild>
-                  <Button>+ Add Campaign</Button>
+                  <Button>
+                    <Plus className="mr-2 size-4" />
+                    Add Campaign
+                  </Button>
                 </Dialog.Trigger>
                 <Dialog.Portal>
                   <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />
@@ -211,11 +225,53 @@ export default function CampaignsPage() {
                         </div>
                         <div className="grid gap-2">
                           <Label htmlFor="start_date">Start Date</Label>
-                          <Input id="start_date" name="start_date" type="date" value={form.start_date} onChange={onChange} />
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button id="start_date" variant="outline" className="h-9 w-full justify-between font-normal">
+                                {form.start_date ? new Date(form.start_date).toLocaleDateString() : 'Select date'}
+                                <CalendarIcon className="ml-2 size-4" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={form.start_date ? new Date(form.start_date) : undefined}
+                                onSelect={(d) => {
+                                  if (!d) return
+                                  const y = d.getFullYear()
+                                  const m = String(d.getMonth() + 1).padStart(2, '0')
+                                  const day = String(d.getDate()).padStart(2, '0')
+                                  setForm((f) => ({ ...f, start_date: `${y}-${m}-${day}` }))
+                                }}
+                                captionLayout="dropdown"
+                              />
+                            </PopoverContent>
+                          </Popover>
                         </div>
                         <div className="grid gap-2">
                           <Label htmlFor="end_date">End Date</Label>
-                          <Input id="end_date" name="end_date" type="date" value={form.end_date} onChange={onChange} />
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button id="end_date" variant="outline" className="h-9 w-full justify-between font-normal">
+                                {form.end_date ? new Date(form.end_date).toLocaleDateString() : 'Select date'}
+                                <CalendarIcon className="ml-2 size-4" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={form.end_date ? new Date(form.end_date) : undefined}
+                                onSelect={(d) => {
+                                  if (!d) return
+                                  const y = d.getFullYear()
+                                  const m = String(d.getMonth() + 1).padStart(2, '0')
+                                  const day = String(d.getDate()).padStart(2, '0')
+                                  setForm((f) => ({ ...f, end_date: `${y}-${m}-${day}` }))
+                                }}
+                                captionLayout="dropdown"
+                              />
+                            </PopoverContent>
+                          </Popover>
                         </div>
                         <div className="grid gap-2">
                           <Label htmlFor="allocations">Allocations</Label>
@@ -227,19 +283,58 @@ export default function CampaignsPage() {
                         </div>
                         <div className="grid gap-2">
                           <Label htmlFor="status">Status</Label>
-                          <select id="status" name="status" value={form.status} onChange={onStatusChange} className="border rounded px-3 py-2 h-10">
-                            <option value="">Select status</option>
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                          </select>
+                          <Popover open={statusOpen} onOpenChange={setStatusOpen}>
+                            <PopoverTrigger asChild>
+                              <Button id="status" variant="outline" className="h-9 w-full justify-between font-normal">
+                                {form.status ? (form.status.charAt(0).toUpperCase() + form.status.slice(1)) : 'Select status'}
+                                <ChevronsUpDown className="size-4 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[220px] p-1" align="start">
+                              <button type="button" className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm" onClick={() => { setForm((f)=>({...f, status: ''})); setStatusOpen(false) }}>Clear</button>
+                              <div className="h-px bg-border my-1" />
+                              <button type="button" className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm" onClick={() => { setForm((f)=>({...f, status: 'active'})); setStatusOpen(false) }}>Active</button>
+                              <button type="button" className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm" onClick={() => { setForm((f)=>({...f, status: 'inactive'})); setStatusOpen(false) }}>Inactive</button>
+                            </PopoverContent>
+                          </Popover>
                         </div>
-                        <div className="grid gap-2">
+                        <div className="grid gap-2 sm:col-span-2">
                           <Label htmlFor="method">Method</Label>
-                          <select id="method" name="method" multiple value={form.method} onChange={onMethodChange} className="border rounded px-3 py-2 h-36">
-                            {methodOptions.map(opt => (
-                              <option key={opt} value={opt}>{opt}</option>
-                            ))}
-                          </select>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" role="combobox" aria-expanded={false} className="h-9 w-full justify-between">
+                                {form.method.length ? `${form.method.length} selected` : 'Select methods...'}
+                                <ChevronsUpDown className="size-4 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[360px] max-w-[92vw] p-0" align="start">
+                              <div className="p-2 border-b">
+                                <Input value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)} placeholder="Search methods..." className="h-9" />
+                              </div>
+                              <div className="max-h-64 overflow-auto py-1">
+                                {filteredMethods.length === 0 ? (
+                                  <div className="px-3 py-2 text-sm text-muted-foreground">No method found.</div>
+                                ) : (
+                                  filteredMethods.map((m) => {
+                                    const selected = form.method.includes(m)
+                                    return (
+                                      <button
+                                        key={m}
+                                        type="button"
+                                        onClick={() => {
+                                          setForm((f) => ({ ...f, method: selected ? f.method.filter(x => x !== m) : [...f.method, m] }))
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                                      >
+                                        <span>{m}</span>
+                                        <Check className={`ml-auto size-4 ${selected ? 'opacity-100' : 'opacity-0'}`} />
+                                      </button>
+                                    )
+                                  })
+                                )}
+                              </div>
+                            </PopoverContent>
+                          </Popover>
                         </div>
                         <div className="pt-2 sm:col-span-2">
                           <Button type="submit" className="w-full">Save</Button>
@@ -257,39 +352,39 @@ export default function CampaignsPage() {
           {error && (
             <Card className="border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error}</Card>
           )}
-          <Card className="p-4">
+          <Card className="p-4 shadow-sm">
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left border-b">
-                    <th className="py-2 pr-4">ID</th>
-                    <th className="py-2 pr-4">Campaign ID</th>
-                    <th className="py-2 pr-4">Name</th>
-                    <th className="py-2 pr-4">Start</th>
-                    <th className="py-2 pr-4">End</th>
-                    <th className="py-2 pr-4">Allocations</th>
-                    <th className="py-2 pr-4">Assigned To</th>
-                    <th className="py-2 pr-4">Status</th>
-                    <th className="py-2 pr-4">Method</th>
-                    <th className="py-2 pr-0 text-right">Actions</th>
+                <thead className="sticky top-0 z-10">
+                  <tr className="text-left border-b bg-muted/10">
+                    <th className="py-3 pr-4 font-medium text-muted-foreground">ID</th>
+                    <th className="py-3 pr-4 font-medium text-muted-foreground">Campaign ID</th>
+                    <th className="py-3 pr-4 font-medium text-muted-foreground">Name</th>
+                    <th className="py-3 pr-4 font-medium text-muted-foreground">Start</th>
+                    <th className="py-3 pr-4 font-medium text-muted-foreground">End</th>
+                    <th className="py-3 pr-4 font-medium text-muted-foreground">Allocations</th>
+                    <th className="py-3 pr-4 font-medium text-muted-foreground">Assigned To</th>
+                    <th className="py-3 pr-4 font-medium text-muted-foreground">Status</th>
+                    <th className="py-3 pr-4 font-medium text-muted-foreground">Method</th>
+                    <th className="py-3 pr-0 text-right font-medium text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td className="py-3" colSpan={10}>Loading...</td></tr>
+                    <tr><td className="py-8 text-center text-muted-foreground" colSpan={10}>Loading…</td></tr>
                   ) : items.length === 0 ? (
-                    <tr><td className="py-3" colSpan={10}>No campaigns</td></tr>
+                    <tr><td className="py-8 text-center text-muted-foreground" colSpan={10}>No campaigns</td></tr>
                   ) : (
                     items.map((c) => (
-                      <tr key={c.id} className="border-b hover:bg-muted/30">
-                        <td className="py-2 pr-4">{c.id}</td>
-                        <td className="py-2 pr-4">{c.campaign_id ?? '-'}</td>
-                        <td className="py-2 pr-4">{c.campaign_name ?? '-'}</td>
-                        <td className="py-2 pr-4">{c.start_date ? new Date(c.start_date).toLocaleDateString('en-GB') : '-'}</td>
-                        <td className="py-2 pr-4">{c.end_date ? new Date(c.end_date).toLocaleDateString('en-GB') : '-'}</td>
-                        <td className="py-2 pr-4">{c.allocations ?? '-'}</td>
-                        <td className="py-2 pr-4">{c.assigned_to ?? '-'}</td>
-                        <td className="py-2 pr-4">
+                      <tr key={c.id} className="border-b hover:bg-muted/30 even:bg-muted/5">
+                        <td className="py-2.5 pr-4">{String( (items.findIndex(x=>x.id===c.id)) + 1 )}</td>
+                        <td className="py-2.5 pr-4">{c.campaign_id ?? '-'}</td>
+                        <td className="py-2.5 pr-4">{c.campaign_name ?? '-'}</td>
+                        <td className="py-2.5 pr-4">{c.start_date ? new Date(c.start_date).toLocaleDateString('en-GB') : '-'}</td>
+                        <td className="py-2.5 pr-4">{c.end_date ? new Date(c.end_date).toLocaleDateString('en-GB') : '-'}</td>
+                        <td className="py-2.5 pr-4">{c.allocations ?? '-'}</td>
+                        <td className="py-2.5 pr-4">{c.assigned_to ?? '-'}</td>
+                        <td className="py-2.5 pr-4">
                           {c.status ? (
                             <span
                               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -300,31 +395,38 @@ export default function CampaignsPage() {
                                   : 'bg-gray-100 text-gray-800'
                               }`}
                             >
-                              {c.status}
+                              {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
                             </span>
                           ) : (
                             '-'
                           )}
                         </td>
-                        <td className="py-2 pr-4">{c.method ?? '-'}</td>
-                        <td className="py-2 pr-0 text-right">
-                          <div className="flex gap-2 justify-end">
-                            <Button size="sm" onClick={() => {
-                              setEditingId(c.id)
-                              setForm({
-                                campaign_id: c.campaign_id != null ? String(c.campaign_id) : "",
-                                campaign_name: c.campaign_name || "",
-                                start_date: formatDateInput(c.start_date),
-                                end_date: formatDateInput(c.end_date),
-                                allocations: c.allocations || "",
-                                assigned_to: c.assigned_to || "",
-                                status: c.status || "",
-                                method: c.method ? c.method.split(',').map(s => s.trim()).filter(Boolean) : [],
-                              })
-                              setOpen(true)
-                            }}>Edit</Button>
-                            <Button variant="destructive" size="sm" onClick={() => onDelete(c.id)}>Delete</Button>
-                          </div>
+                        <td className="py-2.5 pr-4">{c.method ?? '-'}</td>
+                        <td className="py-2.5 pr-0 text-right">
+                          <DropdownMenu.Root>
+                            <DropdownMenu.Trigger asChild>
+                              <Button variant="ghost" size="icon" aria-label="More">⋯</Button>
+                            </DropdownMenu.Trigger>
+                            <DropdownMenu.Portal>
+                              <DropdownMenu.Content align="end" sideOffset={4} className="min-w-[160px] rounded-md border bg-background p-1 shadow-md">
+                                <DropdownMenu.Item className="px-2 py-1.5 rounded hover:bg-muted cursor-pointer" onSelect={() => {
+                                  setEditingId(c.id)
+                                  setForm({
+                                    campaign_id: c.campaign_id != null ? String(c.campaign_id) : "",
+                                    campaign_name: c.campaign_name || "",
+                                    start_date: formatDateInput(c.start_date),
+                                    end_date: formatDateInput(c.end_date),
+                                    allocations: c.allocations || "",
+                                    assigned_to: c.assigned_to || "",
+                                    status: c.status || "",
+                                    method: c.method ? c.method.split(',').map(s => s.trim()).filter(Boolean) : [],
+                                  })
+                                  setOpen(true)
+                                }}>Edit</DropdownMenu.Item>
+                                <DropdownMenu.Item className="px-2 py-1.5 rounded hover:bg-red-100 text-red-700 cursor-pointer" onSelect={() => onDelete(c.id)}>Delete</DropdownMenu.Item>
+                              </DropdownMenu.Content>
+                            </DropdownMenu.Portal>
+                          </DropdownMenu.Root>
                         </td>
                       </tr>
                     ))
