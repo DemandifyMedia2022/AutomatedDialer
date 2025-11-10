@@ -80,12 +80,10 @@ const ActiveCampaignsPage = () => {
 
         <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
           <Card className="w-full">
-            <CardHeader>
-              
-            </CardHeader>
+            
             <CardContent>
               <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-12 items-end">
-                <div className="flex flex-col gap-1 lg:col-span-3">
+                <div className="flex flex-col gap-1 lg:col-span-2">
            
                   <Input
                     placeholder="Search "
