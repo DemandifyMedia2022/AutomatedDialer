@@ -73,12 +73,11 @@ export default function AgentPage() {
 
   const computeTotals = async (list: User[]) => {
     const entries = await Promise.all(list.map(async (u) => {
-      const uname = (u.username || '').trim()
       const ext = (u.extension || '').trim()
-      if (!uname && !ext) return [u.id, 0] as const
+      // Backend /api/calls supports filtering by extension (not by username/usermail)
+      if (!ext) return [u.id, 0] as const
       const params = new URLSearchParams()
-      if (uname) params.set('username', uname)
-      if (!uname && ext) params.set('extension', ext)
+      params.set('extension', ext)
       if (from) {
         const fromIso = new Date(`${from}T00:00:00.000`).toISOString()
         params.set('from', fromIso)
