@@ -34,6 +34,7 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const [form, setForm] = useState({
     campaign_id: "",
@@ -43,7 +44,7 @@ export default function CampaignsPage() {
     allocations: "",
     assigned_to: "",
     status: "",
-    method: "",
+    method: [] as string[],
   })
 
   const headers = useMemo(() => {
@@ -97,6 +98,39 @@ export default function CampaignsPage() {
     setForm((f) => ({ ...f, [name]: value }))
   }
 
+  const onMethodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selected = Array.from(e.target.selectedOptions).map(o => o.value)
+    setForm((f) => ({ ...f, method: selected }))
+  }
+
+  const onStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const { value } = e.target
+    setForm((f) => ({ ...f, status: value }))
+  }
+
+  const methodOptions = [
+    'AG',
+    'BANT',
+    'Content Syndication',
+    'CS',
+    'Data',
+    'Email Marketing',
+    'Event',
+    'Form Fill',
+    'HQL',
+    'NetApp',
+    'Webinar',
+  ]
+
+  const formatDateInput = (d?: string | null) => {
+    if (!d) return ""
+    const dt = new Date(d)
+    const y = dt.getFullYear()
+    const m = String(dt.getMonth() + 1).padStart(2, '0')
+    const dd = String(dt.getDate()).padStart(2, '0')
+    return `${y}-${m}-${dd}`
+  }
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -109,17 +143,20 @@ export default function CampaignsPage() {
         allocations: form.allocations || null,
         assigned_to: form.assigned_to || null,
         status: form.status || null,
-        method: form.method || null,
+        method: (form.method && form.method.length > 0) ? form.method.join(',') : null,
       }
-      const res = await fetch(`${API_PREFIX}/campaigns`, {
-        method: 'POST',
+      const url = editingId ? `${API_PREFIX}/campaigns/${editingId}` : `${API_PREFIX}/campaigns`
+      const method = editingId ? 'PUT' : 'POST'
+      const res = await fetch(url, {
+        method,
         credentials: USE_AUTH_COOKIE ? 'include' : 'omit',
         headers,
         body: JSON.stringify(payload),
       })
       if (!res.ok) throw new Error(`Save failed (${res.status})`)
       setOpen(false)
-      setForm({ campaign_id: "", campaign_name: "", start_date: "", end_date: "", allocations: "", assigned_to: "", status: "", method: "" })
+      setEditingId(null)
+      setForm({ campaign_id: "", campaign_name: "", start_date: "", end_date: "", allocations: "", assigned_to: "", status: "", method: [] })
       await fetchItems()
     } catch (e: any) {
       setError(e?.message || 'Save failed')
@@ -154,14 +191,14 @@ export default function CampaignsPage() {
               </BreadcrumbList>
             </Breadcrumb>
             <div className="ml-auto">
-              <Dialog.Root open={open} onOpenChange={setOpen}>
+              <Dialog.Root open={open} onOpenChange={(v) => { if (!v) { setEditingId(null); setForm({ campaign_id: "", campaign_name: "", start_date: "", end_date: "", allocations: "", assigned_to: "", status: "", method: [] }) }; setOpen(v) }}>
                 <Dialog.Trigger asChild>
                   <Button>+ Add Campaign</Button>
                 </Dialog.Trigger>
                 <Dialog.Portal>
                   <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />
                   <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-md border bg-background p-4 shadow-lg focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95">
-                    <Dialog.Title className="text-foreground font-semibold mb-2">Add Campaign</Dialog.Title>
+                    <Dialog.Title className="text-foreground font-semibold mb-2">{editingId ? 'Edit Campaign' : 'Add Campaign'}</Dialog.Title>
                     <form onSubmit={onSubmit} className="">
                       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                         <div className="grid gap-2">
@@ -190,11 +227,19 @@ export default function CampaignsPage() {
                         </div>
                         <div className="grid gap-2">
                           <Label htmlFor="status">Status</Label>
-                          <Input id="status" name="status" value={form.status} onChange={onChange} placeholder="e.g. active" />
+                          <select id="status" name="status" value={form.status} onChange={onStatusChange} className="border rounded px-3 py-2 h-10">
+                            <option value="">Select status</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                          </select>
                         </div>
                         <div className="grid gap-2">
                           <Label htmlFor="method">Method</Label>
-                          <Input id="method" name="method" value={form.method} onChange={onChange} placeholder="e.g. automated/manual" />
+                          <select id="method" name="method" multiple value={form.method} onChange={onMethodChange} className="border rounded px-3 py-2 h-36">
+                            {methodOptions.map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
                         </div>
                         <div className="pt-2 sm:col-span-2">
                           <Button type="submit" className="w-full">Save</Button>
@@ -244,10 +289,42 @@ export default function CampaignsPage() {
                         <td className="py-2 pr-4">{c.end_date ? new Date(c.end_date).toLocaleDateString('en-GB') : '-'}</td>
                         <td className="py-2 pr-4">{c.allocations ?? '-'}</td>
                         <td className="py-2 pr-4">{c.assigned_to ?? '-'}</td>
-                        <td className="py-2 pr-4">{c.status ?? '-'}</td>
+                        <td className="py-2 pr-4">
+                          {c.status ? (
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                c.status.toLowerCase() === 'active'
+                                  ? 'bg-green-100 text-green-800'
+                                  : c.status.toLowerCase() === 'inactive'
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-gray-100 text-gray-800'
+                              }`}
+                            >
+                              {c.status}
+                            </span>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
                         <td className="py-2 pr-4">{c.method ?? '-'}</td>
                         <td className="py-2 pr-0 text-right">
-                          <Button variant="destructive" size="sm" onClick={() => onDelete(c.id)}>Delete</Button>
+                          <div className="flex gap-2 justify-end">
+                            <Button size="sm" onClick={() => {
+                              setEditingId(c.id)
+                              setForm({
+                                campaign_id: c.campaign_id != null ? String(c.campaign_id) : "",
+                                campaign_name: c.campaign_name || "",
+                                start_date: formatDateInput(c.start_date),
+                                end_date: formatDateInput(c.end_date),
+                                allocations: c.allocations || "",
+                                assigned_to: c.assigned_to || "",
+                                status: c.status || "",
+                                method: c.method ? c.method.split(',').map(s => s.trim()).filter(Boolean) : [],
+                              })
+                              setOpen(true)
+                            }}>Edit</Button>
+                            <Button variant="destructive" size="sm" onClick={() => onDelete(c.id)}>Delete</Button>
+                          </div>
                         </td>
                       </tr>
                     ))

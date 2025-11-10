@@ -1,55 +1,67 @@
 "use client"
 
-import React from 'react'
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
-import { Separator } from "@/components/ui/separator"
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
+import React, { useEffect, useMemo, useState } from "react"
 import { AgentSidebar } from "../../components/AgentSidebar"
+import { Separator } from "@/components/ui/separator"
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
+import { Card } from "@/components/ui/card"
+import { API_BASE } from "@/lib/api"
+import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
 
-type HistoryRow = {
-  id: string | number
-  name: string
-  campaignId: string | number
-  assignTo: string
-  allocation: number
-  allocationComplete: number
-  startDate: string
-  endDate: string
-  remark: "On Time" | "Late"
-  campDeliveryDate: string
+type Campaign = {
+  id: number
+  campaign_id: number | null
+  campaign_name: string | null
+  start_date: string | null
+  end_date: string | null
+  allocations: string | null
+  assigned_to: string | null
+  status: string | null
+  method: string | null
+  created_at?: string | null
+  updated_at?: string | null
 }
 
-const CampaignHistoryPage = () => {
-  const [search, setSearch] = React.useState("")
-  const [items] = React.useState<HistoryRow[]>([
-    { id: 91, name: "Renewals Q3", campaignId: "CMP-0931", assignTo: "Team A", allocation: 400, allocationComplete: 400, startDate: "2025-07-01", endDate: "2025-09-30", remark: "On Time", campDeliveryDate: "2025-09-25" },
-    { id: 92, name: "Cross-sell", campaignId: "CMP-0932", assignTo: "Employee: Priya S.", allocation: 250, allocationComplete: 230, startDate: "2025-06-15", endDate: "2025-08-31", remark: "Late", campDeliveryDate: "2025-09-02" },
-    { id: 93, name: "Winback Q2", campaignId: "CMP-0921", assignTo: "Team B", allocation: 320, allocationComplete: 320, startDate: "2025-04-01", endDate: "2025-06-30", remark: "On Time", campDeliveryDate: "2025-06-25" },
-  ])
+const API_PREFIX = `${API_BASE}/api`
 
-  const filtered = React.useMemo(() => {
-    const t = search.trim().toLowerCase()
-    const sorted = [...items].sort((a, b) => {
-      const an = Number(a.id); const bn = Number(b.id)
-      const aNum = !Number.isNaN(an); const bNum = !Number.isNaN(bn)
-      if (aNum && bNum) return an - bn
-      return String(a.id).localeCompare(String(b.id))
-    })
-    if (!t) return sorted
-    return sorted.filter(r =>
-      String(r.id).toLowerCase().includes(t) ||
-      r.name.toLowerCase().includes(t) ||
-      String(r.campaignId).toLowerCase().includes(t) ||
-      r.assignTo.toLowerCase().includes(t) ||
-      r.remark.toLowerCase().includes(t) ||
-      r.campDeliveryDate.toLowerCase().includes(t)
-    )
-  }, [items, search])
+export default function CampaignHistoryPage() {
+  const [items, setItems] = useState<Campaign[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const headers = useMemo(() => {
+    const h: Record<string, string> = { "Content-Type": "application/json" }
+    if (!USE_AUTH_COOKIE) {
+      const t = getToken()
+      if (t) h["Authorization"] = `Bearer ${t}`
+    }
+    return h
+  }, [])
+
+  const fetchItems = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`${API_PREFIX}/campaigns/inactive`, {
+        method: "GET",
+        credentials: USE_AUTH_COOKIE ? "include" : "omit",
+        headers,
+      })
+      if (!res.ok) throw new Error(`Failed to load campaigns (${res.status})`)
+      const data = (await res.json()) as { success: boolean; items: Campaign[] }
+      setItems(data.items || [])
+    } catch (e: any) {
+      setError(e?.message || "Failed to load")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchItems()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <SidebarProvider>
@@ -81,71 +93,72 @@ const CampaignHistoryPage = () => {
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
-          <Card className="w-full">
-           
-            <CardContent>
-              <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6 items-end">
-                <div className="flex flex-col gap-1 lg:col-span-3">
-     
-                  <Input
-                    placeholder=" Search "
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
-                <div className="flex lg:col-span-1">
-                  <Button className="mt-6">Search</Button>
-                </div>
-              </div>
-
-              <div className="mt-6 overflow-x-auto rounded-lg border">
-                <Table>
-                  <TableHeader className="bg-muted sticky top-0 z-10">
-                    <TableRow>
-                      <TableHead className="w-[80px]">ID</TableHead>
-                      <TableHead>Start Date</TableHead>
-                      <TableHead>End Date</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Campaign ID</TableHead>
-                      <TableHead>Assign To</TableHead>
-                      <TableHead>Allocation</TableHead>
-                      <TableHead>Allocation Complete</TableHead>
-                      <TableHead>Camp-Delivery Date</TableHead>
-                      <TableHead>Remark</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
-                          No records
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {filtered.map((row, idx) => (
-                      <TableRow key={String(row.id)} className="hover:bg-accent/50">
-                        <TableCell>{idx + 1}</TableCell>
-                        <TableCell>{row.startDate}</TableCell>
-                        <TableCell>{row.endDate}</TableCell>
-                        <TableCell>{row.name}</TableCell>
-                        <TableCell>{row.campaignId}</TableCell>
-                        <TableCell>{row.assignTo}</TableCell>
-                        <TableCell>{row.allocation}</TableCell>
-                        <TableCell>{row.allocationComplete}</TableCell>
-                        <TableCell>{row.campDeliveryDate}</TableCell>
-                        <TableCell>{row.remark}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+          {error && (
+            <Card className="border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error}</Card>
+          )}
+          <Card className="p-4">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b">
+                    <th className="py-2 pr-4">ID</th>
+                    <th className="py-2 pr-4">Campaign ID</th>
+                    <th className="py-2 pr-4">Name</th>
+                    <th className="py-2 pr-4">Start</th>
+                    <th className="py-2 pr-4">End</th>
+                    <th className="py-2 pr-4">Allocations</th>
+                    <th className="py-2 pr-4">Assigned To</th>
+                    <th className="py-2 pr-4">Status</th>
+                    <th className="py-2 pr-4">Method</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td className="py-3" colSpan={9}>Loading...</td>
+                    </tr>
+                  ) : items.length === 0 ? (
+                    <tr>
+                      <td className="py-3" colSpan={9}>No inactive campaigns</td>
+                    </tr>
+                  ) : (
+                    items.map((c) => (
+                      <tr key={c.id} className="border-b hover:bg-muted/30">
+                        <td className="py-2 pr-4">{c.id}</td>
+                        <td className="py-2 pr-4">{c.campaign_id ?? '-'}</td>
+                        <td className="py-2 pr-4">{c.campaign_name ?? '-'}</td>
+                        <td className="py-2 pr-4">{c.start_date ? new Date(c.start_date).toLocaleDateString('en-GB') : '-'}</td>
+                        <td className="py-2 pr-4">{c.end_date ? new Date(c.end_date).toLocaleDateString('en-GB') : '-'}</td>
+                        <td className="py-2 pr-4">{c.allocations ?? '-'}</td>
+                        <td className="py-2 pr-4">{c.assigned_to ?? '-'}</td>
+                        <td className="py-2 pr-4">
+                          {c.status ? (
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                c.status.toLowerCase() === 'active'
+                                  ? 'bg-green-100 text-green-800'
+                                  : c.status.toLowerCase() === 'inactive'
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-gray-100 text-gray-800'
+                              }`}
+                            >
+                              {c.status}
+                            </span>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                        <td className="py-2 pr-4">{c.method ?? '-'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </Card>
         </div>
       </SidebarInset>
     </SidebarProvider>
   )
 }
-
-export default CampaignHistoryPage

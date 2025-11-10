@@ -7,6 +7,9 @@
   ],
   "scripts": {
     "dev": "concurrently -n frontend,backend -c blue,green \"npm --workspace apps/frontend run dev\" \"npm --workspace apps/backend run dev\"",
+    "start:agentic": "python -m uvicorn --app-dir apps/backend/src/agentic-dialing app.app:app --host 127.0.0.1 --port 4100",
+    "start:agentic:py": "py -m uvicorn --app-dir apps/backend/src/agentic-dialing app.app:app --host 127.0.0.1 --port 4100",
+    "dev:all": "concurrently -n frontend,backend,agentic -c blue,green,magenta \"npm --workspace apps/frontend run dev\" \"npm --workspace apps/backend run dev\" \"npm run start:agentic\"",
     "build": "npm --workspace apps/frontend run build && npm --workspace apps/backend run build",
     "start:frontend": "npm --workspace apps/frontend run start",
     "start:backend": "npm --workspace apps/backend run start",

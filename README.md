@@ -26,11 +26,12 @@ npm install
 Run both apps concurrently:
 
 ```bash
-npm run dev
+npm run dev:all
 ```
 
 - Frontend: http://localhost:3000
 - Backend:  http://localhost:4000
+- Agentic:  http://localhost:4100
 - Health:   http://localhost:4000/api/health
 
 Run individually:
@@ -38,6 +39,7 @@ Run individually:
 ```bash
 npm run start:frontend   # Next.js
 npm run start:backend    # Compiled Express
+npm run start:agentic    # Agentic Dialing
 ```
 
 ## Backend Environment
