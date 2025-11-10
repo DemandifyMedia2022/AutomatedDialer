@@ -4,6 +4,7 @@ import auth from './auth';
 import users from './users';
 import extensions from './extensions';
 import agents from './agents';
+import staff from './staff';
 import campaigns from './campaigns';
 import agenticData from './agentic-data';
 
@@ -23,6 +24,7 @@ router.use('/auth', auth);
 router.use('/users', users);
 router.use('/extensions', extensions);
 router.use('/agents', agents);
+router.use('/staff', staff);
 router.use('/campaigns', campaigns);
 router.use('/agentic', agenticData);
 
