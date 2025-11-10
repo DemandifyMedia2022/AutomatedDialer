@@ -93,63 +93,6 @@ export default function CampaignsPage() {
             {/* No Add Campaign button in Active view */}
           </div>
         </header>
-
-        <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
-          <Card className="w-full">
-            
-            <CardContent>
-              <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-12 items-end">
-                <div className="flex flex-col gap-1 lg:col-span-2">
-           
-                  <Input
-                    placeholder="Search "
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
-                <div className="flex lg:col-span-1">
-                  <Button className="mt-6">Search</Button>
-                </div>
-              </div>
-
-              <div className="mt-6 overflow-x-auto rounded-lg border">
-                <Table>
-                  <TableHeader className="bg-muted sticky top-0 z-10">
-                    <TableRow>
-                      <TableHead className="w-[80px]">ID</TableHead>
-                      <TableHead>Start Date</TableHead>
-                      <TableHead>End Date</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Campaign ID</TableHead>
-                      <TableHead>Assign To</TableHead>
-                      <TableHead>Allocation</TableHead>
-                      <TableHead>Allocation Complete</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
-                          No records
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {filtered.map((row, idx) => (
-                      <TableRow key={String(row.id)} className="hover:bg-accent/50">
-                        <TableCell>{idx + 1}</TableCell>
-                        <TableCell>{row.startDate}</TableCell>
-                        <TableCell>{row.endDate}</TableCell>
-                        <TableCell>{row.name}</TableCell>
-                        <TableCell>{row.campaignId}</TableCell>
-                        <TableCell>{row.assignTo}</TableCell>
-                        <TableCell>{row.allocation}</TableCell>
-                        <TableCell>{row.allocationComplete}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
           {error && (
             <Card className="border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error}</Card>
