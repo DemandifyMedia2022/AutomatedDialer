@@ -93,25 +93,6 @@ const CallHistory = () => {
   React.useEffect(() => { fetchMine(page) }, [fetchMine, page])
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
-<<<<<<< HEAD
-  const filteredItems = React.useMemo(() => {
-    const term = searchTerm.trim().toLowerCase()
-    if (!term) return items
-    return items.filter((row) => {
-      const ext = (row.extension || '').toLowerCase()
-      const dest = (row.destination || '').toLowerCase()
-     
-      const idStr = String(row.id || '').toLowerCase()
-      return (
-        ext.includes(term) ||
-        dest.includes(term) ||
-        src.includes(term) ||
-        idStr.includes(term)
-      )
-    })
-  }, [items, searchTerm])
-=======
->>>>>>> 19d71d3d39aed6ba36936c9cbcc0e623c6f88035
   const toUtc = (iso?: string | null) => {
     if (!iso) return '-'
     try {
@@ -238,78 +219,6 @@ const CallHistory = () => {
                   Reset
                 </Button>
               </div>
-<<<<<<< HEAD
-              <div className="mt-4 flex gap-2">
-                <Button>Search</Button>
-                <Button variant="outline">Reset</Button>
-              </div>
-
-              <div className="mt-6 overflow-x-auto rounded-lg border">
-                <Table>
-                  <TableHeader className="bg-muted sticky top-0 z-10">
-                    <TableRow>
-                      <TableHead>ID</TableHead>
-                      <TableHead>Extension</TableHead>
-                      <TableHead>Destination Number</TableHead>
-                     
-                      <TableHead>Start Time (UTC)</TableHead>
-                      <TableHead>End Time (UTC)</TableHead>
-                      <TableHead>Call Duration</TableHead>
-                      <TableHead>Call Disposition</TableHead>
-                      <TableHead>Recording</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredItems.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
-                          {loading ? 'Loading…' : 'No records'}
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {filteredItems.map((row) => (
-                      <TableRow key={row.id} className="hover:bg-accent/50">
-                        <TableCell>{row.id}</TableCell>
-                        <TableCell>{row.extension || '-'}</TableCell>
-                        <TableCell>{row.destination || '-'}</TableCell>
-                     
-                        <TableCell>{toUtc(row.start_time)}</TableCell>
-                        <TableCell>{toUtc(row.end_time)}</TableCell>
-                        <TableCell>{fmtDur(row.call_duration)}</TableCell>
-                        <TableCell>{(row.disposition || '').toUpperCase() || '-'}</TableCell>
-                        <TableCell>
-                          {row.recording_url ? (
-                            <div className="flex items-center gap-1" >
-                              <audio src={row.recording_url || undefined} controls preload="none" className="h-8" />
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="gap-1"
-                                onClick={() => downloadRecording(row.recording_url!, row.id)}
-                              >
-                                <Download className="h-4 w-4" /> 
-                              </Button>
-                            </div>
-                          ) : (
-                            '-'
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              <div className="mt-4 flex justify-center gap-2">
-                {Array.from({ length: pageCount }).map((_, i) => (
-                  <Button key={i} variant={page === i + 1 ? "default" : "outline"} size="sm" onClick={() => setPage(i + 1)}>
-                    {i + 1}
-                  </Button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-=======
             </div>
             <div className="mt-4 overflow-x-auto rounded-lg border">
               <table className="min-w-full text-sm">
@@ -374,7 +283,6 @@ const CallHistory = () => {
               ))}
             </div>
           </div>
->>>>>>> 19d71d3d39aed6ba36936c9cbcc0e623c6f88035
         </div>
       </SidebarInset>
     </SidebarProvider>

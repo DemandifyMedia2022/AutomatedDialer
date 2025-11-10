@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { PhoneCall, ListCheck, Users, Settings2, Phone } from "lucide-react"
+import { PhoneCall, ListCheck, Users, Settings2, Phone, Bot } from "lucide-react"
 import { NavMain } from "@/components/layout/nav-main"
 import { NavUser } from "@/components/layout/nav-user"
 import {
@@ -26,6 +26,7 @@ const data = {
     logo: Phone,
   },
   navMain: [
+
     {
       title: "Dialer",
       url: "/dashboard/agent/dialer",
@@ -52,6 +53,17 @@ const data = {
       items: [
         { title: "Call History", url: "/dashboard/agent/my-calls/call-history" },
         { title: "Lead Details", url: "/dashboard/agent/my-calls/lead-details" },
+      ],
+    },
+        {
+      title: "Agentic Dialing",
+      url: "/dashboard/agent/agentic-dialing",
+      icon: Bot,
+      isActive: true,
+      items: [
+        { title: "Overview", url: "/dashboard/agent/agentic-dialing" },
+        { title: "CSV", url: "/dashboard/agent/agentic-dialing/csv" },
+        { title: "Campaigns", url: "/dashboard/agent/agentic-dialing/campaigns" },
       ],
     },
     {
