@@ -43,7 +43,7 @@ def _normalize_prompt_module(module: str | None) -> str:
         return f"{CAMPAIGN_MODULE_PREFIX}.{name}"
     return name
 
-AGENT_MODULE = "backend.agent"
+AGENT_MODULE = "agent"
 
 
 # Global logging: keep terminal clean

@@ -61,7 +61,7 @@ const data = {
       icon: Bot,
       isActive: true,
       items: [
-        { title: "Overview", url: "/dashboard/agent/agentic-dialing" },
+        { title: "Calls", url: "/dashboard/agent/agentic-dialing" },
         { title: "CSV", url: "/dashboard/agent/agentic-dialing/csv" },
         { title: "Campaigns", url: "/dashboard/agent/agentic-dialing/campaigns" },
       ],

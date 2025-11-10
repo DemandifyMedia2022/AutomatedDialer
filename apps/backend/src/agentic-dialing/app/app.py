@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 import os
 import logging
-from supabase import create_client
 from dotenv import load_dotenv
 from typing import Any, Dict, List, Optional
 
@@ -17,9 +16,7 @@ CAMPAIGN_MODULE_PREFIX = "backend.campaigns_prompts"
 
 load_dotenv()
 
-supabase_url = os.getenv("SUPABASE_URL")
-supabase_key = os.getenv("SUPABASE_ANON_KEY")
-supabase = create_client(supabase_url, supabase_key)
+supabase = None  # Supabase disabled; using Prisma (Node backend)
 
 logger = logging.getLogger(__name__)
 
@@ -31,35 +28,37 @@ def _slugify(name: str) -> str:
 
 
 def _load_campaigns_store() -> List[Dict[str, str]]:
-    if supabase:
-        try:
-            logger.debug("Fetching campaigns from Supabase")
-            resp = supabase.table("campaigns").select("name,module,agent_text,session_text").execute()
-            rows = getattr(resp, "data", []) or []
-            items: List[Dict[str, str]] = []
-            for r in rows:
-                name = (r.get("name") or "").strip()
-                module = (r.get("module") or "").strip()
-                if not (name and module):
-                    continue
-                agent_text = r.get("agent_text") or ""
-                session_text = r.get("session_text") or ""
-                try:
-                    _generate_prompt_module(module, agent_text, session_text)
-                except Exception:
-                    pass
-                items.append({"name": name, "module": module})
-            _save_campaigns_store(items)
-            logger.info("Loaded %d campaigns from Supabase", len(items))
-            return items
-        except Exception:
-            logger.exception("Failed to load campaigns from Supabase; falling back to local cache")
+    """Fetch campaigns from Node backend (Prisma) and mirror to local cache."""
+    try:
+        base = os.getenv("BACKEND_API_BASE", "http://localhost:4000/api/agentic").rstrip("/")
+        import httpx
+        with httpx.Client(timeout=10) as client:
+            r = client.get(f"{base}/campaigns")
+            if r.status_code == 200:
+                payload = r.json() or {}
+                rows = payload.get("items") or []
+                items: List[Dict[str, str]] = []
+                for it in rows:
+                    name = (it.get("name") or "").strip()
+                    module = (it.get("module") or "").strip()
+                    if not (name and module):
+                        continue
+                    agent_text = it.get("agent_text") or ""
+                    session_text = it.get("session_text") or ""
+                    try:
+                        _generate_prompt_module(module, agent_text, session_text)
+                    except Exception:
+                        pass
+                    items.append({"name": name, "module": module})
+                _save_campaigns_store(items)
+                return items
+    except Exception:
+        logger.exception("Failed to load campaigns from Node backend; falling back to local cache")
     try:
         if CAMPAIGNS_STORE.exists():
-            logger.debug("Loading campaigns from local cache at %s", CAMPAIGNS_STORE)
             return json.loads(CAMPAIGNS_STORE.read_text(encoding="utf-8"))
     except Exception:
-        logger.exception("Failed to load campaigns from local cache")
+        pass
     return []
 
 
@@ -131,16 +130,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 def _supabase_client():
-    try:
-        if not (_SUPABASE_URL and _SUPABASE_SERVICE_ROLE_KEY):
-            logger.debug("Supabase client not available due to missing URL or service role key")
-            return None
-        from supabase import create_client  # type: ignore
-        logger.debug("Initializing Supabase client")
-        return create_client(_SUPABASE_URL, _SUPABASE_SERVICE_ROLE_KEY)
-    except Exception as e:
-        logger.error(f"Failed to initialize Supabase client: {e}")
-        return None
+    return None  # disabled
 
 
 def _sync_from_supabase_if_available() -> List[Dict[str, str]]:
@@ -261,91 +251,74 @@ def _csv_local_path(name: str) -> Path:
 
 
 def _supabase_csv_list() -> Optional[List[Dict[str, Any]]]:
-    client = _supabase_client()
-    if not client:
-        return None
     try:
-        resp = (
-            client
-            .table(_SUPABASE_PROSPECTS_TABLE)
-            .select("name,size,uploaded_at")
-            .order("uploaded_at", desc=True)
-            .execute()
-        )
-        data = getattr(resp, "data", []) or []
-        if not isinstance(data, list):
-            return []
-        return data
+        base = os.getenv("BACKEND_API_BASE", "http://localhost:4000/api/agentic").rstrip("/")
+        import httpx
+        with httpx.Client(timeout=10) as client:
+            r = client.get(f"{base}/csv/list")
+            if r.status_code == 200:
+                payload = r.json() or {}
+                files = payload.get("files") or []
+                # Normalize to fields the UI expects
+                return [{
+                    "name": f.get("name"),
+                    "size": f.get("size"),
+                    "uploaded_at": int(f.get("mtime") or 0)
+                } for f in files]
     except Exception:
-        logger.exception("Failed to list prospect CSVs from Supabase table")
-        return None
+        logger.exception("Failed to list prospect CSVs from Node backend")
+    return None
 
 
 def _download_csv_from_supabase(name: str, force: bool = False) -> Optional[Path]:
-    """Ensure the given remote CSV is cached locally and return the local path."""
-    client = _supabase_client()
+    """Fetch CSV via Node backend download endpoint and cache locally."""
     sanitized = _safe_csv_name(name)
     local_path = _csv_local_path(sanitized)
-    if not client:
-        return local_path if local_path.exists() else None
     if local_path.exists() and not force:
         return local_path
     try:
-        resp = (
-            client
-            .table(_SUPABASE_PROSPECTS_TABLE)
-            .select("content")
-            .eq("name", sanitized)
-            .limit(1)
-            .execute()
-        )
-        rows = getattr(resp, "data", []) or []
-        if not rows:
-            return local_path if local_path.exists() else None
-        content = rows[0].get("content") or ""
-        if not isinstance(content, str):
-            return local_path if local_path.exists() else None
-        local_path.write_text(content, encoding="utf-8")
-        return local_path
+        base = os.getenv("BACKEND_API_BASE", "http://localhost:4000/api/agentic").rstrip("/")
+        import httpx
+        with httpx.Client(timeout=20) as client:
+            r = client.get(f"{base}/csv/download/{sanitized}")
+            if r.status_code == 200 and r.content:
+                local_path.write_bytes(r.content)
+                return local_path
     except Exception:
-        logger.exception("Failed to download prospect CSV '%s' from Supabase", sanitized)
-        return local_path if local_path.exists() else None
+        logger.exception("Failed to download prospect CSV '%s' from Node backend", sanitized)
+    return local_path if local_path.exists() else None
 
 
 def _upload_csv_to_supabase(name: str, content: bytes) -> Optional[str]:
-    client = _supabase_client()
-    if not client:
-        return None
+    """Upload CSV to Node backend storage (Prisma metadata), return saved name."""
     sanitized = _safe_csv_name(name)
     try:
-        text = content.decode("utf-8")
-    except UnicodeDecodeError:
-        text = content.decode("utf-8", errors="ignore")
-    payload = {
-        "name": sanitized,
-        "content": text,
-        "size": len(content),
-        "uploaded_at": datetime.utcnow().isoformat(),
-    }
-    try:
-        client.table(_SUPABASE_PROSPECTS_TABLE).upsert(payload, on_conflict="name").execute()
-    except Exception as exc:
-        logger.exception("Failed to upsert prospect CSV '%s' into Supabase", sanitized)
-        return None
-    return sanitized
+        base = os.getenv("BACKEND_API_BASE", "http://localhost:4000/api/agentic").rstrip("/")
+        import httpx
+        files = {"file": (sanitized, content, "text/csv")}
+        with httpx.Client(timeout=20) as client:
+            r = client.post(f"{base}/csv/upload", files=files)
+            if r.status_code in (200, 201):
+                return sanitized
+    except Exception:
+        logger.exception("Failed to upload CSV '%s' to Node backend", sanitized)
+    return None
 
 
 def _delete_supabase_csv(name: str) -> Optional[str]:
-    client = _supabase_client()
-    if not client:
-        return None
+    """Delete CSV via Node backend; returns error string on failure or None on success."""
     sanitized = _safe_csv_name(name)
     try:
-        client.table(_SUPABASE_PROSPECTS_TABLE).delete().eq("name", sanitized).execute()
+        base = os.getenv("BACKEND_API_BASE", "http://localhost:4000/api/agentic").rstrip("/")
+        import httpx
+        with httpx.Client(timeout=10) as client:
+            r = client.delete(f"{base}/csv/{sanitized}")
+            if r.status_code in (200, 204):
+                return None
+            return f"Delete failed: {r.status_code}"
     except Exception as exc:
-        logger.exception("Failed to delete prospect CSV '%s' from Supabase", sanitized)
+        logger.exception("Failed to delete prospect CSV '%s' via Node backend", sanitized)
         return str(exc)
-    return None
 
 
 def _persist_selected_csv(path: Path, remote_key: Optional[str]) -> None:
@@ -440,6 +413,12 @@ def spawn_call(lead_index_1based: int, campaign_key: Optional[str]) -> None:
         env["CAMPAIGN_AGENT_NAME"] = agent_attr
         env["CAMPAIGN_SESSION_NAME"] = session_attr
 
+    # Ensure child can import our local 'backend' package
+    try:
+        env["PYTHONPATH"] = f"{BASE_DIR}{os.pathsep}{env.get('PYTHONPATH','')}"
+    except Exception:
+        pass
+
     # Launch console subcommand to get audio I/O and track process
     global CURRENT_PROC, CURRENT_STATUS, CURRENT_LEAD_INDEX
     with _proc_lock:
@@ -451,7 +430,7 @@ def spawn_call(lead_index_1based: int, campaign_key: Optional[str]) -> None:
             # Create new process group to allow signal/termination management
             creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         CURRENT_PROC = subprocess.Popen(
-            [sys.executable, "-m", AGENT_MODULE, "console"], env=env, creationflags=creationflags
+            [sys.executable, str(BASE_DIR / "agent.py"), "console"], env=env, cwd=str(BASE_DIR), creationflags=creationflags
         )
         CURRENT_STATUS = "running"
         CURRENT_LEAD_INDEX = lead_index_1based
@@ -466,8 +445,13 @@ def spawn_agent_connect_room(room_name: str, campaign_key: Optional[str]) -> Non
         env["CAMPAIGN_PROMPT_MODULE"] = _normalize_prompt_module(mod)
         env["CAMPAIGN_AGENT_NAME"] = agent_attr
         env["CAMPAIGN_SESSION_NAME"] = session_attr
+    # Ensure child can import our local 'backend' package
+    try:
+        env["PYTHONPATH"] = f"{BASE_DIR}{os.pathsep}{env.get('PYTHONPATH','')}"
+    except Exception:
+        pass
     # Use LiveKit CLI subcommand 'connect' with a room name; the Agents CLI will join that room
-    subprocess.Popen([sys.executable, "-m", AGENT_MODULE, "connect", "--room", room_name], env=env)
+    subprocess.Popen([sys.executable, str(BASE_DIR / "agent.py"), "connect", "--room", room_name], env=env, cwd=str(BASE_DIR))
 
 
 def _end_current_call() -> bool:
@@ -637,8 +621,8 @@ async def api_csv_list():
                     "mtime": int(stat.st_mtime),
                     "active": str(p.resolve()) == str(Path(LEADS_CSV).resolve()) if LEADS_CSV else False,
                 })
-            except Exception:
-                continue
+            except FileNotFoundError:
+                pass
     except Exception:
         pass
     return JSONResponse({"ok": True, "files": files})
@@ -761,7 +745,7 @@ async def api_csv_download(name: str):
 # Campaigns Management API
 # -----------------------------
 
-@app.get("/api/campaigns/list")
+@app.get("/api/campaigns/legacy/list")
 async def api_campaigns_list():
     # If Supabase configured, sync down first
     items = _sync_from_supabase_if_available()
@@ -777,7 +761,7 @@ async def api_campaigns_list():
     return JSONResponse({"ok": True, "builtin": builtin, "custom": items})
 
 
-@app.post("/api/campaigns/create")
+@app.post("/api/campaigns/legacy/create")
 async def api_campaigns_create(name: str = Form(...), agent_text: str = Form(""), session_text: str = Form(""), module: str = Form("") ):
     name = (name or "").strip()
     if not name:
@@ -815,7 +799,7 @@ async def api_campaigns_create(name: str = Form(...), agent_text: str = Form("")
     return JSONResponse({"ok": True, "name": name, "module": slug, "supabase_error": supabase_error})
 
 
-@app.delete("/api/campaigns/{module}")
+@app.delete("/api/campaigns/legacy/{module}")
 async def api_campaigns_delete(module: str):
     module = (module or "").strip()
     items = _load_campaigns_store()
@@ -1113,6 +1097,110 @@ async def api_campaigns():
             pass
         items.append({"key": k, "label": clean})
     return JSONResponse({"campaigns": items})
+
+
+# -----------------------------
+# Campaigns (Prisma via Node backend)
+# -----------------------------
+
+def _backend_base() -> str:
+    return os.getenv("BACKEND_API_BASE", "http://localhost:4000/api/agentic").rstrip("/")
+
+
+@app.get("/api/campaigns/list")
+async def api_campaigns_list():
+    # builtin from static CAMPAIGNS
+    builtin_items = []
+    for k, v in CAMPAIGNS.items():
+        # k is label already (e.g., "Default (prompts)")
+        mod, _, _ = v
+        builtin_items.append({"name": _campaign_display_name(k), "module": mod})
+    # custom from Node backend
+    custom_items: list[dict] = []
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(f"{_backend_base()}/campaigns")
+            if r.status_code == 200:
+                for it in (r.json().get("items") or []):
+                    custom_items.append({
+                        "name": it.get("name"),
+                        "module": it.get("module"),
+                    })
+    except Exception:
+        pass
+    return JSONResponse({"builtin": builtin_items, "custom": custom_items})
+
+
+@app.get("/api/campaigns/get")
+async def api_campaigns_get(module: str):
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(f"{_backend_base()}/campaigns/{module}")
+            if r.status_code == 200:
+                return JSONResponse(r.json())
+    except Exception:
+        pass
+    raise HTTPException(status_code=404, detail="Not found")
+
+
+@app.post("/api/campaigns/create")
+async def api_campaigns_create(name: str = Form(...), module: str = Form(...), agent_text: str = Form(""), session_text: str = Form("")):
+    payload = {"name": name, "module": module, "agent_text": agent_text, "session_text": session_text}
+    try:
+        # Save to Node backend
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(f"{_backend_base()}/campaigns", json=payload)
+            if r.status_code in (200, 201):
+                # Generate/refresh local module for runtime
+                try:
+                    _generate_prompt_module(module, agent_text, session_text)
+                except Exception:
+                    pass
+                return JSONResponse(r.json())
+    except Exception:
+        pass
+    raise HTTPException(status_code=400, detail="Create failed")
+
+
+@app.post("/api/campaigns/update")
+async def api_campaigns_update(module: str = Form(...), name: str = Form(""), agent_text: str = Form(""), session_text: str = Form("")):
+    payload = {"name": name or module, "agent_text": agent_text, "session_text": session_text}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.put(f"{_backend_base()}/campaigns/{module}", json=payload)
+            if r.status_code == 200:
+                try:
+                    _generate_prompt_module(module, agent_text, session_text)
+                except Exception:
+                    pass
+                return JSONResponse(r.json())
+    except Exception:
+        pass
+    raise HTTPException(status_code=400, detail="Update failed")
+
+
+@app.delete("/api/campaigns/{module}")
+async def api_campaigns_delete(module: str):
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.delete(f"{_backend_base()}/campaigns/{module}")
+            if r.status_code in (200, 204):
+                return JSONResponse({"ok": True})
+    except Exception:
+        pass
+    raise HTTPException(status_code=400, detail="Delete failed")
+
+
+@app.post("/api/campaigns/upload_prompts")
+async def api_campaigns_upload_prompts(which: str = Form(...), file: UploadFile = File(...)):
+    text = (await file.read()).decode("utf-8", errors="ignore")
+    return JSONResponse({"which": which, "text": text})
+
+
+@app.post("/api/campaigns/seed_supabase")
+async def api_campaigns_seed_supabase():
+    # No-op: Supabase removed. Return success with count=0
+    return JSONResponse({"count": 0, "errors": []})
 
 
 @app.post("/api/auto_next")

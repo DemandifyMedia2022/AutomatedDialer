@@ -51,7 +51,10 @@ export default function CampaignsManager() {
 
     setIsCreating(true)
     try {
-      const result = await createCampaign(campaignName, campaignModule, agentText, sessionText)
+      const slug = (campaignModule && campaignModule.trim())
+        ? campaignModule.trim()
+        : campaignName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'campaign'
+      const result = await createCampaign(campaignName, slug, agentText, sessionText)
       
       if (result.supabase_error) {
         toast({
@@ -272,16 +275,18 @@ export default function CampaignsManager() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-4 mb-6">
-                    <Select value={selectedCampaign} onValueChange={setSelectedCampaign}>
+                    <Select value={selectedCampaign || undefined} onValueChange={setSelectedCampaign}>
                       <SelectTrigger className="w-64">
                         <SelectValue placeholder="Select campaign..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {custom.map(campaign => (
-                          <SelectItem key={campaign.module} value={campaign.module}>
-                            {campaign.name} ({campaign.module})
-                          </SelectItem>
-                        ))}
+                        {custom
+                          .filter(campaign => !!campaign.module && String(campaign.module).trim() !== '')
+                          .map(campaign => (
+                            <SelectItem key={campaign.module} value={campaign.module}>
+                              {campaign.name} ({campaign.module})
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                     <Button onClick={handleLoadCampaign}>Load Selected</Button>
@@ -298,19 +303,7 @@ export default function CampaignsManager() {
                         </>
                       )}
                     </Button>
-                    <Button variant="outline" onClick={handleSeedSupabase} disabled={isSeeding}>
-                      {isSeeding ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-app-border/20 border-t-app-accent rounded-full animate-spin mr-2" />
-                          Seeding...
-                        </>
-                      ) : (
-                        <>
-                          <Database className="w-4 h-4 mr-2" />
-                          Seed to Supabase
-                        </>
-                      )}
-                    </Button>
+                    
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

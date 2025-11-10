@@ -62,16 +62,18 @@ export default function CampaignSelector({ selectedCampaign, onCampaignChange }:
           <form onSubmit={handleSubmit} className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-4">
               <label htmlFor="campaign" className="text-sm font-medium">Campaign</label>
-              <Select value={selectedCampaign} onValueChange={onCampaignChange} disabled={loading}>
+              <Select value={selectedCampaign || undefined} onValueChange={onCampaignChange} disabled={loading}>
                 <SelectTrigger className="w-64">
                   <SelectValue placeholder="Select campaign..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {campaigns.map((campaign: { key: string; label: string }) => (
-                    <SelectItem key={campaign.key} value={campaign.key}>
-                      {campaign.label}
-                    </SelectItem>
-                  ))}
+                  {campaigns
+                    .filter((campaign: { key: string; label: string }) => !!campaign.key && campaign.key.trim() !== '')
+                    .map((campaign: { key: string; label: string }) => (
+                      <SelectItem key={campaign.key} value={campaign.key}>
+                        {campaign.label}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
               <Button type="submit" disabled={isSubmitting}>
