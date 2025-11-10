@@ -227,7 +227,7 @@ const CallHistory = () => {
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Extension</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Destination Number</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Source</th>
+                   
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Start Time (UTC)</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">End Time (UTC)</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Call Duration</th>
@@ -248,7 +248,7 @@ const CallHistory = () => {
                       <td className="px-4 py-3">{row.id}</td>
                       <td className="px-4 py-3">{row.extension || '-'}</td>
                       <td className="px-4 py-3">{row.destination || '-'}</td>
-                      <td className="px-4 py-3">{row.source || '-'}</td>
+                      
                       <td className="px-4 py-3">{toUtc(row.start_time)}</td>
                       <td className="px-4 py-3">{toUtc(row.end_time)}</td>
                       <td className="px-4 py-3">{fmtDur(row.call_duration)}</td>
