@@ -9,7 +9,7 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import { AgentSidebar } from "../../components/AgentSidebar";
 import { API_BASE } from "@/lib/api";
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth";
-import { Download, RefreshCcw, ChevronDownIcon } from "lucide-react";
+import { Download, RefreshCcw, ChevronDownIcon, Play, Pause } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -164,16 +164,26 @@ const CallHistory = () => {
   }, [])
 
   const WaveBars: React.FC<{ active: boolean }> = ({ active }) => (
-    <>
+    <div className="flex items-end gap-[1.5px] h-4 w-24">
+      {[0.4, 0.6, 0.8, 1, 0.7, 0.5, 0.6, 0.8, 1, 0.8, 0.6, 0.4].map((height, i) => (
+        <span 
+          key={i} 
+          style={{ 
+            height: `${height * 100}%`,
+            animation: active ? `wave 0.7s ${0.05 * i}s infinite ease-in-out` : 'none',
+            animationFillMode: active ? 'both' : 'forwards',
+          }} 
+          className="w-[1.5px] bg-foreground/70 rounded-sm origin-bottom"
+        />
+      ))}
       <style jsx>{`
-        @keyframes wave { 0%{transform:scaleY(0.4)} 50%{transform:scaleY(1)} 100%{transform:scaleY(0.4)} }
+        @keyframes wave { 
+          0% { transform: scaleY(0.4); }
+          50% { transform: scaleY(1.2); }
+          100% { transform: scaleY(0.4); } 
+        }
       `}</style>
-      <div className="flex items-end gap-0.5 h-4">
-        {[0,1,2,3,4].map(i => (
-          <span key={i} style={{ animation: active ? `wave 1.1s ${0.1*i}s infinite ease-in-out` : undefined, transform: active ? undefined : 'scaleY(0.6)' }} className="w-0.5 bg-primary/70 rounded-sm origin-bottom" />
-        ))}
-      </div>
-    </>
+    </div>
   )
 
   const CompactAudio: React.FC<{ src: string; name: string | number }> = ({ src, name }) => {
@@ -213,28 +223,49 @@ const CallHistory = () => {
       a.currentTime = ratio * dur
     }
     return (
-      <div className="flex items-center gap-2">
-        <button onClick={toggle} className="h-8 w-8 inline-flex items-center justify-center rounded-full bg-transparent hover:bg-accent/50 focus:outline-none focus:ring-0">
-          <span className="sr-only">Play/Pause</span>
-          {playing ? '❚❚' : '►'}
-        </button>
-        <div className="hidden sm:block"><WaveBars active={playing} /></div>
-        <div className="w-28 text-xs tabular-nums text-muted-foreground">{Math.floor(progress)}s/{Math.max(0, Math.floor(dur))}s</div>
-        <div className="relative h-1 w-28 bg-muted rounded" onClick={seek}>
-          <div className="absolute inset-y-0 left-0 bg-primary rounded" style={{ width: `${pct}%` }} />
+      <div className="flex items-center gap-4 w-full max-w-md">
+      <button 
+        onClick={toggle} 
+        className="text-foreground hover:bg-accent/50 rounded p-1.5 transition-colors focus:outline-none"
+        aria-label={playing ? 'Pause' : 'Play'}
+      >
+        {playing ? (
+          <Pause className="h-4 w-4" strokeWidth={2.5} />
+        ) : (
+          <Play className="h-4 w-4 ml-0.5" strokeWidth={2.5} />
+        )}
+      </button>
+      
+      <div className="flex-1 min-w-0 flex items-center">
+        <div className="hidden sm:block">
+          <WaveBars active={playing} />
         </div>
-        <audio ref={audioRef} src={src} preload="none" />
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => downloadRecording(src, name)} aria-label="Download">
-                <Download className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Download</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
       </div>
+      
+      <div className="text-xs tabular-nums text-muted-foreground w-10 text-right">
+        {Math.floor(progress)}s
+      </div>
+      
+      <audio ref={audioRef} src={src} preload="none" />
+      
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button 
+              className="text-muted-foreground hover:bg-accent/50 rounded p-1.5 transition-colors focus:outline-none"
+              onClick={(e) => {
+                e.stopPropagation();
+                downloadRecording(src, name);
+              }} 
+              aria-label="Download"
+            >
+              <Download className="h-4 w-4" strokeWidth={2.5} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Download</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
     )
   }
 
