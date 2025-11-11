@@ -10,7 +10,7 @@ An enterprise-style monorepo for an Automated Dialer platform with a Next.js fro
 - **Database**: MySQL via `mysql2/promise`
 
 ## Tech Stack
-- **Frontend**: Next.js 16, React 19, Tailwind CSS v4, next-themes, Radix UI primitives, shadcn-style UI components, Lucide icons
+- **Frontend**: Next.js 16, React 19, Tailwind CSS v4, next-themes, Radix UI primitives, shadcn-style UI components, Lucide icons, SheetJS (XLSX via CDN)
 - **Backend**: Express 4, TypeScript 5, zod (ready for validation), dotenv, cors, mysql2
 - **Tooling**: concurrently (run FE+BE), ESLint 9
 
@@ -66,11 +66,19 @@ An enterprise-style monorepo for an Automated Dialer platform with a Next.js fro
     - Dialer
       - Manual: `/dashboard/agent/dialer/manual`
       - Automated: `/dashboard/agent/dialer/automated`
+        - Upload CSV/XLSX of phone numbers, build a de-duplicated dialing queue
+        - Auto-registers SIP (JsSIP) using agent credentials from backend
+        - Auto-dials sequentially with configurable delay between calls
+        - Controls: Start, Pause, Skip, Hang Up; shows live status and current index
+        - Records calls locally (mixed remote+mic) and uploads CDR + recording to backend
     - Campaigns
       - Active Campaigns: `/dashboard/agent/campaigns/active`
       - Campaign History: `/dashboard/agent/campaigns/campaign-history`
     - My Calls
       - Call History: `/dashboard/agent/my-calls/call-history`
+        - Filters: date range, query by destination/extension, status (Answered/No Answer/Busy/Failed), direction (Inbound/Outbound)
+        - Pagination; groups rows by day; shows UTC times and duration
+        - Inline audio player for recordings with download button
       - Lead Details: `/dashboard/agent/my-calls/lead-details`
     - Settings
       - Profile: `/dashboard/agent/settings/profile`
@@ -99,6 +107,7 @@ An enterprise-style monorepo for an Automated Dialer platform with a Next.js fro
 
 ## Notable Libraries and Intent
 - **jssip** is a root dependency, indicating planned SIP/WebRTC phone features for the dialer. Not yet wired on the frontend.
+- **SheetJS (XLSX)** used on the frontend automated dialer to parse Excel/CSV files client-side.
 - **zod** is available for backend schema validation but not yet applied to routes.
 
 ## Security & Auth (Planned)
