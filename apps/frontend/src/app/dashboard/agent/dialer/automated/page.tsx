@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { UploadCloud, Play, Pause, SkipForward, PhoneOff } from "lucide-react"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 
 declare global {
   interface Window {
@@ -35,18 +36,28 @@ export default function AutomatedDialerPage() {
   const [queue, setQueue] = useState<string[]>([]) // numbers to dial
   const [currentIndex, setCurrentIndex] = useState<number>(0)
   const [autoRun, setAutoRun] = useState(false)
-  const [delayMs, setDelayMs] = useState<number>(3000)
+  // Fixed delay (30s)
+  const FIXED_DELAY_MS = 30000
 
   // Refs to avoid stale closures in session event handlers
   const autoRunRef = useRef<boolean>(false)
   const currentIndexRef = useRef<number>(0)
   const queueRef = useRef<string[]>([])
-  const delayMsRef = useRef<number>(3000)
+  // countdown & timers
+  const delayMsRef = useRef<number>(30000)
+  const nextTimeoutRef = useRef<number | null>(null)
+  const countdownRef = useRef<number | null>(null)
+  const [nextIn, setNextIn] = useState<number>(0)
 
   useEffect(() => { autoRunRef.current = autoRun }, [autoRun])
   useEffect(() => { currentIndexRef.current = currentIndex }, [currentIndex])
   useEffect(() => { queueRef.current = queue }, [queue])
-  useEffect(() => { delayMsRef.current = delayMs }, [delayMs])
+  useEffect(() => { delayMsRef.current = FIXED_DELAY_MS }, [FIXED_DELAY_MS])
+
+  // Dialog state for file upload
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [sheetName, setSheetName] = useState("")
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
 
   // Refs (copied/adapted from manual dialer)
   const uaRef = useRef<any>(null)
@@ -463,6 +474,15 @@ export default function AutomatedDialerPage() {
     if (!uploadedOnceRef.current) { uploadedOnceRef.current = true; await stopRecordingAndUpload({}) }
   }
 
+  const clearCountdown = () => {
+    if (countdownRef.current) { window.clearInterval(countdownRef.current); countdownRef.current = null }
+    setNextIn(0)
+  }
+
+  const clearNextTimeout = () => {
+    if (nextTimeoutRef.current) { window.clearTimeout(nextTimeoutRef.current); nextTimeoutRef.current = null }
+  }
+
   const scheduleNext = () => {
     if (!autoRunRef.current) return
     const nextIdx = currentIndexRef.current + 1
@@ -471,10 +491,23 @@ export default function AutomatedDialerPage() {
       setAutoRun(false)
       autoRunRef.current = false
       setStatus("Completed")
+      clearCountdown()
+      clearNextTimeout()
       return
     }
     const delay = Math.max(0, delayMsRef.current)
-    window.setTimeout(() => {
+    setNextIn(Math.ceil(delay / 1000))
+    if (countdownRef.current) { window.clearInterval(countdownRef.current); countdownRef.current = null }
+    countdownRef.current = window.setInterval(() => {
+      setNextIn((s) => {
+        const n = Math.max(0, s - 1)
+        return n
+      })
+    }, 1000)
+    clearNextTimeout()
+    nextTimeoutRef.current = window.setTimeout(() => {
+      if (countdownRef.current) { window.clearInterval(countdownRef.current); countdownRef.current = null }
+      setNextIn(0)
       setCurrentIndex(nextIdx)
       currentIndexRef.current = nextIdx
       placeCallTo(list[nextIdx])
@@ -493,7 +526,7 @@ export default function AutomatedDialerPage() {
     await placeCallTo(list[idx])
   }
 
-  const pauseAuto = () => { setAutoRun(false) }
+  const pauseAuto = () => { setAutoRun(false); autoRunRef.current = false; clearCountdown(); clearNextTimeout() }
   const skipNext = () => {
     const list = queueRef.current
     const nextIdx = Math.min(list.length, currentIndexRef.current + 1)
@@ -523,7 +556,8 @@ export default function AutomatedDialerPage() {
         if (!window.XLSX) throw new Error('XLSX parser not loaded')
         const data = new Uint8Array(await file.arrayBuffer())
         const wb = window.XLSX.read(data, { type: 'array' })
-        const ws = wb.Sheets[wb.SheetNames[0]]
+        const targetSheet = sheetName && wb.Sheets[sheetName] ? sheetName : wb.SheetNames[0]
+        const ws = wb.Sheets[targetSheet]
         const rows: any[][] = window.XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][]
         const nums = normalizeNumbers(rows.map(r => String(r?.[0] ?? '').trim()))
         setQueue(nums); queueRef.current = nums; setCurrentIndex(0); currentIndexRef.current = 0
@@ -574,9 +608,7 @@ export default function AutomatedDialerPage() {
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
-            <div className="ml-auto flex items-center gap-2">
-              <span className={`text-xs px-2 py-1 rounded ${status.includes("Registered") ? "bg-emerald-100 text-emerald-800" : status.includes("Connected") ? "bg-blue-100 text-blue-800" : status.includes("Call") ? "bg-purple-100 text-purple-800" : autoRun ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-800"}`}>{status}</span>
-            </div>
+            <div className="ml-auto" />
           </div>
         </header>
 
@@ -592,19 +624,36 @@ export default function AutomatedDialerPage() {
             <Card className="p-5 md:col-span-2">
               <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-3">
-                  <Label htmlFor="file">Upload CSV/XLSX</Label>
-                  <Input id="file" type="file" accept=".csv,.xlsx,.xls,.txt" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f) }} />
-                  <Button variant="outline" className="gap-2" onClick={() => { setQueue([]); setCurrentIndex(0); setAutoRun(false) }}>
-                    <UploadCloud className="h-4 w-4" /> Clear
+                  <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="gap-2" variant="outline"><UploadCloud className="h-4 w-4" /> Add from Excel/CSV</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Upload list</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <Label className="min-w-28" htmlFor="sheet">Sheet name</Label>
+                          <Input id="sheet" placeholder="Optional (defaults to first)" value={sheetName} onChange={(e) => setSheetName(e.target.value)} />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <Label className="min-w-28" htmlFor="file">File</Label>
+                          <Input id="file" type="file" accept=".csv,.xlsx,.xls,.txt" onChange={(e) => setPendingFile(e.target.files?.[0] || null)} />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => { setPendingFile(null); setSheetName(""); setUploadOpen(false) }}>Cancel</Button>
+                        <Button onClick={async () => { if (pendingFile) { await onFile(pendingFile); setUploadOpen(false); setPendingFile(null) } }}>Load</Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                  <Button variant="outline" className="gap-2" onClick={() => { setQueue([]); queueRef.current = []; setCurrentIndex(0); currentIndexRef.current = 0; setAutoRun(false); autoRunRef.current = false; }}>
+                    Clear Queue
                   </Button>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <Label className="min-w-24">Delay (ms)</Label>
-                  <Input type="number" value={delayMs} onChange={(e) => setDelayMs(Number(e.target.value || 0))} className="w-40" />
-                </div>
-
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-4">
                   <Button onClick={startAuto} disabled={!queue.length || autoRun || !status.includes("Registered") } className="gap-2">
                     <Play className="h-4 w-4" /> Start
                   </Button>
@@ -617,7 +666,12 @@ export default function AutomatedDialerPage() {
                   <Button onClick={hangup} variant="destructive" disabled={!sessionRef.current} className="gap-2">
                     <PhoneOff className="h-4 w-4" /> Hang Up
                   </Button>
+                  <span className={`ml-auto text-xs px-2 py-1 rounded ${status.includes("Registered") ? "bg-emerald-100 text-emerald-800" : status.includes("Connected") ? "bg-blue-100 text-blue-800" : status.includes("Call") ? "bg-purple-100 text-purple-800" : autoRun ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-800"}`}>{status}</span>
                 </div>
+
+                {autoRun && nextIn > 0 && (
+                  <div className="text-sm text-muted-foreground">Next call in: {String(Math.floor(nextIn / 60)).padStart(2,'0')}:{String(nextIn % 60).padStart(2,'0')}</div>
+                )}
 
                 <audio ref={remoteAudioRef} autoPlay playsInline controls className="mt-2 w-full" />
               </div>
