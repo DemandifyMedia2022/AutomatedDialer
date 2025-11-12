@@ -1,74 +1,314 @@
 "use client"
 
-import React, { useMemo, useState } from "react"
-import { ManagerSidebar } from "../../components/ManagerSidebar"
-import { Separator } from "@/components/ui/separator"
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Download, History } from "lucide-react"
+import React from 'react';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
+import { API_BASE } from "@/lib/api";
+import { USE_AUTH_COOKIE, getToken } from "@/lib/auth";
+import { Download, RefreshCcw, ChevronDownIcon, Play, Pause } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { type DateRange } from "react-day-picker";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ManagerSidebar } from '../../components/ManagerSidebar';
 
-type CdrRow = {
-  id: number
-  extension: string
-  destination: string
-  source: string
-  startTime: string
-  endTime: string
-  durationSec: number
-  disposition: "ANSWERED" | "NO ANSWER" | "BUSY"
+type CallRow = {
+  id: number | string
+  extension: string | null
+  destination: string | null
+  start_time: string
+  end_time: string | null
+  call_duration: number | null
+  disposition: string | null
+  recording_url?: string | null
 }
 
-const sampleRows: CdrRow[] = [
-  { id: 1013204, extension: "97464664446", destination: "13236595567", source: "13236595567", startTime: "2025-11-12 04:32:22", endTime: "2025-11-12 04:43:11", durationSec: 109, disposition: "ANSWERED" },
-  { id: 1013204, extension: "97455549319", destination: "13236595567", source: "13236595567", startTime: "2025-11-12 04:40:55", endTime: "2025-11-12 04:41:46", durationSec: 50, disposition: "NO ANSWER" },
-  { id: 1013204, extension: "97455549319", destination: "13236595567", source: "13236595567", startTime: "2025-11-12 04:41:15", endTime: "2025-11-12 04:42:42", durationSec: 83, disposition: "ANSWERED" },
-  { id: 1013208, extension: "919920082097", destination: "13236595567", source: "13236595567", startTime: "2025-11-12 04:56:48", endTime: "2025-11-12 04:57:27", durationSec: 39, disposition: "NO ANSWER" },
-]
+const CallHistory = () => {
+  const [items, setItems] = React.useState<CallRow[]>([])
+  const [page, setPage] = React.useState(1)
+  const [pageSize] = React.useState(20)
+  const [total, setTotal] = React.useState(0)
+  const [loading, setLoading] = React.useState(false)
+  const [range, setRange] = React.useState<DateRange | undefined>(() => {
+    const today = new Date()
+    return { from: today, to: today }
+  })
+  const [fromDate, setFromDate] = React.useState('')
+  const [toDate, setToDate] = React.useState('')
+  const [query, setQuery] = React.useState('')
+  const [status, setStatus] = React.useState('all')
+  const [direction, setDirection] = React.useState('all')
+  const [extToUser, setExtToUser] = React.useState<Record<string, string>>({})
+  const [userExtFilter, setUserExtFilter] = React.useState('all')
 
-export default function CdrPage() {
-  const [tab, setTab] = useState("history")
-  const [fromDate, setFromDate] = useState("")
-  const [toDate, setToDate] = useState("")
-  const [status, setStatus] = useState<string>("all")
-  const [phone, setPhone] = useState("")
-  const [extension, setExtension] = useState("")
-  const [callType, setCallType] = useState<string>("all")
+  const fetchMine = React.useCallback(async (p: number) => {
+    setLoading(true)
+    try {
+      const qs = new URLSearchParams({ page: String(p), pageSize: String(pageSize) })
+      const toIso = (d: string, endOfDay = false) => {
+        try {
+          if (!d) return ''
+          return endOfDay ? `${d}T23:59:59.999Z` : `${d}T00:00:00.000Z`
+        } catch { return d }
+      }
+      if (fromDate) qs.set('from', toIso(fromDate))
+      if (toDate) qs.set('to', toIso(toDate, true))
+      if (query) {
+        qs.set('destination', query)
+        qs.set('extension', query)
+      }
+      const effStatus = status === 'all' ? '' : status
+      const effDirection = direction === 'all' ? '' : direction
+      if (effStatus) qs.set('status', effStatus)
+      if (effDirection) qs.set('direction', effDirection)
+      if (userExtFilter !== 'all') qs.set('extension', userExtFilter)
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const res = await fetch(`${API_BASE}/api/calls?${qs.toString()}`, { headers, credentials })
+      if (res.ok) {
+        const data = await res.json()
+        const rows: any[] = data?.items || []
+        setItems(rows.map(r => ({
+          id: r.id,
+          extension: r.extension ?? null,
+          destination: r.destination ?? null,
+          start_time: r.start_time,
+          end_time: r.end_time ?? null,
+          call_duration: r.call_duration ?? null,
+          disposition: (r.disposition || '') as string,
+          recording_url: r.recording_url ?? null,
+        })))
+        setTotal(Number(data?.total || rows.length))
+        setPage(Number(data?.page || p))
+      } else {
+        setItems([])
+        setTotal(0)
+      }
+    } catch {
+      setItems([])
+      setTotal(0)
+    } finally {
+      setLoading(false)
+    }
+  }, [pageSize, fromDate, toDate, query, status, direction, userExtFilter])
 
-  const filtered = useMemo(() => {
-    // Simple client-side filter demo
-    return sampleRows.filter((r) => {
-      const byPhone = !phone || r.extension.includes(phone) || r.destination.includes(phone)
-      const byExt = !extension || r.source.includes(extension) || r.extension.includes(extension)
-      const byStatus = status === "all" || r.disposition === status
-      const byType = callType === "all" // placeholder
-      const byFrom = !fromDate || r.startTime >= fromDate
-      const byTo = !toDate || r.startTime <= toDate
-      return byPhone && byExt && byStatus && byType && byFrom && byTo
-    })
-  }, [phone, extension, status, callType, fromDate, toDate])
+  React.useEffect(() => { fetchMine(page) }, [fetchMine, page])
 
-  const onSearch = () => {}
-  const onReset = () => {
-    setFromDate("")
-    setToDate("")
-    setStatus("all")
-    setPhone("")
-    setExtension("")
-    setCallType("")
+  React.useEffect(() => {
+    ;(async () => {
+      try {
+        // Prefer manager-accessible agents list, fallback to superadmin users list
+        const tryFetch = async (url: string) => {
+          const r = await fetch(url, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
+          if (!r.ok) throw new Error(String(r.status))
+          return r.json()
+        }
+        let data: any = null
+        try {
+          data = await tryFetch(`${API_BASE}/api/staff/agents`)
+        } catch {
+          try { data = await tryFetch(`${API_BASE}/api/users`) } catch { data = null }
+        }
+        if (data) {
+          const map: Record<string, string> = {}
+          const list: any[] = data?.users || []
+          for (const u of list) {
+            const ext = u?.extension ?? u?.extensionId ?? u?.sip_extension
+            const name = u?.username || u?.usermail || u?.unique_user_id || u?.name || u?.email
+            if (ext && name) map[String(ext).trim()] = String(name)
+          }
+          setExtToUser(map)
+        }
+      } catch {}
+    })()
+  }, [])
+
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const toUtc = (iso?: string | null) => {
+    if (!iso) return '-'
+    try {
+      const d = new Date(iso)
+      const yyyy = d.getUTCFullYear()
+      const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
+      const dd = String(d.getUTCDate()).padStart(2, '0')
+      const hh = String(d.getUTCHours()).padStart(2, '0')
+      const mi = String(d.getUTCMinutes()).padStart(2, '0')
+      const ss = String(d.getUTCSeconds()).padStart(2, '0')
+      return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`
+    } catch { return iso }
   }
-  const onDownloadRow = (row: CdrRow) => {
-    console.log("download row", row)
+  const fmtDur = (n?: number | null) => (n ?? null) !== null ? `${n} Sec` : '-'
+  const toUtcTime = (iso?: string | null) => {
+    if (!iso) return '-'
+    try {
+      const d = new Date(iso)
+      const hh = String(d.getUTCHours()).padStart(2, '0')
+      const mi = String(d.getUTCMinutes()).padStart(2, '0')
+      const ss = String(d.getUTCSeconds()).padStart(2, '0')
+      return `${hh}:${mi}:${ss}`
+    } catch { return iso }
   }
-  const onDownloadRange = () => {
-    console.log("download range", { fromDate, toDate })
+
+  const badgeFor = (d?: string | null) => {
+    const v = (d || '').toUpperCase()
+    const cls = v === 'ANSWERED'
+      ? 'bg-green-100 text-green-700'
+      : v === 'NO ANSWER'
+      ? 'bg-gray-100 text-gray-700'
+      : v === 'BUSY'
+      ? 'bg-amber-100 text-amber-700'
+      : v === 'FAILED' || v === 'REJECTED'
+      ? 'bg-red-100 text-red-700'
+      : 'bg-slate-100 text-slate-700'
+    const label = v ? v.charAt(0) + v.slice(1).toLowerCase() : '-'
+    return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{label}</span>
+  }
+
+  const guessExt = (ct: string | null) => {
+    if (!ct) return '.webm'
+    const m: Record<string, string> = {
+      'audio/webm': '.webm',
+      'audio/ogg': '.ogg',
+      'audio/mpeg': '.mp3',
+      'audio/wav': '.wav',
+      'video/webm': '.webm',
+    }
+    return m[ct] || '.webm'
+  }
+
+  const downloadRecording = React.useCallback(async (url: string, id: string | number) => {
+    try {
+      const res = await fetch(url, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
+      if (!res.ok) throw new Error(String(res.status))
+      const ct = res.headers.get('content-type')
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = `recording_${id}${guessExt(ct)}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(objectUrl)
+    } catch {
+      // no-op
+    }
+  }, [])
+
+  const WaveBars: React.FC<{ active: boolean }> = ({ active }) => (
+    <div className="flex items-end gap-[1px] h-3 w-12">
+      {[0.4, 0.6, 0.8, 1, 0.7, 0.5, 0.6, 0.8, 1, 0.8, 0.6, 0.4].map((height, i) => (
+        <span 
+          key={i} 
+          style={{ 
+            height: `${height * 100}%`,
+            animation: active ? `wave 0.7s ${0.05 * i}s infinite ease-in-out` : 'none',
+            animationFillMode: active ? 'both' : 'forwards',
+          }} 
+          className="w-[1px] bg-foreground/70 rounded-sm origin-bottom"
+        />
+      ))}
+      <style jsx>{`
+        @keyframes wave { 
+          0% { transform: scaleY(0.4); }
+          50% { transform: scaleY(1.2); }
+          100% { transform: scaleY(0.4); } 
+        }
+      `}</style>
+    </div>
+  )
+
+  const CompactAudio: React.FC<{ src: string; name: string | number }> = ({ src, name }) => {
+    const audioRef = React.useRef<HTMLAudioElement>(null)
+    const [playing, setPlaying] = React.useState(false)
+    const [progress, setProgress] = React.useState(0)
+    const [dur, setDur] = React.useState(0)
+    const toggle = () => {
+      const a = audioRef.current
+      if (!a) return
+      if (a.paused) { a.play(); } else { a.pause(); }
+    }
+    React.useEffect(() => {
+      const a = audioRef.current
+      if (!a) return
+      const onPlay = () => setPlaying(true)
+      const onPause = () => setPlaying(false)
+      const onTime = () => { setProgress(a.currentTime); setDur(a.duration || 0) }
+      a.addEventListener('play', onPlay)
+      a.addEventListener('pause', onPause)
+      a.addEventListener('timeupdate', onTime)
+      a.addEventListener('loadedmetadata', onTime)
+      return () => {
+        a.removeEventListener('play', onPlay)
+        a.removeEventListener('pause', onPause)
+        a.removeEventListener('timeupdate', onTime)
+        a.removeEventListener('loadedmetadata', onTime)
+      }
+    }, [])
+    const pct = dur ? Math.min(100, (progress/dur)*100) : 0
+    const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+      const a = audioRef.current
+      if (!a || !dur) return
+      const rect = (e.target as HTMLDivElement).getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const ratio = Math.max(0, Math.min(1, x / rect.width))
+      a.currentTime = ratio * dur
+    }
+    return (
+      <div className="flex items-center gap-2 w-full max-w-sm">
+      <button 
+        onClick={toggle} 
+        className="text-foreground hover:bg-accent/50 rounded p-1 transition-colors focus:outline-none"
+        aria-label={playing ? 'Pause' : 'Play'}
+      >
+        {playing ? (
+          <Pause className="h-3.5 w-3.5" strokeWidth={2.5} />
+        ) : (
+          <Play className="h-3.5 w-3.5 ml-0.5" strokeWidth={2.5} />
+        )}
+      </button>
+      
+      <div className="flex-1 min-w-0 flex items-center">
+        <div className="hidden lg:block">
+          <WaveBars active={playing} />
+        </div>
+      </div>
+      
+      <div className="text-[11px] tabular-nums text-muted-foreground w-8 text-right">
+        {Math.floor(progress)}s
+      </div>
+      
+      <audio ref={audioRef} src={src} preload="none" />
+      
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button 
+              className="text-muted-foreground hover:bg-accent/50 rounded p-1 transition-colors focus:outline-none"
+              onClick={(e) => {
+                e.stopPropagation();
+                downloadRecording(src, name);
+              }} 
+              aria-label="Download"
+            >
+              <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Download</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+    )
   }
 
   return (
@@ -86,175 +326,188 @@ export default function CdrPage() {
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="/dashboard/manager">Manager</BreadcrumbLink>
+                  <BreadcrumbLink href="/dashboard/agent">Agent</BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="/dashboard/manager/call-management">Call Management</BreadcrumbLink>
+                  <BreadcrumbLink href="/dashboard/agent/my-calls">My Calls</BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem>
-                  <BreadcrumbPage>CDR</BreadcrumbPage>
+                  <BreadcrumbPage>Call History</BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <Card>
-            <CardHeader className="pb-0" />
-            <CardContent>
-              <Tabs value={tab} onValueChange={setTab} className="w-full">
-                <TabsList className="mb-4 mt-0 flex gap-2 rounded-md border bg-muted/50 p-1">
-                  <TabsTrigger
-                    value="history"
-                    className="inline-flex items-center gap-2 rounded-md px-4 py-2 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
-                  >
-                    <History className="h-4 w-4" />
-                    Call History
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="download"
-                    className="inline-flex items-center gap-2 rounded-md px-4 py-2 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
-                  >
-                    <Download className="h-4 w-4" />
-                    Download
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="history" className="space-y-4 mt-3 pt-3">
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-9">
-                    <div className="lg:col-span-3 space-y-1">
-                      <Label>From Date</Label>
-                      <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-                    </div>
-                    <div className="lg:col-span-3 space-y-1">
-                      <Label>To Date</Label>
-                      <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-                    </div>
-                    <div className="lg:col-span-3 space-y-1">
-                      <Label>Phone No.</Label>
-                      <Input placeholder="Enter Name" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                    </div>
-                    <div className="lg:col-span-3 space-y-1">
-                      <Label>Extension</Label>
-                      <Input placeholder="Enter Caller ID" value={extension} onChange={(e) => setExtension(e.target.value)} />
-                    </div>
-                    <div className="lg:col-span-3 space-y-1">
-                      <Label>Status</Label>
-                      <Select value={status} onValueChange={setStatus}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All</SelectItem>
-                          <SelectItem value="ANSWERED">ANSWERED</SelectItem>
-                          <SelectItem value="NO ANSWER">NO ANSWER</SelectItem>
-                          <SelectItem value="BUSY">BUSY</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="lg:col-span-3 space-y-1">
-                      <Label>Call Type</Label>
-                      <Select value={callType} onValueChange={setCallType}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Call Type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All</SelectItem>
-                          <SelectItem value="inbound">Inbound</SelectItem>
-                          <SelectItem value="outbound">Outbound</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button onClick={onSearch}>Search</Button>
-                    <Button variant="outline" onClick={onReset}>Reset</Button>
-                  </div>
-
-                  <div className="rounded-md border overflow-hidden">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[60px]">ID</TableHead>
-                          <TableHead className="w-[140px]">Extension</TableHead>
-                          <TableHead className="w-[180px]">Destination Number</TableHead>
-                          <TableHead className="w-[160px]">Source</TableHead>
-                          <TableHead className="w-[180px]">Start Time</TableHead>
-                          <TableHead className="w-[180px]">End Time</TableHead>
-                          <TableHead className="w-[130px]">Call Duration</TableHead>
-                          <TableHead className="w-[140px]">Call Disposition</TableHead>
-                          <TableHead className="w-[120px] text-center">Download</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filtered.map((row, idx) => (
-                          <TableRow key={`${row.id}-${idx}`}>
-                            <TableCell>{idx + 1}</TableCell>
-                            <TableCell>{row.extension}</TableCell>
-                            <TableCell>{row.destination}</TableCell>
-                            <TableCell>{row.source}</TableCell>
-                            <TableCell>{row.startTime}</TableCell>
-                            <TableCell>{row.endTime}</TableCell>
-                            <TableCell>{row.durationSec} Sec</TableCell>
-                            <TableCell>
-                              {row.disposition === "ANSWERED" ? (
-                                <Badge className="bg-green-600 hover:bg-green-700">ANSWERED</Badge>
-                              ) : row.disposition === "BUSY" ? (
-                                <Badge className="bg-yellow-600 hover:bg-yellow-700">BUSY</Badge>
-                              ) : (
-                                <Badge className="bg-gray-500 hover:bg-gray-600">NO ANSWER</Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Button size="sm" variant="outline" onClick={() => onDownloadRow(row)}>
-                                <Download className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        {filtered.length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                              No records found.
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-
-                  <div className="flex items-center justify-center gap-1 pt-2">
-                    {Array.from({ length: 10 }).map((_, i) => (
-                      <Button key={i} variant={i === 0 ? "default" : "outline"} size="sm" className={i === 0 ? "bg-blue-600 hover:bg-blue-700" : ""}>
-                        {i + 1}
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0"> 
+          
+          <div className="p-6">
+            <div className="mb-4 rounded-md border bg-muted/20 p-3 relative">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center pr-12">
+                <div className="flex flex-col gap-1">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="h-9 w-full sm:w-[220px] md:w-[240px] justify-between font-normal">
+                        {range?.from && range?.to
+                          ? `${range.from.toLocaleDateString()} - ${range.to.toLocaleDateString()}`
+                          : 'Select date'}
+                        <ChevronDownIcon className="ml-2 size-4" />
                       </Button>
-                    ))}
-                  </div>
-                </TabsContent>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="range"
+                        selected={range}
+                        captionLayout="dropdown"
+                        onSelect={(r) => {
+                          setRange(r)
+                          const f = r?.from ? new Date(r.from) : undefined
+                          const t = r?.to ? new Date(r.to) : r?.from ? new Date(r.from) : undefined
+                          if (f) setFromDate(f.toISOString().slice(0,10))
+                          if (t) setToDate(t.toISOString().slice(0,10))
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <Input className="h-9 w-full sm:w-[260px] md:w-[300px]" placeholder="Search phone or extension" value={query} onChange={e => setQuery(e.target.value)} />
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger className="h-9 w-[130px] md:w-[140px]"><SelectValue placeholder="Select Status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="ANSWERED">Answered</SelectItem>
+                    <SelectItem value="NO ANSWER">No answer</SelectItem>
+                    <SelectItem value="BUSY">Busy</SelectItem>
+                    <SelectItem value="FAILED">Failed</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={direction} onValueChange={setDirection}>
+                  <SelectTrigger className="h-9 w-[130px] md:w-[140px]"><SelectValue placeholder="Select Call Type" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="inbound">Inbound</SelectItem>
+                    <SelectItem value="outbound">Outbound</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={userExtFilter} onValueChange={setUserExtFilter}>
+                  <SelectTrigger className="h-9 w-[180px] md:w-[200px]"><SelectValue placeholder="Filter by User" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Users</SelectItem>
+                    {Object.entries(extToUser)
+                      .sort((a, b) => a[1].localeCompare(b[1]))
+                      .map(([ext, name]) => (
+                        <SelectItem key={ext} value={ext}>{name} ({ext})</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Button className="h-9" onClick={() => { setPage(1); fetchMine(1) }}>Search</Button>
+                <div className="flex items-center justify-end absolute right-3 top-3">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => { setPage(1); fetchMine(1) }} aria-label="Refresh">
+                          <RefreshCcw className="size-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Refresh</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              </div>
+            </div>
 
-                <TabsContent value="download" className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-12">
-                    <div className="lg:col-span-3 space-y-1">
-                      <Label>From Date</Label>
-                      <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-                    </div>
-                    <div className="lg:col-span-3 space-y-1">
-                      <Label>To Date</Label>
-                      <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-                    </div>
-                  </div>
-                  <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={onDownloadRange}>Download</Button>
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
+            <div className="mt-4 overflow-x-auto rounded-lg border">
+              <table className="min-w-full text-xs md:text-sm table-auto">
+                <thead className="bg-muted sticky top-0 z-10">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">ID</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">User</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Destination Number</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Start Time (UTC)</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">End Time (UTC)</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Call Duration</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Call Disposition</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Recording</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {items.length === 0 && (
+                    <tr>
+                      <td className="px-3 py-6 text-center text-muted-foreground" colSpan={8}>
+                        {loading ? 'Loading…' : 'No records'}
+                      </td>
+                    </tr>
+                  )}
+                  {Object.entries(
+                    items
+                      .map(r => ({ ...r, username: r.extension ? (extToUser[String(r.extension).trim()] || null) : null }))
+                      .sort((a: any, b: any) => {
+                        const ua = (a.username || 'ZZZ').toLowerCase()
+                        const ub = (b.username || 'ZZZ').toLowerCase()
+                        if (ua < ub) return -1
+                        if (ua > ub) return 1
+                        return new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
+                      })
+                      .reduce((acc: Record<string, any[]>, row: any) => {
+                        const u = row.username || 'Unassigned'
+                        acc[u] = acc[u] || []
+                        acc[u].push(row)
+                        return acc
+                      }, {})
+                  ).map(([user, userList]) => (
+                    <React.Fragment key={user}>
+                      <tr className="bg-muted/40">
+                        <td className="px-3 py-2 text-xs font-medium text-muted-foreground" colSpan={8}>{user}</td>
+                      </tr>
+                      {Object.entries(userList.reduce((acc: Record<string, any[]>, row: any) => {
+                        const d = toUtc(row.start_time).slice(0,10)
+                        acc[d] = acc[d] || []
+                        acc[d].push(row)
+                        return acc
+                      }, {})).map(([day, list]) => (
+                        <React.Fragment key={`${user}-${day}`}>
+                          <tr className="bg-muted/20">
+                            <td className="px-3 py-2 text-xs font-medium text-muted-foreground" colSpan={8}>{day}</td>
+                          </tr>
+                          {list.map((row: any, i: number) => (
+                            <tr key={String(row.id)} className="hover:bg-accent/50 even:bg-muted/5">
+                              <td className="px-3 py-2">{i + 1}</td>
+                              <td className="px-3 py-2">{row.username || '-'}</td>
+                              <td className="px-3 py-2 max-w-[140px] md:max-w-[200px] truncate">{row.destination || '-'}</td>
+                              <td className="px-3 py-2 whitespace-nowrap">{toUtcTime(row.start_time)}</td>
+                              <td className="px-3 py-2 whitespace-nowrap">{toUtcTime(row.end_time)}</td>
+                              <td className="px-3 py-2 whitespace-nowrap">{fmtDur(row.call_duration)}</td>
+                              <td className="px-3 py-2 whitespace-nowrap">{badgeFor(row.disposition)}</td>
+                              <td className="px-3 py-2">
+                                {row.recording_url ? (
+                                  <CompactAudio src={row.recording_url} name={row.id} />
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-center mt-4 gap-2">
+              {Array.from({ length: pageCount }).map((_, i) => (
+                <Button key={i} variant="outline" size="sm" onClick={() => setPage(i + 1)} disabled={page === i + 1}>
+                  {i + 1}
+                </Button>
+              ))}
+            </div>
+          </div>
         </div>
       </SidebarInset>
     </SidebarProvider>
-  )
-}
+  );
+};
 
+export default CallHistory;
