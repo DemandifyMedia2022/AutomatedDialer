@@ -54,6 +54,7 @@ model calls {
   data_source_type String?       @db.VarChar(255)
   created_at       DateTime      @default(now()) @db.Timestamp(0)
   updated_at       DateTime      @default(now()) @db.Timestamp(0)
+  notes            notes[]
   transcripts      transcripts[]
 }
 
@@ -83,16 +84,19 @@ model extensions {
 }
 
 model users {
-  id             Int       @id @default(autoincrement())
-  role           String?   @db.VarChar(255)
-  unique_user_id String?   @unique(map: "unique_user_name") @db.VarChar(255)
-  username       String?   @db.VarChar(255)
-  usermail       String?   @db.VarChar(255)
-  password       String?   @db.VarChar(255)
-  extension      String?   @db.VarChar(255)
-  status         String?   @db.VarChar(255)
-  created_at     DateTime? @db.Timestamp(6)
-  updated_at     DateTime? @db.Timestamp(6)
+  id              Int               @id @default(autoincrement())
+  role            String?           @db.VarChar(255)
+  unique_user_id  String?           @unique(map: "unique_user_name") @db.VarChar(255)
+  username        String?           @db.VarChar(255)
+  usermail        String?           @db.VarChar(255)
+  password        String?           @db.VarChar(255)
+  extension       String?           @db.VarChar(255)
+  status          String?           @db.VarChar(255)
+  created_at      DateTime?         @db.Timestamp(6)
+  updated_at      DateTime?         @db.Timestamp(6)
+  document_shares document_shares[]
+  documents       documents[]
+  notes           notes[]
 }
 
 model transcripts {
@@ -126,4 +130,112 @@ model agentic_csv_files {
   active     Boolean  @default(false)
   created_at DateTime @default(now()) @db.Timestamp(0)
   updated_at DateTime @default(now()) @db.Timestamp(0)
+}
+
+model dialing_contacts {
+  id             BigInt                  @id @default(autoincrement())
+  campaign_id    BigInt?
+  csv_name       String?                 @db.VarChar(255)
+  phone          String                  @db.VarChar(64)
+  name           String?                 @db.VarChar(255)
+  email          String?                 @db.VarChar(255)
+  company        String?                 @db.VarChar(255)
+  job_title      String?                 @db.VarChar(255)
+  job_level      String?                 @db.VarChar(64)
+  region         String?                 @db.VarChar(64)
+  remarks        String?                 @db.Text
+  priority       Int?                    @default(0)
+  timezone       String?                 @db.VarChar(64)
+  consent        Boolean?
+  status         dialing_contacts_status @default(PENDING)
+  attempts       Int                     @default(0)
+  last_called_at DateTime?               @db.DateTime(0)
+  created_at     DateTime                @default(now()) @db.DateTime(0)
+  updated_at     DateTime                @default(now()) @db.DateTime(0)
+}
+
+model document_shares {
+  document_id Int
+  user_id     Int
+  can_view    Boolean   @default(true)
+  can_edit    Boolean   @default(false)
+  shared_at   DateTime  @default(now()) @db.Timestamp(0)
+  documents   documents @relation(fields: [document_id], references: [id], onDelete: Cascade, map: "fk_doc_shares_document")
+  users       users     @relation(fields: [user_id], references: [id], onDelete: Cascade, map: "fk_doc_shares_user")
+
+  @@id([document_id, user_id])
+  @@index([user_id], map: "idx_doc_shares_user")
+}
+
+model documents {
+  id               Int                  @id @default(autoincrement())
+  type             documents_type       @default(guide)
+  title            String               @db.VarChar(255)
+  description      String               @db.Text
+  file_url         String?              @db.VarChar(2000)
+  file_mime        String?              @db.VarChar(255)
+  file_size_bytes  BigInt?
+  content_richtext String?              @db.LongText
+  version          Int                  @default(1)
+  tags_csv         String               @default("") @db.VarChar(500)
+  created_by       Int
+  visibility       documents_visibility @default(org)
+  created_at       DateTime             @default(now()) @db.Timestamp(0)
+  updated_at       DateTime             @default(now()) @db.Timestamp(0)
+  document_shares  document_shares[]
+  users            users                @relation(fields: [created_by], references: [id], map: "fk_documents_user")
+
+  @@index([created_by], map: "idx_documents_created_by")
+  @@index([type], map: "idx_documents_type")
+  @@index([visibility], map: "idx_documents_visibility")
+}
+
+model notes {
+  id         Int              @id @default(autoincrement())
+  user_id    Int
+  call_id    BigInt?
+  phone_e164 String           @default("") @db.VarChar(32)
+  title      String           @db.VarChar(255)
+  body       String           @db.Text
+  tags_csv   String           @default("") @db.VarChar(500)
+  visibility notes_visibility @default(private)
+  created_at DateTime         @default(now()) @db.Timestamp(0)
+  updated_at DateTime         @default(now()) @db.Timestamp(0)
+  calls      calls?           @relation(fields: [call_id], references: [id], map: "fk_notes_call")
+  users      users            @relation(fields: [user_id], references: [id], onDelete: Cascade, map: "fk_notes_user")
+
+  @@index([call_id], map: "idx_notes_call_id")
+  @@index([phone_e164], map: "idx_notes_phone")
+  @@index([user_id, created_at], map: "idx_notes_user_created")
+}
+
+enum documents_type {
+  template
+  guide
+  playbook
+  snippet
+  other
+}
+
+enum notes_visibility {
+  private
+  team
+  public
+}
+
+enum documents_visibility {
+  private
+  org
+  public
+}
+
+enum dialing_contacts_status {
+  PENDING
+  CALLING
+  ANSWERED
+  BUSY
+  NO_ANSWER
+  FAILED
+  COMPLETED
+  SKIPPED
 }

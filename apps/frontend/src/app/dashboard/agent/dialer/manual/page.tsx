@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Script from "next/script"
 import { Phone, PhoneOff, Mic, MicOff, Trash2, Search, Pause, UserPlus, Grid2X2, PhoneCall } from "lucide-react"
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -29,18 +30,30 @@ export default function ManualDialerPage() {
   const [ext, setExt] = useState("")
   const [pwd, setPwd] = useState("")
   const [number, setNumber] = useState("")
+  const [countryCode, setCountryCode] = useState("+91")
   const [status, setStatus] = useState("Idle")
   const [error, setError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
   const [showPopup, setShowPopup] = useState(false)
+  const [callHistory, setCallHistory] = useState<any[]>([])
+  const lastDialedNumber = useMemo(() => {
+    if (typeof window === "undefined") return null
+    return localStorage.getItem("lastDialedNumber")
+  }, [])
+  const historyToShow = useMemo(() => {
+    if (!Array.isArray(callHistory)) return []
+    return callHistory.slice(0, 5)
+  }, [callHistory])
 
-  // Notes state (local only UI)
-  const [notes, setNotes] = useState<Array<{ id: string; text: string; phone?: string; at: string }>>([
-    { id: "n1", text: "Discussed pricing and next steps. Client interested in enterprise plan.", phone: "+15551234567", at: "2024-01-20 14:30" },
-    { id: "n2", text: "Follow up needed on proposal delivery.", phone: "+15559876543", at: "2024-01-19 10:15" },
-  ])
+  // Notes state
+  const [notes, setNotes] = useState<Array<{ id: string; text: string; phone?: string; at: string }>>([])
   const [newNote, setNewNote] = useState("")
+  // Documents state
+  const [docs, setDocs] = useState<any[]>([])
+  const [docsLoading, setDocsLoading] = useState(false)
+  const [docQuery, setDocQuery] = useState("")
+  const [previewDoc, setPreviewDoc] = useState<any | null>(null)
 
   // Draggable in-call popup position
   const [popupPos, setPopupPos] = useState<{ x: number; y: number }>({ x: 420, y: 160 })
@@ -75,10 +88,17 @@ export default function ManualDialerPage() {
   const busyOsc2Ref = useRef<OscillatorNode | null>(null)
   const busyTimerRef = useRef<number | null>(null)
 
-  const lastDialedNumber = useMemo(() => {
-    if (typeof window === "undefined") return null
-    return localStorage.getItem("lastDialedNumber")
-  }, [])
+  const appliedLastDialOnce = useRef(false)
+
+  // Post-call disposition modal state
+  const [showDisposition, setShowDisposition] = useState(false)
+  const [disposition, setDisposition] = useState("")
+  const [pendingUploadExtra, setPendingUploadExtra] = useState<any>(null)
+
+  const currentPhone = useMemo(() => {
+    const dialNum = number ? `${countryCode}${number}` : (lastDialedNumber || "")
+    return dialNum || ""
+  }, [countryCode, number, lastDialedNumber])
 
   function isBusyCause(cause: any, code?: number, reason?: string): boolean {
     const c = String(cause || '').toLowerCase()
@@ -87,8 +107,105 @@ export default function ManualDialerPage() {
   }
 
   useEffect(() => {
-    if (lastDialedNumber && !number) setNumber(lastDialedNumber)
-  }, [lastDialedNumber, number])
+    // Load saved country code early
+    try {
+      const savedCc = localStorage.getItem('dial_cc')
+      if (savedCc) setCountryCode(savedCc)
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (!appliedLastDialOnce.current && lastDialedNumber) {
+      // If last saved value has country code, split it into cc + local heuristically
+      const m = lastDialedNumber.match(/^\+(\d{1,3})(\d+)$/)
+      if (m) {
+        setCountryCode(`+${m[1]}`)
+        setNumber(m[2])
+      } else {
+        setNumber(lastDialedNumber)
+      }
+      appliedLastDialOnce.current = true
+    }
+  }, [lastDialedNumber])
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies()
+        if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const res = await fetch(`${API_PREFIX}/calls?limit=5`, { headers, credentials })
+      if (!res.ok) return
+      const data = await res.json().catch(() => null) as any
+      const list = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.items)
+        ? data.items
+        : (Array.isArray(data) ? data : [])
+      setCallHistory(list)
+    } catch {}
+  }, [])
+
+  useEffect(() => { fetchHistory() }, [fetchHistory])
+
+  // Notes: fetch for current phone (or user's recent if none)
+  const fetchNotes = useCallback(async () => {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies()
+        if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const qs = new URLSearchParams()
+      qs.set('limit', '20')
+      if (currentPhone) qs.set('phone', currentPhone)
+      const res = await fetch(`${API_PREFIX}/notes?${qs.toString()}`, { headers, credentials })
+      if (!res.ok) return
+      const data = await res.json().catch(() => null) as any
+      const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : [])
+      const mapped = items.map((n: any) => ({ id: String(n.id), text: String(n.body || ''), phone: n.phone_e164 || undefined, at: (n.created_at || new Date().toISOString()).slice(0,16).replace('T',' ') }))
+      setNotes(mapped)
+    } catch {}
+  }, [currentPhone])
+
+  useEffect(() => { fetchNotes() }, [fetchNotes])
+
+  // Documents: fetch manager playbook/docs visible to agent (public/org)
+  const fetchDocs = useCallback(async () => {
+    try {
+      setDocsLoading(true)
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+      } else {
+        const t = getToken(); if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const qs = new URLSearchParams({ page: '1', pageSize: '12' })
+      if (docQuery) qs.set('q', docQuery)
+      const res = await fetch(`${API_PREFIX}/documents?${qs.toString()}`, { headers, credentials })
+      if (!res.ok) { setDocs([]); return }
+      const data = await res.json().catch(() => null) as any
+      setDocs(Array.isArray(data?.items) ? data.items : [])
+    } catch {
+      setDocs([])
+    } finally {
+      setDocsLoading(false)
+    }
+  }, [docQuery])
+
+  useEffect(() => { fetchDocs() }, [fetchDocs])
 
   // Auto-fetch agent SIP credentials from backend and auto-login
   useEffect(() => {
@@ -114,6 +231,10 @@ export default function ManualDialerPage() {
         if (aborted) return
         setExt(data.extensionId)
         setPwd(data.password)
+        try {
+          localStorage.setItem('dial_ext', data.extensionId)
+          localStorage.setItem('dial_cc', countryCode)
+        } catch {}
         await startUA(data.extensionId, data.password)
       } catch (e: any) {
         if (!aborted) setError(e?.message || 'Auto login failed')
@@ -254,15 +375,14 @@ export default function ManualDialerPage() {
         clearTimer()
         setShowPopup(false)
         if (!uploadedOnceRef.current) {
-          uploadedOnceRef.current = true
           const code = Number(e?.response?.status_code || 0)
           const reason = e?.response?.reason_phrase || String(e?.cause || '')
           const isBusy = isBusyCause(e?.cause, code, reason)
           if (isBusy) {
             try { await startBusyTone(); setTimeout(() => stopBusyTone(), 3000) } catch {}
           }
-          // Do NOT send disposition; let backend infer BUSY/NO ANSWER from hints
-          await stopRecordingAndUpload({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : undefined })
+          setPendingUploadExtra({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : undefined })
+          setShowDisposition(true)
         }
       })
       session.on("ended", async () => {
@@ -271,9 +391,8 @@ export default function ManualDialerPage() {
         clearTimer()
         setShowPopup(false)
         if (!uploadedOnceRef.current) {
-          uploadedOnceRef.current = true
-          // Do NOT send disposition; backend will infer ANSWERED vs NO ANSWER from timings
-          await stopRecordingAndUpload({})
+          setPendingUploadExtra({})
+          setShowDisposition(true)
         }
       })
     })
@@ -294,6 +413,23 @@ export default function ManualDialerPage() {
     const mm = String(Math.floor(diff / 60)).padStart(2, "0")
     const ss = String(diff % 60).padStart(2, "0")
     return `${mm}:${ss}`
+  }
+
+  const timeAgo = (iso?: string | null) => {
+    try {
+      if (!iso) return 'just now'
+      const t = new Date(iso).getTime()
+      if (!isFinite(t)) return 'just now'
+      const s = Math.max(0, Math.floor((Date.now() - t) / 1000))
+      if (s < 5) return 'just now'
+      if (s < 60) return `${s} sec ago`
+      const m = Math.floor(s / 60)
+      if (m < 60) return m === 1 ? '1 min ago' : `${m} mins ago`
+      const h = Math.floor(m / 60)
+      if (h < 24) return h === 1 ? '1 hr ago' : `${h} hrs ago`
+      const d = Math.floor(h / 24)
+      return d === 1 ? '1 day ago' : `${d} days ago`
+    } catch { return 'just now' }
   }
 
   const onLogin = async (_e?: React.FormEvent) => {}
@@ -414,7 +550,8 @@ export default function ManualDialerPage() {
       uploadedOnceRef.current = false
       dialStartRef.current = Date.now()
       await ensureAudioCtx()
-      lastDialDestinationRef.current = number || null
+      const dialNum = `${countryCode}${number}`
+      lastDialDestinationRef.current = dialNum || null
       // Show popup immediately when dialing and center it
       setShowPopup(true)
       try {
@@ -424,8 +561,12 @@ export default function ManualDialerPage() {
         const py = Math.max(60, Math.floor(h / 2 - 120))
         setPopupPos({ x: px, y: py })
       } catch {}
-      uaRef.current.call(numberToSipUri(number, ext), options)
-      localStorage.setItem("lastDialedNumber", number)
+      // For many SIP servers, the user part should not include '+'
+      const sipUser = dialNum.replace(/^\+/, '')
+      uaRef.current.call(numberToSipUri(sipUser, ext), options)
+      localStorage.setItem("lastDialedNumber", dialNum)
+      // Optimistically show in recent history
+      setCallHistory((prev) => [{ destination: dialNum, end_time: null }, ...prev].slice(0, 5))
     } catch (e: any) {
       setError(e?.message || "Call start error")
     }
@@ -436,8 +577,8 @@ export default function ManualDialerPage() {
     stopRingback()
     setShowPopup(false)
     if (!uploadedOnceRef.current) {
-      uploadedOnceRef.current = true
-      await stopRecordingAndUpload({})
+      setPendingUploadExtra({})
+      setShowDisposition(true)
     }
   }
 
@@ -571,6 +712,7 @@ export default function ManualDialerPage() {
     if (extra.sip_reason) form.append('sip_reason', extra.sip_reason)
     if (extra.hangup_cause) form.append('hangup_cause', extra.hangup_cause)
     form.append('platform', 'web')
+    if (disposition) form.append('disposition', disposition)
 
     if (blob) form.append('recording', blob, `call_${Date.now()}.webm`)
 
@@ -590,6 +732,8 @@ export default function ManualDialerPage() {
         const text = await res.text().catch(() => '')
         console.warn('Upload call record failed', res.status, text)
       }
+      // Refresh recent history
+      try { await fetchHistory() } catch {}
     } catch (e) {
       console.warn('Failed to upload call record', e)
     }
@@ -608,6 +752,14 @@ export default function ManualDialerPage() {
       sendDTMF(digit)
     } else {
       setNumber((prev) => (prev + digit).slice(0, 32))
+    }
+  }
+
+  const onAlpha = (a: string) => {
+    if (status.startsWith("In Call")) {
+      sendDTMF(a)
+    } else {
+      setNumber((prev) => (prev + a).slice(0, 32))
     }
   }
 
@@ -634,13 +786,50 @@ export default function ManualDialerPage() {
     window.removeEventListener("mouseup", onPopupMouseUp)
   }
 
-  const addNote = () => {
+  const addNote = async () => {
     if (!newNote.trim()) return
-    setNotes((n) => [{ id: cryptoRandom(), text: newNote.trim(), phone: number || lastDialedNumber || undefined, at: new Date().toISOString().slice(0,16).replace('T',' ') }, ...n])
-    setNewNote("")
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies()
+        if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const payload = { title: newNote.trim().slice(0, 80), body: newNote.trim(), phone_e164: currentPhone, tags_csv: '' }
+      const res = await fetch(`${API_PREFIX}/notes`, { method: 'POST', headers, credentials, body: JSON.stringify(payload) })
+      if (!res.ok) throw new Error('Failed to save note')
+      const saved = await res.json()
+      const mapped = { id: String(saved.id), text: String(saved.body || newNote.trim()), phone: saved.phone_e164 || currentPhone || undefined, at: (saved.created_at || new Date().toISOString()).slice(0,16).replace('T',' ') }
+      setNotes((n) => [mapped, ...n])
+      setNewNote("")
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save note')
+    }
   }
 
-  const removeNote = (id: string) => setNotes((n) => n.filter((x) => x.id !== id))
+  const removeNote = async (id: string) => {
+    try {
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies()
+        if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const res = await fetch(`${API_PREFIX}/notes/${encodeURIComponent(id)}`, { method: 'DELETE', headers, credentials })
+      if (!res.ok) throw new Error('Failed to delete note')
+      setNotes((n) => n.filter((x) => x.id !== id))
+    } catch (e: any) {
+      setError(e?.message || 'Failed to delete note')
+    }
+  }
 
   return (
     <SidebarProvider>
@@ -665,37 +854,65 @@ export default function ManualDialerPage() {
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
-            <div className="ml-auto flex items-center gap-2">
-              <span className={`text-xs px-2 py-1 rounded ${status.includes("Registered") ? "bg-emerald-100 text-emerald-800" : status.includes("Connected") ? "bg-blue-100 text-blue-800" : status.includes("Call") ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-800"}`}>{status}</span>
-            </div>
+            {/* status badge removed per request */}
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+        <div className="flex flex-1 flex-col gap-2 p-4 pt-0">
           <Script src="/js/jssip.min.js" strategy="afterInteractive" onLoad={() => setIsLoaded(true)} />
 
           {error && (
             <Card className="border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error}</Card>
           )}
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-2 lg:grid-cols-3">
             {/* Dialer */}
-            <Card className="p-5 lg:col-span-1">
+            <Card className="p-4 lg:col-span-1">
               <div className="mb-2 text-base font-semibold">Dialer</div>
-              <div className="mb-4">
+              <div className="mb-3">
                 <Label className="text-xs text-muted-foreground">Phone Number</Label>
-                <Input className="mt-1 text-lg tracking-widest" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Enter phone number" />
+                <div className="mt-1 flex gap-2">
+                  <Select value={countryCode} onValueChange={(v) => { setCountryCode(v); try { localStorage.setItem('dial_cc', v) } catch {} }}>
+                    <SelectTrigger className="w-[110px]">
+                      <SelectValue placeholder="+91" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="+1">+1 US</SelectItem>
+                      <SelectItem value="+44">+44 UK</SelectItem>
+                      <SelectItem value="+61">+61 AU</SelectItem>
+                      <SelectItem value="+65">+65 SG</SelectItem>
+                      <SelectItem value="+91">+91 IN</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input className="flex-1 text-lg tracking-widest" value={number} onChange={(e) => setNumber(e.target.value.replace(/\D+/g, ""))} placeholder="Enter number" />
+                </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                {["1","2","3","4","5","6","7","8","9","*","0","#"].map((d) => (
-                  <Button key={d} variant="outline" className="h-14 text-lg font-medium" onClick={() => onDigit(d)}>
-                    {d}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  {d:"1", s:""},
+                  {d:"2", s:"ABC"},
+                  {d:"3", s:"DEF"},
+                  {d:"4", s:"GHI"},
+                  {d:"5", s:"JKL"},
+                  {d:"6", s:"MNO"},
+                  {d:"7", s:"PQRS"},
+                  {d:"8", s:"TUV"},
+                  {d:"9", s:"WXYZ"},
+                  {d:"*", s:""},
+                  {d:"0", s:"+"},
+                  {d:"#", s:""},
+                ].map(({d,s}) => (
+                  <Button key={d} variant="outline" className="h-14 flex flex-col items-center justify-center" onClick={() => onDigit(d)}>
+                    <span className="text-lg font-semibold leading-none">{d}</span>
+                    {s ? <span className="mt-0.5 text-[10px] tracking-widest text-muted-foreground">{s}</span> : null}
                   </Button>
                 ))}
               </div>
 
-              <div className="mt-5 flex items-center gap-3">
+              {/* Removed A-D DTMF keys per request */}
+
+              <div className="mt-2 flex items-center gap-2">
                 {status.startsWith("In Call") ? (
                   <Button onClick={hangup} variant="destructive" className="gap-2 flex-1">
                     <PhoneOff className="h-4 w-4" /> End Call
@@ -708,36 +925,47 @@ export default function ManualDialerPage() {
                 <Button variant="outline" onClick={() => setNumber("")}>Clear</Button>
               </div>
 
-              <div className="mt-4 text-xs text-center text-emerald-600 font-medium min-h-5">
+              <div className="mt-1 text-xs text-center text-emerald-600 font-medium">
                 {status.startsWith("In Call") ? `${elapsed() || "00:00"}` : null}
               </div>
 
               <audio ref={remoteAudioRef} autoPlay playsInline className="sr-only" />
 
-              <Separator className="my-4" />
+              <Separator className="my-1" />
               <div className="text-sm text-muted-foreground">History</div>
-              <div className="mt-2 space-y-2 text-sm">
-                <div className="flex items-center justify-between"><div className="flex items-center gap-2"><PhoneCall className="h-4 w-4 text-pink-600" /> John Smith</div><span className="text-blue-600">82%</span></div>
-                <div className="flex items-center justify-between"><div className="flex items-center gap-2"><PhoneCall className="h-4 w-4 text-pink-600" /> Jane Doe</div><span className="text-blue-600">65%</span></div>
-                <div className="flex items-center justify-between"><div className="flex items-center gap-2"><PhoneCall className="h-4 w-4 text-pink-600" /> Bob Johnson</div><span className="text-blue-600">45%</span></div>
+              <div className="mt-1 space-y-1 text-sm">
+                {historyToShow.length === 0 ? (
+                  <div className="text-xs text-muted-foreground">No recent calls</div>
+                ) : historyToShow.map((h: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between py-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <PhoneCall className="h-4 w-4 text-pink-600 shrink-0" />
+                      <div className="truncate">{h.destination || h.phone || h.number || "Unknown"}</div>
+                    </div>
+                    <div className="flex items-center gap-2 ml-2 shrink-0">
+                      {h.disposition ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground/80">{h.disposition}</span> : null}
+                      <div className="text-xs text-muted-foreground">{timeAgo(h.end_time || h.start_time || null)}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </Card>
 
             {/* Right column: Notes + Documents */}
-            <div className="lg:col-span-2 space-y-4">
+            <div className="lg:col-span-2 space-y-3">
               {/* Notes */}
               <Card className="p-0">
-                <div className="flex items-center justify-between px-5 py-4">
+                <div className="flex items-center justify-between px-4 py-3">
                   <div className="font-semibold">Notes</div>
                   <div className="text-xs text-muted-foreground">{notes.length} notes</div>
                 </div>
                 <Separator />
-                <Tabs defaultValue="all" className="px-5 py-4">
+                <Tabs defaultValue="all" className="px-4 py-3">
                   <TabsList>
                     <TabsTrigger value="all">All Notes</TabsTrigger>
                     <TabsTrigger value="new">+ New Note</TabsTrigger>
                   </TabsList>
-                  <TabsContent value="all" className="mt-4">
+                  <TabsContent value="all" className="mt-3">
                     <ScrollArea className="h-[220px] pr-3">
                       <div className="space-y-3">
                         {notes.map((n) => (
@@ -754,7 +982,7 @@ export default function ManualDialerPage() {
                       </div>
                     </ScrollArea>
                   </TabsContent>
-                  <TabsContent value="new" className="mt-4">
+                  <TabsContent value="new" className="mt-3">
                     <div className="space-y-3">
                       <Textarea value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="Write a quick note..." className="min-h-[120px]" />
                       <div className="text-right">
@@ -767,27 +995,37 @@ export default function ManualDialerPage() {
 
               {/* Documents */}
               <Card className="p-0">
-                <div className="flex items-center justify-between px-5 py-4">
+                <div className="flex items-center justify-between px-4 py-3">
                   <div className="font-semibold">Shared Documents from Playbook</div>
                   <div className="flex items-center gap-2">
                     <div className="relative">
-                      <Input placeholder="Search documents..." className="pl-8 w-64" />
+                      <Input placeholder="Search documents..." value={docQuery} onChange={(e) => setDocQuery(e.target.value)} className="pl-8 w-64" />
                       <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     </div>
+                    <Button variant="outline" onClick={() => fetchDocs()} disabled={docsLoading}>Search</Button>
                   </div>
                 </div>
                 <Separator />
-                <div className="p-5 space-y-3">
-                  {[
-                    { title: "Sales Pitch Deck Template", preview: "Introduction Welcome to our solution that helps businesses scale efficiently...", shared: "1 person(s)", date: "2024-01-15" },
-                    { title: "Onboarding Process Guide", preview: "Step 1: Initial Consultation Schedule a call with the client to understand...", shared: "1 person(s)", date: "2024-02-01" },
-                  ].map((d, i) => (
-                    <Card key={i} className="p-4">
-                      <div className="font-medium">{d.title}</div>
-                      <div className="text-sm text-muted-foreground line-clamp-1">{d.preview}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">Shared with: {d.shared} · {d.date}</div>
-                    </Card>
-                  ))}
+                <div className="p-4 space-y-2">
+                  {docsLoading ? (
+                    <Card className="p-3 text-sm text-muted-foreground">Loading…</Card>
+                  ) : docs.length === 0 ? (
+                    <Card className="p-3 text-sm text-muted-foreground">No documents</Card>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {docs.map((d: any) => (
+                        <Card key={d.id} className="p-3">
+                          <div className="font-medium truncate">{d.title}</div>
+                          <div className="text-xs text-muted-foreground">{String(d.type || '').toUpperCase()} • {String(d.visibility || '').toUpperCase()}</div>
+                          <Separator className="my-1" />
+                          <div className="text-sm text-muted-foreground line-clamp-2">{d.description || d.content_richtext || '-'}</div>
+                          <div className="mt-2 text-right">
+                            <Button size="sm" variant="outline" onClick={() => setPreviewDoc(d)}>View</Button>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </Card>
             </div>
@@ -796,18 +1034,34 @@ export default function ManualDialerPage() {
           {/* Draggable In-Call Popup */}
           {showPopup && (
             <div
-              className="fixed z-50 w-[360px] rounded-lg border bg-white shadow-xl"
+              className="fixed z-50 w-[360px] rounded-lg border bg-card text-card-foreground shadow-xl dark:shadow-2xl"
               style={{ left: popupPos.x, top: popupPos.y }}
             >
-              <div className="flex items-center justify-between px-4 py-2 rounded-t-lg bg-emerald-50 border-b cursor-move" onMouseDown={onPopupMouseDown}>
-                <div className="flex items-center gap-2 text-sm font-medium text-emerald-700">
-                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                  Call Active
+              <div
+                className="flex items-center justify-between px-4 py-2 rounded-t-lg bg-emerald-50 dark:bg-emerald-900/30 border-b border-border cursor-move"
+                onMouseDown={onPopupMouseDown}
+              >
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  {(() => {
+                    const s = status
+                    const dot = s.includes('Ringing') ? 'bg-amber-500' :
+                               s.startsWith('In Call') ? 'bg-emerald-500' :
+                               s.includes('Failed') ? 'bg-red-500' :
+                               s.includes('Disconnected') ? 'bg-gray-400' :
+                               (s.includes('Connected') || s.includes('Registered')) ? 'bg-sky-500' :
+                               'bg-muted'
+                    return (
+                      <>
+                        <span className={`inline-block h-2 w-2 rounded-full ${dot}`} />
+                        <span className="text-foreground/90">{s}</span>
+                      </>
+                    )
+                  })()}
                 </div>
                 <div className="text-xs text-muted-foreground">Drag to move</div>
               </div>
               <div className="px-4 pt-3 pb-4">
-                <div className="text-center font-semibold tracking-wide">{number || lastDialedNumber || "Unknown"}</div>
+                <div className="text-center font-semibold tracking-wide text-foreground">{number || lastDialedNumber || "Unknown"}</div>
                 <div className="mt-1 text-center text-xs text-muted-foreground">{elapsed() || "00:00"}</div>
                 <div className="mt-4 grid grid-cols-5 gap-3 place-items-center">
                   <Button size="icon" variant="outline" className="rounded-full h-10 w-10" onClick={toggleMute}>
@@ -827,6 +1081,91 @@ export default function ManualDialerPage() {
                   </Button>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Mandatory Disposition Modal */}
+          {showDisposition && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+              <div className="absolute inset-0 bg-background/70" />
+              <Card className="relative z-50 w-[560px] max-w-[95vw] border shadow-2xl">
+                <div className="px-4 py-3 border-b font-medium">Select Call Disposition</div>
+                <div className="p-4 space-y-3">
+                  <div className="text-sm text-muted-foreground">This is required before saving the call.</div>
+                  <Select value={disposition} onValueChange={setDisposition}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Choose disposition" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[300px] overflow-auto">
+                      {[
+                        'Call Failed','Lead','Lost','DNC','VM-RPC','VM-Operator','Not an RPC','Invalid Number','Invalid Job Title','Invalid Country','Invalid Industry','Invalid EMP-Size','Follow-Ups','Busy','Wrong Number','Not Answered','Disconnected','Contact Discovery'
+                      ].map((opt) => (
+                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button variant="outline" onClick={() => { /* mandatory - no close without selection */ }} disabled>
+                      Close
+                    </Button>
+                    <Button onClick={async () => {
+                      if (!disposition) return
+                      try {
+                        if (!uploadedOnceRef.current) uploadedOnceRef.current = true
+                        await stopRecordingAndUpload(pendingUploadExtra || {})
+                        // reflect disposition in local history optimistically
+                        setCallHistory((prev) => prev.length ? [{ ...prev[0], disposition }, ...prev.slice(1)] : prev)
+                      } finally {
+                        setShowDisposition(false)
+                        setPendingUploadExtra(null)
+                        setDisposition("")
+                      }
+                    }} disabled={!disposition}>
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* Document Preview Popup */}
+          {previewDoc && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center">
+              <div className="absolute inset-0 bg-background/60" onClick={() => setPreviewDoc(null)} />
+              <Card className="relative z-50 w-[720px] max-w-[95vw] max-h-[85vh] overflow-hidden border shadow-2xl">
+                <div className="flex items-center justify-between px-4 py-2 border-b">
+                  <div className="font-medium truncate mr-4">{previewDoc.title || 'Document'}</div>
+                  <div className="flex items-center gap-2">
+                    {previewDoc.file_url ? (
+                      <a className="text-xs text-primary underline" href={previewDoc.file_url} target="_blank" rel="noreferrer">Open in new tab</a>
+                    ) : null}
+                    <Button size="sm" variant="ghost" onClick={() => setPreviewDoc(null)}>Close</Button>
+                  </div>
+                </div>
+                <div className="p-3 overflow-auto max-h-[78vh] bg-card">
+                  {(() => {
+                    const url = String(previewDoc.file_url || '')
+                    const mime = String(previewDoc.file_mime || '')
+                    const lower = url.toLowerCase()
+                    if (!url && previewDoc.content_richtext) {
+                      return <div className="whitespace-pre-wrap text-sm">{previewDoc.content_richtext}</div>
+                    }
+                    if (lower.endsWith('.pdf') || mime.includes('pdf')) {
+                      return <iframe src={url} className="w-full h-[70vh]" />
+                    }
+                    if (/(png|jpg|jpeg|gif|webp)$/i.test(lower) || /^image\//.test(mime)) {
+                      return <img src={url} alt="preview" className="max-w-full max-h-[70vh] object-contain" />
+                    }
+                    // Fallback: show filename and a link
+                    return (
+                      <div className="text-sm text-muted-foreground">
+                        Preview not available. Use "Open in new tab" to view/download.
+                      </div>
+                    )
+                  })()}
+                </div>
+              </Card>
             </div>
           )}
 
