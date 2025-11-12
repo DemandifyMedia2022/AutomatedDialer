@@ -1,4 +1,32 @@
 "use client"
+// Simple waveform animation like in Call History page
+const WaveBars: React.FC<{ active: boolean }> = ({ active }) => (
+  <div className="flex items-end justify-between gap-[2px] h-4 w-full">
+    {Array.from({ length: 64 }).map((_, i) => {
+      const base = [0.4, 0.6, 0.8, 1, 0.7, 0.5, 0.6, 0.8, 1, 0.8, 0.6, 0.4]
+      const height = base[i % base.length]
+      return (
+        <span
+          key={i}
+          style={{
+            height: `${height * 100}%`,
+            animation: active ? `wave 0.7s ${0.03 * (i % base.length)}s infinite ease-in-out` : 'none',
+            animationFillMode: active ? 'both' : 'forwards',
+          }}
+          className="w-[2px] bg-foreground/70 rounded-sm origin-bottom"
+        />
+      )
+    })}
+    <style jsx>{`
+      @keyframes wave {
+        0% { transform: scaleY(0.4); }
+        50% { transform: scaleY(1.2); }
+        100% { transform: scaleY(0.4); }
+      }
+    `}</style>
+  </div>
+)
+
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Script from "next/script"
@@ -107,23 +135,28 @@ export default function ManualDialerPage() {
   }
 
   useEffect(() => {
-    // Load saved country code early
+    // Load saved country code and local number early
     try {
       const savedCc = localStorage.getItem('dial_cc')
+      const savedNum = localStorage.getItem('dial_num')
       if (savedCc) setCountryCode(savedCc)
+      if (savedNum) setNumber(savedNum)
     } catch {}
   }, [])
 
   useEffect(() => {
     if (!appliedLastDialOnce.current && lastDialedNumber) {
-      // If last saved value has country code, split it into cc + local heuristically
-      const m = lastDialedNumber.match(/^\+(\d{1,3})(\d+)$/)
-      if (m) {
-        setCountryCode(`+${m[1]}`)
-        setNumber(m[2])
-      } else {
-        setNumber(lastDialedNumber)
-      }
+      // Only use lastDialedNumber as a fallback if no saved dial_num
+      try {
+        const savedNum = localStorage.getItem('dial_num')
+        if (!savedNum) {
+          const m = lastDialedNumber.match(/^\+(\d{1,3})(\d+)$/)
+          if (m) {
+            setCountryCode(`+${m[1]}`)
+            setNumber(m[2])
+          }
+        }
+      } catch {}
       appliedLastDialOnce.current = true
     }
   }, [lastDialedNumber])
@@ -565,6 +598,7 @@ export default function ManualDialerPage() {
       const sipUser = dialNum.replace(/^\+/, '')
       uaRef.current.call(numberToSipUri(sipUser, ext), options)
       localStorage.setItem("lastDialedNumber", dialNum)
+      try { localStorage.setItem('dial_num', number) } catch {}
       // Optimistically show in recent history
       setCallHistory((prev) => [{ destination: dialNum, end_time: null }, ...prev].slice(0, 5))
     } catch (e: any) {
@@ -884,7 +918,11 @@ export default function ManualDialerPage() {
                       <SelectItem value="+91">+91 IN</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Input className="flex-1 text-lg tracking-widest" value={number} onChange={(e) => setNumber(e.target.value.replace(/\D+/g, ""))} placeholder="Enter number" />
+                  <Input className="flex-1 text-lg tracking-widest" inputMode="numeric" value={number} onChange={(e) => {
+                    const v = e.target.value.replace(/\D+/g, "")
+                    setNumber(v)
+                    try { localStorage.setItem('dial_num', v) } catch {}
+                  }} placeholder="Enter number" />
                 </div>
               </div>
 
@@ -925,8 +963,8 @@ export default function ManualDialerPage() {
                 <Button variant="outline" onClick={() => setNumber("")}>Clear</Button>
               </div>
 
-              <div className="mt-1 text-xs text-center text-emerald-600 font-medium">
-                {status.startsWith("In Call") ? `${elapsed() || "00:00"}` : null}
+              <div className="mt-2">
+                {status.startsWith("In Call") ? (<WaveBars active={true} />) : null}
               </div>
 
               <audio ref={remoteAudioRef} autoPlay playsInline className="sr-only" />
