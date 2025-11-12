@@ -14,6 +14,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
+import { useAuth } from "@/hooks/useAuth"
 
 const data = {
   user: {
@@ -95,6 +96,20 @@ const data = {
 }
 
 export function ManagerSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const { user } = useAuth()
+  const displayUser = {
+    name: user?.email
+      ? user.email
+          .split("@")[0]
+          .replace(/[._-]+/g, " ")
+          .split(" ")
+          .filter(Boolean)
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+          .join(" ")
+      : data.user.name,
+    email: user?.email || data.user.email,
+    avatar: "",
+  }
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -118,7 +133,7 @@ export function ManagerSidebar({ ...props }: React.ComponentProps<typeof Sidebar
         <NavMain items={data.navMain} />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={displayUser} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

@@ -33,13 +33,15 @@ export function getCsrfTokenFromCookies(): string | null {
 import { API_BASE } from './api'
 
 export async function logout(): Promise<void> {
+  // Fire-and-forget the server-side logout to clear cookies, but don't block UI
   if (USE_AUTH_COOKIE) {
     const csrf = getCsrfTokenFromCookies()
     try {
-      await fetch(`${API_BASE}/api/auth/logout`, {
+      void fetch(`${API_BASE}/api/auth/logout`, {
         method: 'POST',
         headers: csrf ? { 'X-CSRF-Token': csrf } : {},
         credentials: 'include',
+        keepalive: true,
       })
     } catch {}
   } else {
