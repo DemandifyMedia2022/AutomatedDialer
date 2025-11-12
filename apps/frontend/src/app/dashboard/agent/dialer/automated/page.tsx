@@ -33,7 +33,8 @@ export default function AutomatedDialerPage() {
   const [isLoaded, setIsLoaded] = useState(false)
 
   // Auto dial state
-  const [queue, setQueue] = useState<string[]>([]) // numbers to dial
+  type Prospect = { name?: string; designation?: string; company?: string; phone: string; raw?: any }
+  const [queue, setQueue] = useState<Prospect[]>([])
   const [currentIndex, setCurrentIndex] = useState<number>(0)
   const [autoRun, setAutoRun] = useState(false)
   // Fixed delay (30s)
@@ -42,7 +43,7 @@ export default function AutomatedDialerPage() {
   // Refs to avoid stale closures in session event handlers
   const autoRunRef = useRef<boolean>(false)
   const currentIndexRef = useRef<number>(0)
-  const queueRef = useRef<string[]>([])
+  const queueRef = useRef<Prospect[]>([])
   // countdown & timers
   const delayMsRef = useRef<number>(30000)
   const nextTimeoutRef = useRef<number | null>(null)
@@ -510,7 +511,7 @@ export default function AutomatedDialerPage() {
       setNextIn(0)
       setCurrentIndex(nextIdx)
       currentIndexRef.current = nextIdx
-      placeCallTo(list[nextIdx])
+      placeCallTo(list[nextIdx].phone)
     }, delay)
   }
 
@@ -523,7 +524,7 @@ export default function AutomatedDialerPage() {
     const idx = currentIndexRef.current < list.length ? currentIndexRef.current : 0
     setCurrentIndex(idx)
     currentIndexRef.current = idx
-    await placeCallTo(list[idx])
+    await placeCallTo(list[idx].phone)
   }
 
   const pauseAuto = () => { setAutoRun(false); autoRunRef.current = false; clearCountdown(); clearNextTimeout() }
@@ -532,16 +533,87 @@ export default function AutomatedDialerPage() {
     const nextIdx = Math.min(list.length, currentIndexRef.current + 1)
     setCurrentIndex(nextIdx)
     currentIndexRef.current = nextIdx
-    if (nextIdx < list.length) placeCallTo(list[nextIdx])
+    if (nextIdx < list.length) placeCallTo(list[nextIdx].phone)
   }
 
   // File parsing (CSV/XLSX)
-  const parseCsvText = (text: string): string[] => {
-    // naive line split, take first column of each non-empty row
+  const parseCsvRows = (text: string): string[][] => {
     return text
       .split(/\r?\n/)
-      .map(l => l.split(/[;,\t]/)[0]?.trim())
-      .filter(Boolean)
+      .map(l => l.split(/[;,\t]/).map(c => c.trim()))
+      .filter(row => row.some(c => c && c.length))
+  }
+
+  const toDigits = (s: string) => s.replace(/[^0-9+]/g, '').replace(/^00/, '+').trim()
+
+  const looksLikePhone = (s: string) => {
+    const t = toDigits(s)
+    if (!t) return false
+    const digits = t.replace(/\D/g, '')
+    return digits.length >= 7 && digits.length <= 15
+  }
+
+  const looksLikeName = (s: string) => /^[a-zA-Z ,.'-]{2,}$/.test(s || '')
+
+  const mapHeaders = (headers: string[]) => {
+    const idx = { name: -1, designation: -1, company: -1, phone: -1 }
+    headers.forEach((h, i) => {
+      const k = (h || '').toLowerCase().trim()
+      if (idx.phone === -1 && /(phone|mobile|contact|number|msisdn|cell)/.test(k)) idx.phone = i
+      else if (idx.name === -1 && /(name|full\s*name|prospect|customer)/.test(k)) idx.name = i
+      else if (idx.designation === -1 && /(designation|title|role|position)/.test(k)) idx.designation = i
+      else if (idx.company === -1 && /(company|organization|organisation|org|firm)/.test(k)) idx.company = i
+    })
+    return idx
+  }
+
+  const parseProspectsFromRows = (rows: any[][]): Prospect[] => {
+    if (!rows.length) return []
+    let start = 0
+    let headerMap = { name: -1, designation: -1, company: -1, phone: -1 }
+    const first = rows[0] || []
+    const headerCandidate = first.every(c => isNaN(Number(c)) || /[a-zA-Z]/.test(String(c)))
+    if (headerCandidate) {
+      headerMap = mapHeaders(first.map(String))
+      start = 1
+    }
+    if (headerMap.phone === -1) {
+      const colScores: number[] = new Array(Math.max(...rows.map(r => r.length), 1)).fill(0)
+      for (let r = start; r < Math.min(rows.length, start + 30); r++) {
+        const row = rows[r] || []
+        row.forEach((v: any, ci: number) => { if (looksLikePhone(String(v || ''))) colScores[ci]++ })
+      }
+      let best = 0, bestIdx = -1
+      colScores.forEach((s, i) => { if (s > best) { best = s; bestIdx = i } })
+      headerMap.phone = bestIdx
+    }
+    if (headerMap.name === -1) {
+      const colScores: number[] = new Array(Math.max(...rows.map(r => r.length), 1)).fill(0)
+      for (let r = start; r < Math.min(rows.length, start + 30); r++) {
+        const row = rows[r] || []
+        row.forEach((v: any, ci: number) => { if (looksLikeName(String(v || ''))) colScores[ci]++ })
+      }
+      let best = 0, bestIdx = -1
+      colScores.forEach((s, i) => { if (s > best && i !== headerMap.phone) { best = s; bestIdx = i } })
+      headerMap.name = bestIdx
+    }
+    const out: Prospect[] = []
+    for (let r = start; r < rows.length; r++) {
+      const row = rows[r] || []
+      const rawPhone = headerMap.phone >= 0 ? String(row[headerMap.phone] ?? '') : String(row[0] ?? '')
+      const phone = toDigits(rawPhone)
+      if (!looksLikePhone(phone)) continue
+      const p: Prospect = { phone }
+      if (headerMap.name >= 0) p.name = String(row[headerMap.name] ?? '').trim() || undefined
+      if (headerMap.designation >= 0) p.designation = String(row[headerMap.designation] ?? '').trim() || undefined
+      if (headerMap.company >= 0) p.company = String(row[headerMap.company] ?? '').trim() || undefined
+      p.raw = row
+      out.push(p)
+    }
+    const seen = new Set<string>()
+    const dedup: Prospect[] = []
+    for (const p of out) { if (!seen.has(p.phone)) { seen.add(p.phone); dedup.push(p) } }
+    return dedup
   }
 
   const onFile = async (file: File) => {
@@ -550,8 +622,9 @@ export default function AutomatedDialerPage() {
       const name = file.name.toLowerCase()
       if (name.endsWith('.csv') || name.endsWith('.txt')) {
         const text = await file.text()
-        const numbers = normalizeNumbers(parseCsvText(text))
-        setQueue(numbers); queueRef.current = numbers; setCurrentIndex(0); currentIndexRef.current = 0
+        const rows = parseCsvRows(text)
+        const prospects = parseProspectsFromRows(rows)
+        setQueue(prospects); queueRef.current = prospects; setCurrentIndex(0); currentIndexRef.current = 0
       } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
         if (!window.XLSX) throw new Error('XLSX parser not loaded')
         const data = new Uint8Array(await file.arrayBuffer())
@@ -559,8 +632,8 @@ export default function AutomatedDialerPage() {
         const targetSheet = sheetName && wb.Sheets[sheetName] ? sheetName : wb.SheetNames[0]
         const ws = wb.Sheets[targetSheet]
         const rows: any[][] = window.XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][]
-        const nums = normalizeNumbers(rows.map(r => String(r?.[0] ?? '').trim()))
-        setQueue(nums); queueRef.current = nums; setCurrentIndex(0); currentIndexRef.current = 0
+        const prospects = parseProspectsFromRows(rows)
+        setQueue(prospects); queueRef.current = prospects; setCurrentIndex(0); currentIndexRef.current = 0
       } else {
         setError('Unsupported file. Use CSV or Excel')
       }
@@ -569,17 +642,7 @@ export default function AutomatedDialerPage() {
     }
   }
 
-  const normalizeNumbers = (list: string[]) => {
-    const cleaned = list
-      .map(s => s.replace(/[^0-9+]/g, '').replace(/^00/, '+'))
-      .map(s => s.trim())
-      .filter(Boolean)
-    // de-duplicate preserving order
-    const seen = new Set<string>()
-    const out: string[] = []
-    for (const n of cleaned) { if (!seen.has(n)) { seen.add(n); out.push(n) } }
-    return out
-  }
+  
 
   return (
     <SidebarProvider>
@@ -685,14 +748,33 @@ export default function AutomatedDialerPage() {
                   <div className="p-3 text-sm text-muted-foreground">No numbers loaded</div>
                 ) : (
                   <ul className="text-sm">
-                    {queue.map((n, i) => (
-                      <li key={`${n}-${i}`} className={`px-3 py-2 border-b last:border-b-0 ${i === currentIndex ? 'bg-accent/50 font-medium' : ''}`}>{i + 1}. {n}</li>
+                    {queue.map((p, i) => (
+                      <li key={`${p.phone}-${i}`} className={`px-3 py-2 border-b last:border-b-0 ${i === currentIndex ? 'bg-accent/50 font-medium' : ''}`}>
+                        {i + 1}. {p.name ? `${p.name} — ` : ''}{p.company ? `${p.company} — ` : ''}{p.phone}
+                      </li>
                     ))}
                   </ul>
                 )}
               </div>
             </Card>
           </div>
+
+          {sessionRef.current && status.startsWith("In Call") && (
+            <Card className="p-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-sm text-muted-foreground">Current Prospect</div>
+                  <div className="mt-2 space-y-1 text-sm">
+                    <div><span className="text-muted-foreground">Name:</span> {queue[currentIndex]?.name || '-'}</div>
+                    <div><span className="text-muted-foreground">Designation:</span> {queue[currentIndex]?.designation || '-'}</div>
+                    <div><span className="text-muted-foreground">Company:</span> {queue[currentIndex]?.company || '-'}</div>
+                    <div><span className="text-muted-foreground">Phone:</span> {queue[currentIndex]?.phone || '-'}</div>
+                  </div>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded ${status.includes("Registered") ? "bg-emerald-100 text-emerald-800" : status.includes("Connected") ? "bg-blue-100 text-blue-800" : status.includes("Call") ? "bg-purple-100 text-purple-800" : autoRun ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-800"}`}>{status}</span>
+              </div>
+            </Card>
+          )}
         </div>
       </SidebarInset>
     </SidebarProvider>

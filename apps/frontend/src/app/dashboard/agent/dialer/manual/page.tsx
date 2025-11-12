@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Script from "next/script"
-import { Phone, PhoneOff, Mic, MicOff } from "lucide-react"
+import { Phone, PhoneOff, Mic, MicOff, Trash2, Search, Pause, UserPlus, Grid2X2, PhoneCall } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,6 +11,9 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { AgentSidebar } from "../../components/AgentSidebar"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Textarea } from "@/components/ui/textarea"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
 
@@ -30,6 +33,18 @@ export default function ManualDialerPage() {
   const [error, setError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
+  const [showPopup, setShowPopup] = useState(false)
+
+  // Notes state (local only UI)
+  const [notes, setNotes] = useState<Array<{ id: string; text: string; phone?: string; at: string }>>([
+    { id: "n1", text: "Discussed pricing and next steps. Client interested in enterprise plan.", phone: "+15551234567", at: "2024-01-20 14:30" },
+    { id: "n2", text: "Follow up needed on proposal delivery.", phone: "+15559876543", at: "2024-01-19 10:15" },
+  ])
+  const [newNote, setNewNote] = useState("")
+
+  // Draggable in-call popup position
+  const [popupPos, setPopupPos] = useState<{ x: number; y: number }>({ x: 420, y: 160 })
+  const dragOffsetRef = useRef<{ x: number; y: number } | null>(null)
 
   const uaRef = useRef<any>(null)
   const sessionRef = useRef<any>(null)
@@ -222,12 +237,22 @@ export default function ManualDialerPage() {
         }, 1000)
         // Start recording once call is accepted
         try { await startRecording() } catch {}
+        // Ensure popup is visible and centered on screen when call is active
+        setShowPopup(true)
+        try {
+          const w = window.innerWidth
+          const h = window.innerHeight
+          const px = Math.max(8, Math.floor(w / 2 - 180))
+          const py = Math.max(60, Math.floor(h / 2 - 120))
+          setPopupPos({ x: px, y: py })
+        } catch {}
       })
       session.on("failed", async (e: any) => {
         stopRingback()
         setStatus("Call Failed")
         setError(e?.cause || "Call failed")
         clearTimer()
+        setShowPopup(false)
         if (!uploadedOnceRef.current) {
           uploadedOnceRef.current = true
           const code = Number(e?.response?.status_code || 0)
@@ -244,6 +269,7 @@ export default function ManualDialerPage() {
         stopRingback()
         setStatus("Call Ended")
         clearTimer()
+        setShowPopup(false)
         if (!uploadedOnceRef.current) {
           uploadedOnceRef.current = true
           // Do NOT send disposition; backend will infer ANSWERED vs NO ANSWER from timings
@@ -389,6 +415,15 @@ export default function ManualDialerPage() {
       dialStartRef.current = Date.now()
       await ensureAudioCtx()
       lastDialDestinationRef.current = number || null
+      // Show popup immediately when dialing and center it
+      setShowPopup(true)
+      try {
+        const w = window.innerWidth
+        const h = window.innerHeight
+        const px = Math.max(8, Math.floor(w / 2 - 180))
+        const py = Math.max(60, Math.floor(h / 2 - 120))
+        setPopupPos({ x: px, y: py })
+      } catch {}
       uaRef.current.call(numberToSipUri(number, ext), options)
       localStorage.setItem("lastDialedNumber", number)
     } catch (e: any) {
@@ -399,6 +434,7 @@ export default function ManualDialerPage() {
   const hangup = async () => {
     try { sessionRef.current?.terminate() } catch {}
     stopRingback()
+    setShowPopup(false)
     if (!uploadedOnceRef.current) {
       uploadedOnceRef.current = true
       await stopRecordingAndUpload({})
@@ -577,6 +613,35 @@ export default function ManualDialerPage() {
 
   const backspace = () => setNumber((prev) => prev.slice(0, -1))
 
+  // Drag handlers
+  const onPopupMouseDown = (e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    dragOffsetRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    window.addEventListener("mousemove", onPopupMouseMove)
+    window.addEventListener("mouseup", onPopupMouseUp)
+  }
+
+  const onPopupMouseMove = (e: MouseEvent) => {
+    if (!dragOffsetRef.current) return
+    const nx = e.clientX - dragOffsetRef.current.x
+    const ny = e.clientY - dragOffsetRef.current.y
+    setPopupPos({ x: Math.max(8, nx), y: Math.max(60, ny) })
+  }
+
+  const onPopupMouseUp = () => {
+    dragOffsetRef.current = null
+    window.removeEventListener("mousemove", onPopupMouseMove)
+    window.removeEventListener("mouseup", onPopupMouseUp)
+  }
+
+  const addNote = () => {
+    if (!newNote.trim()) return
+    setNotes((n) => [{ id: cryptoRandom(), text: newNote.trim(), phone: number || lastDialedNumber || undefined, at: new Date().toISOString().slice(0,16).replace('T',' ') }, ...n])
+    setNewNote("")
+  }
+
+  const removeNote = (id: string) => setNotes((n) => n.filter((x) => x.id !== id))
+
   return (
     <SidebarProvider>
       <AgentSidebar />
@@ -613,48 +678,158 @@ export default function ManualDialerPage() {
             <Card className="border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error}</Card>
           )}
 
-          {(
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card className="p-5">
-                <div className="mb-4 flex items-center gap-2">
-                  <Input className="flex-1 text-lg tracking-widest" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Enter number" />
-                  <Button variant="outline" onClick={backspace}>⌫</Button>
-                  <Button variant="outline" onClick={() => setNumber("")}>Clear</Button>
-                </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            {/* Dialer */}
+            <Card className="p-5 lg:col-span-1">
+              <div className="mb-2 text-base font-semibold">Dialer</div>
+              <div className="mb-4">
+                <Label className="text-xs text-muted-foreground">Phone Number</Label>
+                <Input className="mt-1 text-lg tracking-widest" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Enter phone number" />
+              </div>
 
-                <div className="grid grid-cols-3 gap-3">
-                  {["1","2","3","4","5","6","7","8","9","*","0","#"].map((d) => (
-                    <Button key={d} variant="outline" className="h-14 text-lg font-medium" onClick={() => onDigit(d)}>
-                      {d}
-                    </Button>
-                  ))}
-                </div>
+              <div className="grid grid-cols-3 gap-3">
+                {["1","2","3","4","5","6","7","8","9","*","0","#"].map((d) => (
+                  <Button key={d} variant="outline" className="h-14 text-lg font-medium" onClick={() => onDigit(d)}>
+                    {d}
+                  </Button>
+                ))}
+              </div>
 
-                <div className="mt-5 flex items-center gap-3">
-                  <Button onClick={placeCall} className="gap-2" disabled={!number || !uaRef.current || !status.includes("Registered") || status.startsWith("In Call") }>
-                    <Phone className="h-4 w-4" /> Call
+              <div className="mt-5 flex items-center gap-3">
+                {status.startsWith("In Call") ? (
+                  <Button onClick={hangup} variant="destructive" className="gap-2 flex-1">
+                    <PhoneOff className="h-4 w-4" /> End Call
                   </Button>
-                  <Button onClick={hangup} variant="destructive" className="gap-2" disabled={!sessionRef.current}>
-                    <PhoneOff className="h-4 w-4" /> Hang Up
+                ) : (
+                  <Button onClick={placeCall} className="gap-2 flex-1" disabled={!number || !uaRef.current || !status.includes("Registered") }>
+                    <PhoneCall className="h-4 w-4" /> Call
                   </Button>
-                  <Button onClick={toggleMute} variant="outline" className="gap-2" disabled={!sessionRef.current}>
-                    {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />} {isMuted ? "Unmute" : "Mute"}
-                  </Button>
-                </div>
+                )}
+                <Button variant="outline" onClick={() => setNumber("")}>Clear</Button>
+              </div>
 
-                <audio ref={remoteAudioRef} autoPlay playsInline controls className="mt-4 w-full" />
+              <div className="mt-4 text-xs text-center text-emerald-600 font-medium min-h-5">
+                {status.startsWith("In Call") ? `${elapsed() || "00:00"}` : null}
+              </div>
+
+              <audio ref={remoteAudioRef} autoPlay playsInline className="sr-only" />
+
+              <Separator className="my-4" />
+              <div className="text-sm text-muted-foreground">History</div>
+              <div className="mt-2 space-y-2 text-sm">
+                <div className="flex items-center justify-between"><div className="flex items-center gap-2"><PhoneCall className="h-4 w-4 text-pink-600" /> John Smith</div><span className="text-blue-600">82%</span></div>
+                <div className="flex items-center justify-between"><div className="flex items-center gap-2"><PhoneCall className="h-4 w-4 text-pink-600" /> Jane Doe</div><span className="text-blue-600">65%</span></div>
+                <div className="flex items-center justify-between"><div className="flex items-center gap-2"><PhoneCall className="h-4 w-4 text-pink-600" /> Bob Johnson</div><span className="text-blue-600">45%</span></div>
+              </div>
+            </Card>
+
+            {/* Right column: Notes + Documents */}
+            <div className="lg:col-span-2 space-y-4">
+              {/* Notes */}
+              <Card className="p-0">
+                <div className="flex items-center justify-between px-5 py-4">
+                  <div className="font-semibold">Notes</div>
+                  <div className="text-xs text-muted-foreground">{notes.length} notes</div>
+                </div>
+                <Separator />
+                <Tabs defaultValue="all" className="px-5 py-4">
+                  <TabsList>
+                    <TabsTrigger value="all">All Notes</TabsTrigger>
+                    <TabsTrigger value="new">+ New Note</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="all" className="mt-4">
+                    <ScrollArea className="h-[220px] pr-3">
+                      <div className="space-y-3">
+                        {notes.map((n) => (
+                          <Card key={n.id} className="p-3 flex items-start justify-between">
+                            <div>
+                              <div className="text-sm">{n.text}</div>
+                              <div className="mt-1 text-xs text-muted-foreground">{n.phone ? `${n.phone} · ` : ""}{n.at}</div>
+                            </div>
+                            <Button size="icon" variant="ghost" onClick={() => removeNote(n.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </Card>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </TabsContent>
+                  <TabsContent value="new" className="mt-4">
+                    <div className="space-y-3">
+                      <Textarea value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="Write a quick note..." className="min-h-[120px]" />
+                      <div className="text-right">
+                        <Button onClick={addNote}>Save Note</Button>
+                      </div>
+                    </div>
+                  </TabsContent>
+                </Tabs>
               </Card>
 
-              <Card className="p-5">
-                <div className="text-sm text-muted-foreground">Call Info</div>
-                <div className="mt-2 space-y-2 text-sm">
-                  <div className="flex justify-between"><span>Status</span><span>{status}</span></div>
-                  <div className="flex justify-between"><span>Extension</span><span>{ext || "-"}</span></div>
-                  <div className="flex justify-between"><span>Last dialed</span><span>{typeof window !== "undefined" ? (localStorage.getItem("lastDialedNumber") || "-") : "-"}</span></div>
+              {/* Documents */}
+              <Card className="p-0">
+                <div className="flex items-center justify-between px-5 py-4">
+                  <div className="font-semibold">Shared Documents from Playbook</div>
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <Input placeholder="Search documents..." className="pl-8 w-64" />
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                </div>
+                <Separator />
+                <div className="p-5 space-y-3">
+                  {[
+                    { title: "Sales Pitch Deck Template", preview: "Introduction Welcome to our solution that helps businesses scale efficiently...", shared: "1 person(s)", date: "2024-01-15" },
+                    { title: "Onboarding Process Guide", preview: "Step 1: Initial Consultation Schedule a call with the client to understand...", shared: "1 person(s)", date: "2024-02-01" },
+                  ].map((d, i) => (
+                    <Card key={i} className="p-4">
+                      <div className="font-medium">{d.title}</div>
+                      <div className="text-sm text-muted-foreground line-clamp-1">{d.preview}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">Shared with: {d.shared} · {d.date}</div>
+                    </Card>
+                  ))}
                 </div>
               </Card>
             </div>
+          </div>
+
+          {/* Draggable In-Call Popup */}
+          {showPopup && (
+            <div
+              className="fixed z-50 w-[360px] rounded-lg border bg-white shadow-xl"
+              style={{ left: popupPos.x, top: popupPos.y }}
+            >
+              <div className="flex items-center justify-between px-4 py-2 rounded-t-lg bg-emerald-50 border-b cursor-move" onMouseDown={onPopupMouseDown}>
+                <div className="flex items-center gap-2 text-sm font-medium text-emerald-700">
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                  Call Active
+                </div>
+                <div className="text-xs text-muted-foreground">Drag to move</div>
+              </div>
+              <div className="px-4 pt-3 pb-4">
+                <div className="text-center font-semibold tracking-wide">{number || lastDialedNumber || "Unknown"}</div>
+                <div className="mt-1 text-center text-xs text-muted-foreground">{elapsed() || "00:00"}</div>
+                <div className="mt-4 grid grid-cols-5 gap-3 place-items-center">
+                  <Button size="icon" variant="outline" className="rounded-full h-10 w-10" onClick={toggleMute}>
+                    {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  </Button>
+                  <Button size="icon" variant="outline" className="rounded-full h-10 w-10" onClick={() => sendDTMF("5")}>{/* keypad demo */}
+                    <Grid2X2 className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon" variant="destructive" className="rounded-full h-12 w-12" onClick={hangup}>
+                    <PhoneOff className="h-5 w-5" />
+                  </Button>
+                  <Button size="icon" variant="outline" className="rounded-full h-10 w-10">
+                    <Pause className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon" variant="outline" className="rounded-full h-10 w-10">
+                    <UserPlus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
           )}
+
         </div>
       </SidebarInset>
     </SidebarProvider>
