@@ -55,17 +55,6 @@ const data = {
         { title: "Lead Details", url: "/dashboard/agent/my-calls/lead-details" },
       ],
     },
-        {
-      title: "Agentic Dialing",
-      url: "/dashboard/agent/agentic-dialing",
-      icon: Bot,
-      isActive: true,
-      items: [
-        { title: "Calls", url: "/dashboard/agent/agentic-dialing" },
-        { title: "CSV", url: "/dashboard/agent/agentic-dialing/csv" },
-        { title: "Campaigns", url: "/dashboard/agent/agentic-dialing/campaigns" },
-      ],
-    },
     {
       title: "Settings",
       url: "/dashboard/agent/settings",

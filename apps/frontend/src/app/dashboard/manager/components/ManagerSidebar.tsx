@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Users, ClipboardList, BarChart3, Settings, Phone } from "lucide-react"
+import { Users, ClipboardList, BarChart3, Settings, Phone, Bot } from "lucide-react"
 import { NavMain } from "@/components/layout/nav-main"
 import { NavUser } from "@/components/layout/nav-user"
 import {
@@ -70,6 +70,16 @@ const data = {
       items: [
         { title: "Browse", url: "/dashboard/manager/playbook" },
         { title: "Upload", url: "/dashboard/manager/playbook/upload" },
+      ],
+    },
+    {
+      title: "Agentic Dialer",
+      url: "/dashboard/manager/agentic-dialing",
+      icon: Bot,
+      items: [
+        { title: "Dialer", url: "/dashboard/manager/agentic-dialing" },
+        { title: "Campaigns", url: "/dashboard/manager/agentic-dialing/campaigns" },
+        { title: "Upload", url: "/dashboard/manager/agentic-dialer/csv" },
       ],
     },
     {
