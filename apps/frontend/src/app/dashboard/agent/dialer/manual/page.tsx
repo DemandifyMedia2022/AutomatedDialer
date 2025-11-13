@@ -45,7 +45,6 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
-import { useToast } from "@/hooks/use-toast"
 
 declare global {
   interface Window {
@@ -64,7 +63,6 @@ export default function ManualDialerPage() {
   const [error, setError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
-  const { toast } = useToast()
   const [showPopup, setShowPopup] = useState(false)
   const [callHistory, setCallHistory] = useState<any[]>([])
   const lastDialedNumber = useMemo(() => {
@@ -416,7 +414,8 @@ export default function ManualDialerPage() {
         setStatus(isBusy ? "Busy" : isNoAnswer ? "No Answer" : "Call Failed")
         setError(e?.cause || "Call failed")
         clearTimer()
-        setShowPopup(false)
+        // Keep the popup visible to show final status to the agent
+        setShowPopup(true)
         if (!uploadedOnceRef.current) {
           if (isBusy) {
             try { await startBusyTone(); setTimeout(() => stopBusyTone(), 3000) } catch {}
@@ -424,10 +423,6 @@ export default function ManualDialerPage() {
           setPendingUploadExtra({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : undefined })
           setShowDisposition(true)
         }
-        // Notify agent
-        try {
-          toast({ title: isBusy ? 'Busy' : isNoAnswer ? 'No Answer' : 'Call Failed', description: isBusy ? 'Client is currently busy.' : isNoAnswer ? 'Client did not answer.' : 'The call could not be completed.' })
-        } catch {}
       })
       session.on("ended", async () => {
         stopRingback()
@@ -768,8 +763,8 @@ export default function ManualDialerPage() {
       return 'Call Failed'
     })()
     form.append('disposition', autoDisposition)
-    // Selected options are feedbacks
-    if (disposition) form.append('feedback', disposition)
+    // Selected options are feedbacks stored as remark
+    if (disposition) form.append('remarks', disposition)
 
     if (blob) form.append('recording', blob, `call_${Date.now()}.webm`)
 
@@ -1107,6 +1102,8 @@ export default function ManualDialerPage() {
                     const s = status
                     const dot = s.includes('Ringing') ? 'bg-amber-500' :
                                s.startsWith('In Call') ? 'bg-emerald-500' :
+                               s.includes('Busy') ? 'bg-orange-500' :
+                               s.includes('No Answer') ? 'bg-slate-500' :
                                s.includes('Failed') ? 'bg-red-500' :
                                s.includes('Disconnected') ? 'bg-gray-400' :
                                (s.includes('Connected') || s.includes('Registered')) ? 'bg-sky-500' :
