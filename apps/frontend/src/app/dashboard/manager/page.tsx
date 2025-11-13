@@ -16,7 +16,8 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Users, PhoneCall, PhoneIncoming, Timer } from "lucide-react"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Users, PhoneCall, PhoneIncoming, Timer, Trophy } from "lucide-react"
 
 function LineChart({ data }: { data: number[] }) {
   const max = Math.max(...data, 1)
@@ -98,8 +99,8 @@ export default function Page() {
             <Card className="transition-shadow hover:shadow-sm">
               <CardHeader>
                 <div className="flex items-start gap-3">
-                  <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
-                    <Users className="size-4 text-foreground" />
+                  <div className="grid size-10 place-items-center rounded-full border bg-emerald-500/10 text-emerald-700 border-emerald-500/20">
+                    <Users className="size-4" />
                   </div>
                   <div>
                     <CardTitle className="font-medium text-base">Active Agents</CardTitle>
@@ -114,8 +115,8 @@ export default function Page() {
             <Card className="transition-shadow hover:shadow-sm">
               <CardHeader>
                 <div className="flex items-start gap-3">
-                  <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
-                    <PhoneCall className="size-4 text-foreground" />
+                  <div className="grid size-10 place-items-center rounded-full border bg-blue-500/10 text-blue-700 border-blue-500/20">
+                    <PhoneCall className="size-4" />
                   </div>
                   <div>
                     <CardTitle className="font-medium text-base">Avg Calls Dialed/Agent</CardTitle>
@@ -130,8 +131,8 @@ export default function Page() {
             <Card className="transition-shadow hover:shadow-sm">
               <CardHeader>
                 <div className="flex items-start gap-3">
-                  <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
-                    <PhoneIncoming className="size-4 text-foreground" />
+                  <div className="grid size-10 place-items-center rounded-full border bg-violet-500/10 text-violet-700 border-violet-500/20">
+                    <PhoneIncoming className="size-4" />
                   </div>
                   <div>
                     <CardTitle className="font-medium text-base">Avg Calls Answered</CardTitle>
@@ -146,8 +147,8 @@ export default function Page() {
             <Card className="transition-shadow hover:shadow-sm">
               <CardHeader>
                 <div className="flex items-start gap-3">
-                  <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
-                    <Timer className="size-4 text-foreground" />
+                  <div className="grid size-10 place-items-center rounded-full border bg-amber-500/10 text-amber-700 border-amber-500/20">
+                    <Timer className="size-4" />
                   </div>
                   <div>
                     <CardTitle className="font-medium text-base">Avg Campaign Time</CardTitle>
@@ -190,27 +191,38 @@ export default function Page() {
             </Card>
             <Card className="transition-shadow hover:shadow-sm">
               <CardHeader>
-                <CardTitle className="font-medium text-base">Leader Board</CardTitle>
-                <CardDescription>Top performers</CardDescription>
+                <div className="flex items-start gap-3">
+                  <div className="grid size-10 place-items-center rounded-full border bg-blue-500/10 text-blue-700 border-blue-500/20">
+                    <Trophy className="size-4" />
+                  </div>
+                  <div>
+                    <CardTitle className="font-medium text-base">Leader Board</CardTitle>
+                    <CardDescription>Top performers</CardDescription>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">A. Sharma</span>
-                    <span className="text-sm text-muted-foreground">92 calls</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">R. Singh</span>
-                    <span className="text-sm text-muted-foreground">88 calls</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">P. Patel</span>
-                    <span className="text-sm text-muted-foreground">85 calls</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">N. Khan</span>
-                    <span className="text-sm text-muted-foreground">82 calls</span>
-                  </div>
+                <div className="space-y-2">
+                  {([
+                    { name: "A. Sharma", count: 92 },
+                    { name: "R. Singh", count: 88 },
+                    { name: "P. Patel", count: 85 },
+                    { name: "N. Khan", count: 82 },
+                  ] as { name: string; count: number }[]).map((row, idx) => (
+                    <div key={row.name} className="grid grid-cols-[1fr_auto] items-center gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Avatar className="h-7 w-7">
+                          <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(row.name)}`} alt={row.name} />
+                          <AvatarFallback>{row.name.split(" ").map(s=>s[0]).slice(0,2).join("")}</AvatarFallback>
+                        </Avatar>
+                        <div className="truncate text-sm">{row.name}</div>
+                        {idx < 3 && (
+                          <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full border bg-primary/5 text-primary border-primary/20">#{idx + 1}</span>
+                        )}
+                      </div>
+                      <span className="text-sm font-medium tabular-nums px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-700 border border-blue-500/20">{row.count}</span>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
