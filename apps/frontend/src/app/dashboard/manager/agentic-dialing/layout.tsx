@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { AgentSidebar } from "../components/AgentSidebar"
+import { AgentSidebar } from "../../agent/components/AgentSidebar"
 import { Separator } from "@/components/ui/separator"
 import {
   SidebarInset,

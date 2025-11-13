@@ -164,10 +164,7 @@ export default function Page() {
 
           <div className="grid gap-4 md:grid-cols-4">
             <Card className="md:col-span-3 transition-shadow hover:shadow-sm">
-              <CardHeader>
-                <CardTitle className="font-medium text-base">Calling Activity</CardTitle>
-                <CardDescription>Toggle to view Daily or Monthly</CardDescription>
-              </CardHeader>
+             
               <CardContent>
                 <Tabs defaultValue="daily">
                   <TabsList>
