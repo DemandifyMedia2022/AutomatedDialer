@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { setupSuperadmin, login, me, logout } from '../controllers/authController';
+import { forgotPassword, verifyOtp, resetPassword } from '../controllers/passwordResetController';
 import { requireAuth } from '../middlewares/auth';
 import { csrfProtect } from '../middlewares/csrf';
 import { env } from '../config/env';
@@ -26,6 +27,9 @@ function makeLimiter({ windowMs, limit }: { windowMs: number; limit: number }) {
 const loginLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 10 });
 const logoutLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 30 });
 const setupLimiter = makeLimiter({ windowMs: 10 * 60 * 1000, limit: 3 });
+const forgotLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 5 });
+const verifyLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 10 });
+const resetLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 5 });
 
 // Gate for setup route
 function setupGate(req: any, res: any, next: any) {
@@ -43,6 +47,9 @@ router.post('/setup', setupGate, setupLimiter, setupSuperadmin);
 router.post('/login', loginLimiter, login);
 router.get('/me', requireAuth, me);
 router.post('/logout', logoutLimiter, requireAuth, csrfProtect, logout);
+router.post('/forgot-password', forgotLimiter, forgotPassword);
+router.post('/verify-otp', verifyLimiter, verifyOtp);
+router.post('/reset-password', resetLimiter, resetPassword);
 
 if (env.NODE_ENV !== 'production' && env.ALLOW_SETUP) {
   router.get('/setup-form', (_req, res) => {
