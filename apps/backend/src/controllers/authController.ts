@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import { env } from '../config/env';
 import { signJwt } from '../utils/jwt';
 import { LoginSchema } from '../validators/authSchemas';
+import { ensureSession, closeActiveSession } from '../services/presenceService';
 
 const setupSchema = z.object({
   username: z.string().min(1),
@@ -111,6 +112,8 @@ export async function login(req: Request, res: Response) {
         maxAge: 1000 * 60 * 30,
         path: '/',
       });
+      // Ensure agent session is opened on successful login
+      try { await ensureSession(user.id, { ip: (req as any).ip, userAgent: req.headers['user-agent'] as any }) } catch {}
       return res.json({
         success: true,
         user: { id: user.id, role: user.role, username: user.username, email: user.usermail },
@@ -118,6 +121,8 @@ export async function login(req: Request, res: Response) {
       });
     }
 
+    // Ensure agent session is opened on successful login
+    try { await ensureSession(user.id, { ip: (req as any).ip, userAgent: req.headers['user-agent'] as any }) } catch {}
     return res.json({ success: true, token, user: { id: user.id, role: user.role, username: user.username, email: user.usermail } });
   } catch (e: any) {
     return res.status(500).json({ success: false, message: e?.message || 'Login failed' });
@@ -135,7 +140,8 @@ export async function me(req: Request, res: Response) {
   }
 }
 
-export async function logout(_req: Request, res: Response) {
+export async function logout(req: Request, res: Response) {
+  try { if (req.user?.userId) await closeActiveSession(req.user.userId, 'user_logout') } catch {}
   if (env.USE_AUTH_COOKIE) {
     res.clearCookie(env.AUTH_COOKIE_NAME, { path: '/' });
     res.clearCookie('csrf_token', { path: '/' });

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { ManagerSidebar } from "../../components/ManagerSidebar"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Clock3, LogIn, LogOut } from "lucide-react"
+import { io, Socket } from "socket.io-client"
 
 type AgentLog = {
   name: string
@@ -20,27 +21,89 @@ type AgentLog = {
   status: "Available" | "Offline"
 }
 
-const sampleData: AgentLog[] = [
-  { name: "Asfiya Pthan", firstLogin: "11:06 AM", lastLogout: "Available", duration: "04:57", status: "Available" },
-  { name: "Viresh Kumbhar", firstLogin: "10:45 AM", lastLogout: "10:55 AM", duration: "05:20", status: "Offline" },
-  { name: "Pooja Bajpai", firstLogin: "10:25 AM", lastLogout: "Available", duration: "04:15", status: "Available" },
-  { name: "Prem Jadhav", firstLogin: "10:28 AM", lastLogout: "Available", duration: "04:19", status: "Available" },
-  { name: "Ali Mustafa", firstLogin: "11:11 AM", lastLogout: "Available", duration: "05:02", status: "Available" },
-  { name: "Rijo Joy", firstLogin: "09:42 AM", lastLogout: "Available", duration: "03:33", status: "Available" },
-]
+type ApiItem = {
+  userId: number
+  name: string
+  status: "AVAILABLE" | "ON_CALL" | "IDLE" | "BREAK" | "OFFLINE"
+  firstLogin: string | null
+  lastLogout: string | null
+  durationSeconds: number
+}
 
 export default function TrackAgentPage() {
+  const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000"
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState<"All" | AgentLog["status"]>("All")
+  const [items, setItems] = useState<AgentLog[]>([])
+
+  const fmtTime = (d: string | null) => {
+    if (!d) return "-"
+    const dt = new Date(d)
+    return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  }
+
+  const fmtDur = (sec: number) => {
+    const s = Math.max(0, Math.floor(sec))
+    const h = Math.floor(s / 3600)
+    const m = Math.floor((s % 3600) / 60)
+    const mm = String(h > 0 ? (m + h * 60) : m).padStart(2, "0")
+    const ss = String(s % 60).padStart(2, "0")
+    return `${mm}:${ss}`
+  }
+
+  const toDisplay = (api: ApiItem): AgentLog => {
+    const isAvailable = api.status === "AVAILABLE"
+    return {
+      name: api.name,
+      firstLogin: fmtTime(api.firstLogin),
+      lastLogout: api.status === "OFFLINE" ? fmtTime(api.lastLogout) : "Available",
+      duration: fmtDur(api.durationSeconds),
+      status: isAvailable ? "Available" : "Offline",
+    }
+  }
+
+  const refresh = () => {
+    return fetch(`${API_BASE}/api/presence/manager/agents`, { credentials: "include" })
+      .then(r => r.json())
+      .then((d) => {
+        const arr: AgentLog[] = (d.items || []).map((it: ApiItem) => toDisplay(it))
+        setItems(arr)
+      })
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    refresh()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    const s: Socket = io(API_BASE, { path: "/socket.io", withCredentials: true })
+    const onAnyUpdate = () => { refresh() }
+    s.on("presence:update", onAnyUpdate)
+    s.on("session:opened", onAnyUpdate)
+    s.on("session:closed", onAnyUpdate)
+    s.on("break:started", onAnyUpdate)
+    s.on("break:ended", onAnyUpdate)
+    return () => {
+      s.off("presence:update", onAnyUpdate)
+      s.off("session:opened", onAnyUpdate)
+      s.off("session:closed", onAnyUpdate)
+      s.off("break:started", onAnyUpdate)
+      s.off("break:ended", onAnyUpdate)
+      s.close()
+    }
+  }, [])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return sampleData.filter((row) => {
+    return items.filter((row) => {
       const matchesQuery = !q || row.name.toLowerCase().includes(q)
       const matchesStatus = status === "All" || row.status === status
       return matchesQuery && matchesStatus
     })
-  }, [query, status])
+  }, [query, status, items])
 
   const onViewTimestamps = (row: AgentLog) => {
     // placeholder

@@ -9,6 +9,7 @@ import campaigns from './campaigns';
 import agenticData from './agentic-data';
 import notes from './notes';
 import documents from './documents';
+import presence from './presence';
 
 import { env } from '../config/env';
 import multer from 'multer';
@@ -31,6 +32,7 @@ router.use('/campaigns', campaigns);
 router.use('/agentic', agenticData);
 router.use('/notes', notes);
 router.use('/documents', documents);
+router.use('/presence', presence);
 
 router.get('/sip/config', (_req, res) => {
   res.json({

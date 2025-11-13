@@ -84,19 +84,23 @@ model extensions {
 }
 
 model users {
-  id              Int               @id @default(autoincrement())
-  role            String?           @db.VarChar(255)
-  unique_user_id  String?           @unique(map: "unique_user_name") @db.VarChar(255)
-  username        String?           @db.VarChar(255)
-  usermail        String?           @db.VarChar(255)
-  password        String?           @db.VarChar(255)
-  extension       String?           @db.VarChar(255)
-  status          String?           @db.VarChar(255)
-  created_at      DateTime?         @db.Timestamp(6)
-  updated_at      DateTime?         @db.Timestamp(6)
-  document_shares document_shares[]
-  documents       documents[]
-  notes           notes[]
+  id                    Int                     @id @default(autoincrement())
+  role                  String?                 @db.VarChar(255)
+  unique_user_id        String?                 @unique(map: "unique_user_name") @db.VarChar(255)
+  username              String?                 @db.VarChar(255)
+  usermail              String?                 @db.VarChar(255)
+  password              String?                 @db.VarChar(255)
+  extension             String?                 @db.VarChar(255)
+  status                String?                 @db.VarChar(255)
+  created_at            DateTime?               @db.Timestamp(6)
+  updated_at            DateTime?               @db.Timestamp(6)
+  agent_breaks          agent_breaks[]
+  agent_heartbeats      agent_heartbeats[]
+  agent_presence_events agent_presence_events[]
+  agent_sessions        agent_sessions[]
+  document_shares       document_shares[]
+  documents             documents[]
+  notes                 notes[]
 }
 
 model transcripts {
@@ -209,6 +213,87 @@ model notes {
   @@index([user_id, created_at], map: "idx_notes_user_created")
 }
 
+model agent_breaks {
+  id              BigInt                 @id @default(autoincrement())
+  user_id         Int
+  session_id      BigInt
+  break_reason_id Int?
+  start_at        DateTime               @default(now()) @db.DateTime(6)
+  end_at          DateTime?              @db.DateTime(6)
+  ended_by        agent_breaks_ended_by?
+  break_reasons   break_reasons?         @relation(fields: [break_reason_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_breaks_reason")
+  agent_sessions  agent_sessions         @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_breaks_session")
+  users           users                  @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_breaks_user")
+
+  @@index([break_reason_id], map: "fk_breaks_reason")
+  @@index([session_id], map: "idx_breaks_session")
+  @@index([start_at, end_at], map: "idx_breaks_time")
+  @@index([user_id, session_id], map: "idx_breaks_user_session")
+}
+
+model agent_heartbeats {
+  id             BigInt         @id @default(autoincrement())
+  user_id        Int
+  session_id     BigInt
+  ts             DateTime       @default(now()) @db.DateTime(6)
+  client_state   String?        @db.LongText
+  ip             String?        @db.VarChar(45)
+  agent_sessions agent_sessions @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_heartbeats_session")
+  users          users          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_heartbeats_user")
+
+  @@index([session_id, ts], map: "idx_heartbeats_session_ts")
+  @@index([user_id, ts], map: "idx_heartbeats_user_ts")
+}
+
+model agent_presence_events {
+  id             BigInt                             @id @default(autoincrement())
+  user_id        Int
+  session_id     BigInt
+  event_type     agent_presence_events_event_type
+  from_status    agent_presence_events_from_status?
+  to_status      agent_presence_events_to_status?
+  ts             DateTime                           @default(now()) @db.DateTime(6)
+  meta           String?                            @db.LongText
+  agent_sessions agent_sessions                     @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_presence_events_session")
+  users          users                              @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_presence_events_user")
+
+  @@index([session_id, ts], map: "idx_presence_session_ts")
+  @@index([event_type, ts], map: "idx_presence_type_ts")
+  @@index([user_id, ts], map: "idx_presence_user_ts")
+}
+
+model agent_sessions {
+  id                    BigInt                        @id @default(autoincrement())
+  user_id               Int
+  login_at              DateTime                      @default(now()) @db.DateTime(6)
+  logout_at             DateTime?                     @db.DateTime(6)
+  last_activity_at      DateTime                      @default(now()) @db.DateTime(6)
+  login_ip              String?                       @db.VarChar(45)
+  user_agent            String?                       @db.VarChar(255)
+  ended_by              agent_sessions_ended_by?
+  end_reason            String?                       @db.VarChar(255)
+  is_active             Boolean                       @default(true)
+  initial_status        agent_sessions_initial_status @default(AVAILABLE)
+  agent_breaks          agent_breaks[]
+  agent_heartbeats      agent_heartbeats[]
+  agent_presence_events agent_presence_events[]
+  users                 users                         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_agent_sessions_user")
+
+  @@index([is_active], map: "idx_agent_sessions_active")
+  @@index([last_activity_at], map: "idx_agent_sessions_last_activity")
+  @@index([user_id, is_active], map: "idx_agent_sessions_user_active")
+}
+
+model break_reasons {
+  id           Int            @id @default(autoincrement())
+  code         String         @unique(map: "code") @db.VarChar(64)
+  label        String         @db.VarChar(255)
+  active       Boolean        @default(true)
+  created_at   DateTime       @default(now()) @db.DateTime(6)
+  updated_at   DateTime       @default(now()) @db.DateTime(6)
+  agent_breaks agent_breaks[]
+}
+
 enum documents_type {
   template
   guide
@@ -238,4 +323,48 @@ enum dialing_contacts_status {
   FAILED
   COMPLETED
   SKIPPED
+}
+
+enum agent_presence_events_event_type {
+  LOGIN
+  LOGOUT
+  STATUS_CHANGE
+  BREAK_START
+  BREAK_END
+  HEARTBEAT
+  IDLE_AUTO
+}
+
+enum agent_presence_events_from_status {
+  OFFLINE
+  AVAILABLE
+  ON_CALL
+  IDLE
+  BREAK
+}
+
+enum agent_presence_events_to_status {
+  OFFLINE
+  AVAILABLE
+  ON_CALL
+  IDLE
+  BREAK
+}
+
+enum agent_breaks_ended_by {
+  system
+  user
+}
+
+enum agent_sessions_ended_by {
+  system
+  user
+}
+
+enum agent_sessions_initial_status {
+  OFFLINE
+  AVAILABLE
+  ON_CALL
+  IDLE
+  BREAK
 }

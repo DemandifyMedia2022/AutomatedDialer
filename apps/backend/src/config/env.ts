@@ -19,4 +19,6 @@ export const env = {
   USE_AUTH_COOKIE: (process.env.USE_AUTH_COOKIE || 'true').toLowerCase() === 'true',
   ALLOW_SETUP: (process.env.ALLOW_SETUP || 'false').toLowerCase() === 'true',
   SETUP_TOKEN: process.env.SETUP_TOKEN || '',
+  IDLE_THRESHOLD_SECONDS: parseInt(process.env.IDLE_THRESHOLD_SECONDS || '120', 10),
+  SESSION_TIMEOUT_SECONDS: parseInt(process.env.SESSION_TIMEOUT_SECONDS || '900', 10),
 };

@@ -1,11 +1,17 @@
 import { createApp } from './app';
 import { env } from './config/env';
 import { db } from './db/prisma';
+import http from 'http';
+import { initWs } from './utils/ws';
+import { startPresenceScheduler } from './services/presenceService';
 
 async function bootstrap() {
   const app = createApp();
   await db.$connect();
-  app.listen(env.PORT, () => {
+  const server = http.createServer(app);
+  initWs(server);
+  startPresenceScheduler();
+  server.listen(env.PORT, () => {
     console.log(`[backend] listening on http://localhost:${env.PORT}`);
   });
 }
