@@ -18,6 +18,9 @@ type LeadRow = {
   start_time: string | null
   end_time: string | null
   call_duration: number | null
+  remarks: string | null
+  recording_url?: string | null
+  recording_filename?: string | null
 }
 
 const LeadDetailsPage = () => {
@@ -48,10 +51,30 @@ const LeadDetailsPage = () => {
   }
   const fmtDur = (n?: number | null) => (n ?? null) !== null ? `${n} Sec` : "-"
 
+  const handlePlayRecording = (url: string) => {
+    if (!url) return
+    const audio = new Audio(url)
+    audio.play().catch(err => console.error('Error playing recording:', err))
+  }
+
+  const handleDownloadRecording = (url: string, filename: string) => {
+    if (!url) return
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename || 'recording.mp3'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   const fetchLeads = React.useCallback(async (p: number) => {
     setLoading(true)
     try {
-      const qs = new URLSearchParams({ page: String(p), pageSize: String(pageSize) })
+      const qs = new URLSearchParams({ 
+        page: String(p), 
+        pageSize: String(pageSize),
+        remarks: 'Lead' // Add filter for remarks
+      })
       if (dest) qs.set("destination", dest)
       if (from) qs.set("from", from)
       if (to) qs.set("to", to)
@@ -63,10 +86,21 @@ const LeadDetailsPage = () => {
         const t = getToken()
         if (t) headers["Authorization"] = `Bearer ${t}`
       }
-      const res = await fetch(`${API_BASE}/api/calls?${qs.toString()}`, { headers, credentials })
+      const url = `${API_BASE}/api/calls?${qs.toString()}`
+      console.log('Fetching from URL:', url) // Debug log
+      const res = await fetch(url, { 
+        headers, 
+        credentials,
+        mode: 'cors'
+      })
       if (res.ok) {
         const data = await res.json()
-        const rows: any[] = data?.items || []
+        console.log('API Response:', data) // Debug log
+        let rows: any[] = data?.items || []
+        
+        // Ensure we only keep rows where remarks is exactly 'Lead'
+        rows = rows.filter(row => row.remarks === 'Lead')
+        console.log('Filtered Rows:', rows) // Debug log
         setItems(rows.map(r => ({
           id: r.id,
           extension: r.extension ?? null,
@@ -75,6 +109,7 @@ const LeadDetailsPage = () => {
           start_time: r.start_time ?? null,
           end_time: r.end_time ?? null,
           call_duration: r.call_duration ?? null,
+          remarks: r.remarks ?? null,
         })))
         setTotal(Number(data?.total || rows.length))
         setPage(Number(data?.page || p))
@@ -160,6 +195,8 @@ const LeadDetailsPage = () => {
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Start Time (UTC)</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">End Time (UTC)</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Call Duration</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Remarks</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Recording</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -179,6 +216,34 @@ const LeadDetailsPage = () => {
                       <td className="px-4 py-3">{toUtc(row.start_time)}</td>
                       <td className="px-4 py-3">{toUtc(row.end_time)}</td>
                       <td className="px-4 py-3">{fmtDur(row.call_duration)}</td>
+                      <td className="px-4 py-3">{row.remarks || "-"}</td>
+                      <td className="px-4 py-3 flex gap-2">
+                        {row.recording_url ? (
+                          <>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => handlePlayRecording(row.recording_url!)}
+                              disabled={!row.recording_url}
+                            >
+                              Play
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => handleDownloadRecording(
+                                row.recording_url!, 
+                                row.recording_filename || `recording-${row.id}.mp3`
+                              )}
+                              disabled={!row.recording_url}
+                            >
+                              Download
+                            </Button>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">No recording</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
