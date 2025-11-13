@@ -52,19 +52,63 @@ const LeadDetailsPage = () => {
   const fmtDur = (n?: number | null) => (n ?? null) !== null ? `${n} Sec` : "-"
 
   const handlePlayRecording = (url: string) => {
-    if (!url) return
-    const audio = new Audio(url)
-    audio.play().catch(err => console.error('Error playing recording:', err))
+    if (!url) {
+      console.error('No recording URL provided')
+      return
+    }
+    // Ensure the URL is absolute
+    const audioUrl = url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`
+    console.log('Playing recording from:', audioUrl)
+    const audio = new Audio(audioUrl)
+    audio.play().catch(err => console.error('Error playing recording:', err, 'URL:', audioUrl))
   }
 
-  const handleDownloadRecording = (url: string, filename: string) => {
-    if (!url) return
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename || 'recording.mp3'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+  const handleDownloadRecording = async (url: string, filename: string) => {
+    if (!url) {
+      console.error('No recording URL provided for download')
+      return
+    }
+    
+    try {
+      // Ensure the URL is absolute
+      const downloadUrl = url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`
+      console.log('Downloading recording from:', downloadUrl)
+      
+      // Fetch the file as a blob
+      const response = await fetch(downloadUrl, {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+        },
+        credentials: 'include'
+      });
+      
+      if (!response.ok) throw new Error('Failed to download recording');
+      
+      // Get the blob data
+      const blob = await response.blob();
+      
+      // Create a temporary URL for the blob
+      const blobUrl = window.URL.createObjectURL(blob);
+      
+      // Create a temporary anchor element to trigger the download
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename.endsWith('.mp3') ? filename : `${filename}.mp3`;
+      document.body.appendChild(link);
+      
+      // Trigger the download
+      link.click();
+      
+      // Clean up
+      window.URL.revokeObjectURL(blobUrl);
+      document.body.removeChild(link);
+      
+    } catch (error) {
+      console.error('Error downloading recording:', error);
+      // Fallback to the original method if the fetch fails
+      const fallbackUrl = url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+      window.open(fallbackUrl, '_blank');
+    }
   }
 
   const fetchLeads = React.useCallback(async (p: number) => {
@@ -101,16 +145,22 @@ const LeadDetailsPage = () => {
         // Ensure we only keep rows where remarks is exactly 'Lead'
         rows = rows.filter(row => row.remarks === 'Lead')
         console.log('Filtered Rows:', rows) // Debug log
-        setItems(rows.map(r => ({
-          id: r.id,
-          extension: r.extension ?? null,
-          destination: r.destination ?? null,
-          source: r.source ?? null,
-          start_time: r.start_time ?? null,
-          end_time: r.end_time ?? null,
-          call_duration: r.call_duration ?? null,
-          remarks: r.remarks ?? null,
-        })))
+        setItems(rows.map(r => {
+          console.log('Processing row:', r) // Debug log
+          return {
+            id: r.id,
+            extension: r.extension ?? null,
+            destination: r.destination ?? null,
+            source: r.source ?? null,
+            start_time: r.start_time ?? null,
+            end_time: r.end_time ?? null,
+            call_duration: r.call_duration ?? null,
+            remarks: r.remarks ?? null,
+            // Use the recording URL from the API response
+            recording_url: r.recording_url || r.recording || null,
+            recording_filename: r.recording_filename || `recording-${r.id}.mp3`
+          }
+        }))
         setTotal(Number(data?.total || rows.length))
         setPage(Number(data?.page || p))
       } else {
