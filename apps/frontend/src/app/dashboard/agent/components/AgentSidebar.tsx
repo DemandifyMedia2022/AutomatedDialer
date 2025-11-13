@@ -15,6 +15,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 import { useAuth } from "@/hooks/useAuth"
+import AgentPresenceWidget from "@/components/agent/AgentPresenceWidget"
 
 const data = {
   user: {
@@ -106,6 +107,9 @@ export function AgentSidebar({ ...props }: React.ComponentProps<typeof Sidebar>)
         <NavMain items={data.navMain} />
       </SidebarContent>
       <SidebarFooter>
+        <div className="px-2 py-2 group-data-[collapsible=icon]:hidden">
+          <AgentPresenceWidget />
+        </div>
         <NavUser user={displayUser} />
       </SidebarFooter>
       <SidebarRail />

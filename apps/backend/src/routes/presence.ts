@@ -100,6 +100,61 @@ if (env.USE_AUTH_COOKIE) {
 export default router
 
 // Manager endpoints: presence summaries
+router.get('/break-reasons', requireAuth, requireRoles(['agent','manager','superadmin']), async (_req: any, res: any, next: any) => {
+  try {
+    const items: any[] = await (db as any).break_reasons.findMany({ orderBy: { label: 'asc' } })
+    const filtered = (items || []).filter((r: any) => r.active === null || r.active === undefined || r.active === true)
+    res.json({ success: true, items: filtered.map((r: any) => ({ id: Number(r.id), code: r.code, label: r.label })) })
+  } catch (e) { next(e) }
+})
+
+// Current user's presence summary for today
+router.get('/me/summary', requireAuth, requireRoles(['agent','manager','superadmin']), async (req: any, res: any, next: any) => {
+  try {
+    const userId = req.user?.userId
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
+
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0)
+    const now = new Date()
+
+    // Fetch sessions that overlap today
+    const sessions: any[] = await (db as any).agent_sessions.findMany({
+      where: {
+        user_id: userId,
+        OR: [
+          { login_at: { gte: todayStart } },
+          { logout_at: { gte: todayStart } },
+        ],
+      },
+      orderBy: { login_at: 'asc' },
+    })
+
+    let totalOnlineSeconds = 0
+    for (const s of sessions) {
+      const start = new Date(Math.max(new Date(s.login_at).getTime(), todayStart.getTime()))
+      const end = new Date(Math.min(new Date(s.logout_at ?? now).getTime(), now.getTime()))
+      const diff = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 1000))
+      totalOnlineSeconds += diff
+    }
+
+    return res.json({ success: true, totalOnlineSeconds })
+  } catch (e) { next(e) }
+})
+
+// Return current presence status and since timestamp for the authenticated agent
+router.get('/me', requireAuth, requireRoles(['agent','manager','superadmin']), async (req: any, res: any, next: any) => {
+  try {
+    const userId = req.user?.userId
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
+    const session = await (db as any).agent_sessions.findFirst({ where: { user_id: userId, is_active: true }, orderBy: { id: 'desc' } })
+    if (!session) return res.json({ success: true, status: 'OFFLINE', since: null, sessionId: null })
+    const last = await (db as any).agent_presence_events.findFirst({ where: { session_id: session.id, to_status: { not: null } }, orderBy: { ts: 'desc' } })
+    const status = (last?.to_status || session.initial_status || 'AVAILABLE')
+    const since = (last?.ts || session.login_at)
+    return res.json({ success: true, status, since, sessionId: Number(session.id) })
+  } catch (e) { next(e) }
+})
+
 router.get('/manager/agents', requireAuth, requireRoles(['manager', 'superadmin']), async (_req: any, res: any, next: any) => {
   try {
     // Get all users with role agent (and optionally managers if needed)

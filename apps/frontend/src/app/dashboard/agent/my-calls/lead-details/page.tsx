@@ -3,6 +3,8 @@
 import React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Download, Play, Pause } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
@@ -50,65 +52,101 @@ const LeadDetailsPage = () => {
     }
   }
   const fmtDur = (n?: number | null) => (n ?? null) !== null ? `${n} Sec` : "-"
-
-  const handlePlayRecording = (url: string) => {
-    if (!url) {
-      console.error('No recording URL provided')
-      return
-    }
-    // Ensure the URL is absolute
-    const audioUrl = url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`
-    console.log('Playing recording from:', audioUrl)
-    const audio = new Audio(audioUrl)
-    audio.play().catch(err => console.error('Error playing recording:', err, 'URL:', audioUrl))
+  const toAbsUrl = (url: string) => url && !url.startsWith('http') ? `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}` : url
+  const guessExt = (ct: string | null) => {
+    if (!ct) return '.webm'
+    const m: Record<string, string> = { 'audio/webm': '.webm', 'audio/ogg': '.ogg', 'audio/mpeg': '.mp3', 'audio/wav': '.wav', 'video/webm': '.webm' }
+    return m[ct] || '.webm'
   }
-
-  const handleDownloadRecording = async (url: string, filename: string) => {
-    if (!url) {
-      console.error('No recording URL provided for download')
-      return
-    }
-    
+  const downloadRecording = React.useCallback(async (url: string, id: string | number) => {
     try {
-      // Ensure the URL is absolute
-      const downloadUrl = url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`
-      console.log('Downloading recording from:', downloadUrl)
-      
-      // Fetch the file as a blob
-      const response = await fetch(downloadUrl, {
-        headers: {
-          'Content-Type': 'application/octet-stream',
-        },
-        credentials: 'include'
-      });
-      
-      if (!response.ok) throw new Error('Failed to download recording');
-      
-      // Get the blob data
-      const blob = await response.blob();
-      
-      // Create a temporary URL for the blob
-      const blobUrl = window.URL.createObjectURL(blob);
-      
-      // Create a temporary anchor element to trigger the download
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = filename.endsWith('.mp3') ? filename : `${filename}.mp3`;
-      document.body.appendChild(link);
-      
-      // Trigger the download
-      link.click();
-      
-      // Clean up
-      window.URL.revokeObjectURL(blobUrl);
-      document.body.removeChild(link);
-      
-    } catch (error) {
-      console.error('Error downloading recording:', error);
-      // Fallback to the original method if the fetch fails
-      const fallbackUrl = url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
-      window.open(fallbackUrl, '_blank');
+      const res = await fetch(toAbsUrl(url), { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
+      if (!res.ok) throw new Error(String(res.status))
+      const ct = res.headers.get('content-type')
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = `recording_${id}${guessExt(ct)}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(objectUrl)
+    } catch {
+      // no-op
     }
+  }, [])
+
+  const WaveBars: React.FC<{ active: boolean }> = ({ active }) => (
+    <div className="flex items-end gap-[1.5px] h-4 w-24">
+      {[0.4, 0.6, 0.8, 1, 0.7, 0.5, 0.6, 0.8, 1, 0.8, 0.6, 0.4].map((height, i) => (
+        <span
+          key={i}
+          style={{
+            height: `${height * 100}%`,
+            animation: active ? `wave 0.7s ${0.05 * i}s infinite ease-in-out` : 'none',
+            animationFillMode: active ? 'both' : 'forwards',
+          }}
+          className="w-[1.5px] bg-foreground/70 rounded-sm origin-bottom"
+        />
+      ))}
+      <style jsx>{`
+        @keyframes wave {
+          0% { transform: scaleY(0.4); }
+          50% { transform: scaleY(1.2); }
+          100% { transform: scaleY(0.4); }
+        }
+      `}</style>
+    </div>
+  )
+
+  const CompactAudio: React.FC<{ src: string; name: string | number }> = ({ src, name }) => {
+    const audioRef = React.useRef<HTMLAudioElement>(null)
+    const [playing, setPlaying] = React.useState(false)
+    const [progress, setProgress] = React.useState(0)
+    const [dur, setDur] = React.useState(0)
+    const toggle = () => { const a = audioRef.current; if (!a) return; if (a.paused) a.play(); else a.pause() }
+    React.useEffect(() => {
+      const a = audioRef.current; if (!a) return
+      const onPlay = () => setPlaying(true)
+      const onPause = () => setPlaying(false)
+      const onTime = () => { setProgress(a.currentTime); setDur(a.duration || 0) }
+      a.addEventListener('play', onPlay)
+      a.addEventListener('pause', onPause)
+      a.addEventListener('timeupdate', onTime)
+      a.addEventListener('loadedmetadata', onTime)
+      return () => { a.removeEventListener('play', onPlay); a.removeEventListener('pause', onPause); a.removeEventListener('timeupdate', onTime); a.removeEventListener('loadedmetadata', onTime) }
+    }, [])
+    const pct = dur ? Math.min(100, (progress/dur)*100) : 0
+    const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+      const a = audioRef.current; if (!a || !dur) return
+      const rect = (e.target as HTMLDivElement).getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const ratio = Math.max(0, Math.min(1, x / rect.width))
+      a.currentTime = ratio * dur
+    }
+    return (
+      <div className="flex items-center gap-4 w-full max-w-md">
+        <button onClick={toggle} className="text-foreground hover:bg-accent/50 rounded p-1.5 transition-colors focus:outline-none" aria-label={playing ? 'Pause' : 'Play'}>
+          {playing ? (<Pause className="h-4 w-4" strokeWidth={2.5} />) : (<Play className="h-4 w-4 ml-0.5" strokeWidth={2.5} />)}
+        </button>
+        <div className="flex-1 min-w-0 flex items-center">
+          <div className="hidden sm:block"><WaveBars active={playing} /></div>
+        </div>
+        <div className="text-xs tabular-nums text-muted-foreground w-10 text-right">{Math.floor(progress)}s</div>
+        <audio ref={audioRef} src={toAbsUrl(src)} preload="none" />
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button className="text-muted-foreground hover:bg-accent/50 rounded p-1.5 transition-colors focus:outline-none" onClick={(e) => { e.stopPropagation(); downloadRecording(src, name) }} aria-label="Download">
+                <Download className="h-4 w-4" strokeWidth={2.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Download</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+    )
   }
 
   const fetchLeads = React.useCallback(async (p: number) => {
@@ -267,31 +305,11 @@ const LeadDetailsPage = () => {
                       <td className="px-4 py-3">{toUtc(row.end_time)}</td>
                       <td className="px-4 py-3">{fmtDur(row.call_duration)}</td>
                       <td className="px-4 py-3">{row.remarks || "-"}</td>
-                      <td className="px-4 py-3 flex gap-2">
+                      <td className="px-4 py-3">
                         {row.recording_url ? (
-                          <>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => handlePlayRecording(row.recording_url!)}
-                              disabled={!row.recording_url}
-                            >
-                              Play
-                            </Button>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => handleDownloadRecording(
-                                row.recording_url!, 
-                                row.recording_filename || `recording-${row.id}.mp3`
-                              )}
-                              disabled={!row.recording_url}
-                            >
-                              Download
-                            </Button>
-                          </>
+                          <CompactAudio src={row.recording_url} name={row.id} />
                         ) : (
-                          <span className="text-muted-foreground">No recording</span>
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </td>
                     </tr>

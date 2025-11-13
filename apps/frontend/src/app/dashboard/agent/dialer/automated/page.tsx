@@ -594,7 +594,7 @@ export default function AutomatedDialerPage() {
       return 'Call Failed'
     })()
     form.append('disposition', autoDisposition)
-    // Selected options are feedbacks stored as remark
+    // Selected options are feedbacks stored as remarks
     if (disposition) form.append('remarks', disposition)
     if (blob) form.append('recording', blob, `call_${Date.now()}.webm`)
 
