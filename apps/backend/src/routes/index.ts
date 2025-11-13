@@ -9,6 +9,7 @@ import campaigns from './campaigns';
 import agenticData from './agentic-data';
 import notes from './notes';
 import documents from './documents';
+import dialerSheets from './dialerSheets';
 import presence from './presence';
 import profile from './profile';
 
@@ -33,6 +34,7 @@ router.use('/campaigns', campaigns);
 router.use('/agentic', agenticData);
 router.use('/notes', notes);
 router.use('/documents', documents);
+router.use('/dialer-sheets', dialerSheets);
 router.use('/presence', presence);
 router.use('/profile', profile);
 

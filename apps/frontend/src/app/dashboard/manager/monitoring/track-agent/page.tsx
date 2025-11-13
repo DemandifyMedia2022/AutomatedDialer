@@ -21,6 +21,9 @@ type AgentLog = {
   lastLogout: string
   duration: string
   status: "Available" | "Offline"
+  onBreak: boolean
+  breakReason: string | null
+  breakToday: string
 }
 
 type ApiItem = {
@@ -30,6 +33,9 @@ type ApiItem = {
   firstLogin: string | null
   lastLogout: string | null
   durationSeconds: number
+  onBreak?: boolean
+  breakReason?: string | null
+  totalBreakSecondsToday?: number
 }
 
 export default function TrackAgentPage() {
@@ -65,6 +71,9 @@ export default function TrackAgentPage() {
       lastLogout: api.status === "OFFLINE" ? fmtTime(api.lastLogout) : "Available",
       duration: fmtDur(api.durationSeconds),
       status: isAvailable ? "Available" : "Offline",
+      onBreak: !!api.onBreak,
+      breakReason: api.breakReason ?? null,
+      breakToday: fmtDur(api.totalBreakSecondsToday ?? 0),
     }
   }
 
@@ -182,6 +191,8 @@ export default function TrackAgentPage() {
                       <TableHead className="w-[160px]">Last Logout</TableHead>
                       <TableHead className="w-[120px]">Duration</TableHead>
                       <TableHead className="w-[140px]">Status</TableHead>
+                      <TableHead className="w-[140px]">Break</TableHead>
+                      <TableHead className="w-[160px]">Break Today</TableHead>
                       <TableHead className="w-[160px] text-center">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -209,15 +220,31 @@ export default function TrackAgentPage() {
                         </TableCell>
                         <TableCell>
                           {row.status === "Available" ? (
-                            <Badge className="bg-green-600 hover:bg-green-700">Available</Badge>
+                            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-emerald-100 text-emerald-700 border border-emerald-200">Active</span>
                           ) : (
-                            <Badge className="bg-red-600 hover:bg-red-700">Offline</Badge>
+                            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-red-100 text-red-700 border border-red-200">Offline</span>
                           )}
+                        </TableCell>
+                        <TableCell>
+                          {row.onBreak ? (
+                            <div className="inline-flex items-center gap-2">
+                              <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-indigo-100 text-indigo-700 border border-indigo-200">Break</span>
+                              <span className="text-muted-foreground text-xs">{row.breakReason || "-"}</span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="inline-flex items-center gap-2 text-muted-foreground">
+                            <Clock3 className="h-4 w-4" />
+                            <span>{row.breakToday}</span>
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <Button
                             size="sm"
-                            className="bg-indigo-600 hover:bg-indigo-700"
+                            className="bg-primary hover:bg-primary/80"
                             onClick={() => onViewTimestamps(row)}
                           >
                             View Timestamps

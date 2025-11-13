@@ -137,6 +137,14 @@ export default function AutomatedDialerPage() {
   const [uploadOpen, setUploadOpen] = useState(false)
   const [sheetName, setSheetName] = useState("")
   const [pendingFile, setPendingFile] = useState<File | null>(null)
+  // Dialer Sheets (server-managed, Option A)
+  const [loadSheetsOpen, setLoadSheetsOpen] = useState(false)
+  const [manageSheetsOpen, setManageSheetsOpen] = useState(false)
+  const [mySheets, setMySheets] = useState<Array<{ id:number; name:string; size:number; mtime:number }>>([])
+  const [allSheets, setAllSheets] = useState<Array<{ id:number; name:string; size:number; mtime:number; active?:boolean }>>([])
+  const [assignAgentCsv, setAssignAgentCsv] = useState<string>("")
+  const [activeAssignId, setActiveAssignId] = useState<number | null>(null)
+  const [sheetUploading, setSheetUploading] = useState(false)
 
   // Refs (copied/adapted from manual dialer)
   const uaRef = useRef<any>(null)
@@ -235,6 +243,97 @@ export default function AutomatedDialerPage() {
   }, [docQuery])
 
   useEffect(() => { fetchDocs() }, [fetchDocs])
+
+  // ---- Dialer Sheets (Option A) helpers ----
+  const buildAuthHeaders = () => {
+    const headers: Record<string, string> = {}
+    let credentials: RequestCredentials = 'omit'
+    if (USE_AUTH_COOKIE) {
+      credentials = 'include'
+      const csrf = getCsrfTokenFromCookies(); if (csrf) headers['X-CSRF-Token'] = csrf
+    } else {
+      const t = getToken(); if (t) headers['Authorization'] = `Bearer ${t}`
+    }
+    return { headers, credentials }
+  }
+
+  const fetchMySheets = useCallback(async () => {
+    try {
+      const { headers, credentials } = buildAuthHeaders()
+      const res = await fetch(`${API_PREFIX}/dialer-sheets/my`, { headers, credentials })
+      if (!res.ok) return setMySheets([])
+      const data = await res.json().catch(()=>null as any)
+      const items = Array.isArray(data?.items) ? data.items : []
+      setMySheets(items.map((x:any)=>({ id:Number(x.id), name:String(x.name||''), size:Number(x.size||0), mtime:Number(x.mtime||0) })))
+    } catch { setMySheets([]) }
+  }, [])
+
+  const fetchAllSheets = useCallback(async () => {
+    try {
+      const { headers, credentials } = buildAuthHeaders()
+      const res = await fetch(`${API_PREFIX}/dialer-sheets`, { headers, credentials })
+      if (!res.ok) return setAllSheets([])
+      const data = await res.json().catch(()=>null as any)
+      const items = Array.isArray(data?.items) ? data.items : []
+      setAllSheets(items.map((x:any)=>({ id:Number(x.id), name:String(x.name||''), size:Number(x.size||0), mtime:Number(x.mtime||0), active: !!x.active })))
+    } catch { setAllSheets([]) }
+  }, [])
+
+  const uploadSheetToServer = async (file: File) => {
+    const { headers, credentials } = buildAuthHeaders()
+    const form = new FormData(); form.append('file', file)
+    setSheetUploading(true)
+    try {
+      const res = await fetch(`${API_PREFIX}/dialer-sheets/upload`, { method: 'POST', headers, credentials, body: form })
+      if (res.ok) { await fetchAllSheets() }
+    } finally { setSheetUploading(false) }
+  }
+
+  const assignSheet = async (id: number, csv: string) => {
+    const ids = csv.split(/[,\s]+/).map(s=>Number(s)).filter(n=>Number.isFinite(n))
+    const { headers, credentials } = buildAuthHeaders()
+    headers['Content-Type'] = 'application/json'
+    const res = await fetch(`${API_PREFIX}/dialer-sheets/${id}/assign`, { method: 'POST', headers, credentials, body: JSON.stringify({ agentIds: ids }) })
+    if (res.ok) { await fetchAllSheets(); setAssignAgentCsv(""); setActiveAssignId(null) }
+  }
+
+  const activateSheet = async (id: number) => {
+    const { headers, credentials } = buildAuthHeaders()
+    const res = await fetch(`${API_PREFIX}/dialer-sheets/${id}/activate`, { method: 'POST', headers, credentials })
+    if (res.ok) await fetchAllSheets()
+  }
+
+  const deleteSheet = async (id: number) => {
+    const { headers, credentials } = buildAuthHeaders()
+    const res = await fetch(`${API_PREFIX}/dialer-sheets/${id}`, { method: 'DELETE', headers, credentials })
+    if (res.ok) await fetchAllSheets()
+  }
+
+  const downloadAndLoadSheet = async (id: number, name: string) => {
+    try {
+      const { headers, credentials } = buildAuthHeaders()
+      const res = await fetch(`${API_PREFIX}/dialer-sheets/download/${id}`, { headers, credentials })
+      if (!res.ok) return
+      const lower = name.toLowerCase()
+      if (lower.endsWith('.csv') || lower.endsWith('.txt')) {
+        const text = await res.text()
+        const rows = parseCsvRows(text)
+        const prospects = parseProspectsFromRows(rows)
+        setQueue(prospects); queueRef.current = prospects; setCurrentIndex(0); currentIndexRef.current = 0
+      } else if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
+        const ab = await res.arrayBuffer()
+        if (!window.XLSX) throw new Error('XLSX parser not loaded')
+        const wb = window.XLSX.read(new Uint8Array(ab), { type: 'array' })
+        const targetSheet = sheetName && wb.Sheets[sheetName] ? sheetName : wb.SheetNames[0]
+        const ws = wb.Sheets[targetSheet]
+        const rows: any[][] = window.XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][
+        ]
+        const prospects = parseProspectsFromRows(rows)
+        setQueue(prospects); queueRef.current = prospects; setCurrentIndex(0); currentIndexRef.current = 0
+      }
+      setLoadSheetsOpen(false)
+    } catch (e) { setError((e as any)?.message || 'Failed to load sheet') }
+  }
   // Auto-login to SIP when JsSIP loads
   useEffect(() => {
     if (!isLoaded) return
@@ -939,6 +1038,73 @@ export default function AutomatedDialerPage() {
                           <Button variant="outline" onClick={() => { setPendingFile(null); setSheetName(""); setUploadOpen(false) }}>Cancel</Button>
                           <Button onClick={async () => { if (pendingFile) { await onFile(pendingFile); setUploadOpen(false); setPendingFile(null) } }}>Load</Button>
                         </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                    <Dialog open={loadSheetsOpen} onOpenChange={(o)=>{ setLoadSheetsOpen(o); if (o) fetchMySheets() }}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline">Load My Sheets</Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>My Assigned Sheets</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-2 max-h-72 overflow-auto">
+                          {mySheets.length === 0 ? (
+                            <div className="text-sm text-muted-foreground">No sheets assigned</div>
+                          ) : mySheets.map((s)=> (
+                            <div key={s.id} className="flex items-center justify-between gap-2 border rounded p-2">
+                              <div className="text-sm truncate">{s.name}</div>
+                              <Button size="sm" onClick={()=>downloadAndLoadSheet(s.id, s.name)}>Load</Button>
+                            </div>
+                          ))}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                    <Dialog open={manageSheetsOpen} onOpenChange={(o)=>{ setManageSheetsOpen(o); if (o) fetchAllSheets() }}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline">Manage Sheets</Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                          <DialogTitle>Manage Dialer Sheets</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-3">
+                            <Input type="file" accept=".csv,.xlsx,.xls,.txt" onChange={(e)=> { const f=e.target.files?.[0]; if (f) uploadSheetToServer(f) }} />
+                            <Button disabled={sheetUploading} onClick={()=>{ /* input change auto-uploads */ }}>
+                              {sheetUploading ? 'Uploading…' : 'Upload'}
+                            </Button>
+                          </div>
+                          <div className="max-h-80 overflow-auto border rounded">
+                            {allSheets.length === 0 ? (
+                              <div className="p-3 text-sm text-muted-foreground">No sheets</div>
+                            ) : (
+                              <div className="divide-y">
+                                {allSheets.map((s) => (
+                                  <div key={s.id} className="p-2 flex items-center gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-sm truncate">{s.name}</div>
+                                      {activeAssignId === s.id ? (
+                                        <div className="mt-2 flex items-center gap-2">
+                                          <Input placeholder="Agent IDs CSV (e.g., 3,7,12)" value={assignAgentCsv} onChange={(e)=>setAssignAgentCsv(e.target.value)} />
+                                          <Button size="sm" onClick={()=>assignSheet(s.id, assignAgentCsv)}>Save</Button>
+                                          <Button size="sm" variant="outline" onClick={()=>{ setActiveAssignId(null); setAssignAgentCsv('') }}>Cancel</Button>
+                                        </div>
+                                      ) : (
+                                        <div className="text-[11px] text-muted-foreground">Assigned: -</div>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Button size="sm" variant={s.active ? 'default' : 'outline'} onClick={()=>activateSheet(s.id)}>{s.active ? 'Active' : 'Activate'}</Button>
+                                      <Button size="sm" variant="outline" onClick={()=>{ setActiveAssignId(s.id); setAssignAgentCsv('') }}>Assign</Button>
+                                      <Button size="sm" variant="destructive" onClick={()=>deleteSheet(s.id)}>Delete</Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </DialogContent>
                     </Dialog>
                     <Button variant="outline" className="gap-2" onClick={() => { setQueue([]); queueRef.current = []; setCurrentIndex(0); currentIndexRef.current = 0; setAutoRun(false); autoRunRef.current = false; try { localStorage.removeItem('auto_queue_v1'); localStorage.removeItem('auto_queue'); localStorage.removeItem('auto_current_index') } catch {} }}>

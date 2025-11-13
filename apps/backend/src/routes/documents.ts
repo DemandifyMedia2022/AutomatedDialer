@@ -56,6 +56,23 @@ router.get('/', requireAuth, requireRoles(['agent','manager','superadmin']), asy
   } catch (e) { next(e) }
 })
 
+// Delete document
+const deleteMiddlewares: any[] = [requireAuth, requireRoles(['manager','superadmin'])]
+if (env.USE_AUTH_COOKIE) deleteMiddlewares.push(csrfProtect)
+
+router.delete('/:id', ...deleteMiddlewares, async (req: any, res: any, next: any) => {
+  try {
+    const id = parseInt(String(req.params.id || ''), 10)
+    if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ success: false, message: 'Invalid id' })
+
+    const pool = getPool()
+    const [result]: any = await pool.query('DELETE FROM documents WHERE id = ?', [id])
+    const affected = Number(result?.affectedRows || 0)
+    if (affected === 0) return res.status(404).json({ success: false, message: 'Not found' })
+    res.json({ success: true, deleted: affected })
+  } catch (e) { next(e) }
+})
+
 const CreateDocSchema = z.object({
   type: z.enum(['template','guide','playbook','snippet','other']).default('guide'),
   title: z.string().min(1),

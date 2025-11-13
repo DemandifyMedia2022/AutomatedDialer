@@ -78,11 +78,11 @@ export default function CampaignsPage() {
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="/dashboard/manager">Manager</BreadcrumbLink>
+                  <BreadcrumbLink href="/dashboard/agent">Agent</BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="/dashboard/manager/administration">Administration</BreadcrumbLink>
+                  <BreadcrumbLink href="/dashboard/agent/campaigns">Campaigns</BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem>

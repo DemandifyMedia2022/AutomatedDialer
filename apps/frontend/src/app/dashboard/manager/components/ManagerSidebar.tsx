@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Users, ClipboardList, BarChart3, Settings, Phone, Bot } from "lucide-react"
+import { Users, ClipboardList, BarChart3, Settings, Phone, Bot, UserStar } from "lucide-react"
 import { NavMain } from "@/components/layout/nav-main"
 import { NavUser } from "@/components/layout/nav-user"
 import {
@@ -28,16 +28,6 @@ const data = {
   },
   navMain: [
     {
-      title: "Overview",
-      url: "/dashboard/manager",
-      icon: BarChart3,
-      isActive: true,
-      items: [
-        { title: "KPIs", url: "#" },
-        { title: "Trends", url: "#" },
-      ],
-    },
-    {
       title: "Monitoring",
       url: "#", 
       icon: Users,
@@ -58,10 +48,11 @@ const data = {
     {
       title: "Administration",
       url: "#",
-      icon: Settings,
+      icon: UserStar,
       items: [
         { title: "Agent", url: "/dashboard/manager/administration/agent" },
         { title: "Campaigns", url: "/dashboard/manager/administration/campaigns" },
+        { title: "Automated Dialer", url: "/dashboard/manager/administration/automated" },
       ],
     },
     {
@@ -89,7 +80,6 @@ const data = {
       icon: Settings,
       items: [
         { title: "Profile", url: "/dashboard/manager/settings/profile" },
-        { title: "Preferences", url: "/dashboard/manager/settings/preferences" },
       ],
     },
   ],

@@ -108,6 +108,32 @@ router.get('/break-reasons', requireAuth, requireRoles(['agent','manager','super
   } catch (e) { next(e) }
 })
 
+// Manager summary counts for dashboard
+router.get('/manager/summary', requireAuth, requireRoles(['manager', 'superadmin']), async (_req: any, res: any, next: any) => {
+  try {
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0)
+    const users: any[] = await (db as any).users.findMany({ where: { role: { in: ['agent', 'Agent'] as any } }, select: { id: true } })
+    const totalAgents = users.length
+
+    let online = 0, available = 0, onCall = 0, idle = 0, onBreak = 0
+
+    for (const u of users) {
+      const active = await (db as any).agent_sessions.findFirst({ where: { user_id: u.id, is_active: true }, orderBy: { id: 'desc' } })
+      if (!active) continue
+      online += 1
+      const lastEv = await (db as any).agent_presence_events.findFirst({ where: { session_id: active.id, to_status: { not: null } }, orderBy: { ts: 'desc' } })
+      const st = (lastEv?.to_status || active.initial_status || 'AVAILABLE') as string
+      if (st === 'AVAILABLE') available += 1
+      else if (st === 'ON_CALL') onCall += 1
+      else if (st === 'IDLE') idle += 1
+      else if (st === 'BREAK') onBreak += 1
+    }
+
+    const offline = Math.max(0, totalAgents - online)
+    res.json({ success: true, totalAgents, online, available, onCall, idle, onBreak, offline, since: todayStart })
+  } catch (e) { next(e) }
+})
+
 // Current user's presence summary for today
 router.get('/me/summary', requireAuth, requireRoles(['agent','manager','superadmin']), async (req: any, res: any, next: any) => {
   try {
@@ -170,6 +196,9 @@ router.get('/manager/agents', requireAuth, requireRoles(['manager', 'superadmin'
       let firstLogin: Date | null = null
       let lastLogout: Date | null = null
       let durationSeconds = 0
+      let onBreak = false
+      let breakReason: string | null = null
+      let totalBreakSecondsToday = 0
 
       // First login and last logout today
       const firstToday = await (db as any).agent_sessions.findFirst({ where: { user_id: u.id, login_at: { gte: todayStart } }, orderBy: { login_at: 'asc' } })
@@ -182,6 +211,34 @@ router.get('/manager/agents', requireAuth, requireRoles(['manager', 'superadmin'
         const lastEv = await (db as any).agent_presence_events.findFirst({ where: { session_id: active.id, to_status: { not: null } }, orderBy: { ts: 'desc' } })
         status = (lastEv?.to_status || active.initial_status || 'AVAILABLE')
         durationSeconds = Math.max(0, Math.floor((now.getTime() - new Date(active.login_at).getTime()) / 1000))
+
+        // Current break info
+        const openBreak = await (db as any).agent_breaks.findFirst({ where: { user_id: u.id, session_id: active.id, end_at: null }, orderBy: { id: 'desc' } })
+        if (openBreak) {
+          onBreak = true
+          if (openBreak.break_reason_id) {
+            const br = await (db as any).break_reasons.findFirst({ where: { id: openBreak.break_reason_id } })
+            breakReason = br?.label || null
+          }
+        }
+      }
+
+      // Total break seconds today (across all sessions for the user)
+      const todaysBreaks: any[] = await (db as any).agent_breaks.findMany({
+        where: {
+          user_id: u.id,
+          OR: [
+            { start_at: { gte: todayStart } },
+            { end_at: { gte: todayStart } },
+          ],
+        },
+        orderBy: { start_at: 'asc' },
+      })
+      for (const b of todaysBreaks) {
+        const bs = new Date(Math.max(new Date(b.start_at).getTime(), todayStart.getTime()))
+        const be = new Date(Math.min(new Date(b.end_at ?? now).getTime(), now.getTime()))
+        const diff = Math.max(0, Math.floor((be.getTime() - bs.getTime()) / 1000))
+        totalBreakSecondsToday += diff
       }
 
       results.push({
@@ -191,6 +248,9 @@ router.get('/manager/agents', requireAuth, requireRoles(['manager', 'superadmin'
         firstLogin,
         lastLogout,
         durationSeconds,
+        onBreak,
+        breakReason,
+        totalBreakSecondsToday,
       })
     }
 
@@ -198,4 +258,64 @@ router.get('/manager/agents', requireAuth, requireRoles(['manager', 'superadmin'
   } catch (e) {
     next(e)
   }
+})
+
+// Calls series for dashboard charts (placed calls)
+router.get('/manager/calls-series', requireAuth, requireRoles(['manager','superadmin']), async (req: any, res: any, next: any) => {
+  try {
+    const range = String(req.query.range || 'daily')
+    const now = new Date()
+
+    if (range === 'monthly') {
+      // last 30 days by day
+      const buckets: { start: Date; end: Date; label: string }[] = []
+      for (let i = 29; i >= 0; i--) {
+        const start = new Date(now); start.setHours(0,0,0,0); start.setDate(start.getDate() - i)
+        const end = new Date(start); end.setDate(end.getDate() + 1)
+        const label = start.toLocaleDateString(undefined, { month: 'short', day: '2-digit' })
+        buckets.push({ start, end, label })
+      }
+      const calls: any[] = await (db as any).calls.findMany({
+        where: {
+          created_at: { gte: buckets[0].start, lte: buckets[buckets.length-1].end },
+          // If you only want outbound calls, uncomment:
+          // direction: 'outbound'
+        },
+        select: { created_at: true, direction: true },
+      })
+      const series = buckets.map(b => {
+        const value = calls.reduce((acc, c) => {
+          const t = new Date(c.created_at).getTime()
+          return acc + (t >= b.start.getTime() && t < b.end.getTime() ? 1 : 0)
+        }, 0)
+        return { label: b.label, value }
+      })
+      return res.json({ success: true, series })
+    } else {
+      // last 24 hours by hour
+      const buckets: { start: Date; end: Date; label: string }[] = []
+      const endTop = new Date(now); endTop.setMinutes(0,0,0)
+      for (let i = 23; i >= 0; i--) {
+        const start = new Date(endTop); start.setHours(endTop.getHours() - i)
+        const end = new Date(start); end.setHours(start.getHours() + 1)
+        const label = start.toLocaleTimeString(undefined, { hour: '2-digit' })
+        buckets.push({ start, end, label })
+      }
+      const calls: any[] = await (db as any).calls.findMany({
+        where: {
+          created_at: { gte: buckets[0].start, lte: buckets[buckets.length-1].end },
+          // direction: 'outbound'
+        },
+        select: { created_at: true, direction: true },
+      })
+      const series = buckets.map(b => {
+        const value = calls.reduce((acc, c) => {
+          const t = new Date(c.created_at).getTime()
+          return acc + (t >= b.start.getTime() && t < b.end.getTime() ? 1 : 0)
+        }, 0)
+        return { label: b.label, value }
+      })
+      return res.json({ success: true, series })
+    }
+  } catch (e) { next(e) }
 })
