@@ -4,6 +4,7 @@ import path from 'path'
 import fs from 'fs'
 import { env } from '../config/env'
 import { getPool } from '../db/pool'
+import { db } from '../db/prisma'
 import { requireAuth, requireRoles } from '../middlewares/auth'
 import { csrfProtect } from '../middlewares/csrf'
 
@@ -38,21 +39,37 @@ async function ensureTable() {
   `)
 }
 
-router.get('/', requireAuth, async (_req: any, res: any, next: any) => {
+router.get('/', requireAuth, requireRoles(['manager','superadmin']), async (_req: any, res: any, next: any) => {
   try {
     await ensureTable()
-    const pool = getPool()
-    const [rows]: any = await pool.query('SELECT id, name, size, mtime, active, assigned_user_ids, created_at, updated_at FROM dialer_sheets ORDER BY updated_at DESC')
-    const items = rows.map((r: any) => ({
-      id: r.id,
-      name: r.name,
-      size: Number(r.size || 0),
-      mtime: Number(r.mtime || 0),
-      active: !!r.active,
-      assignedUserIds: String(r.assigned_user_ids || '').split(',').filter(Boolean).map((s: string) => Number(s)).filter((n: number) => Number.isFinite(n)),
-      created_at: r.created_at,
-      updated_at: r.updated_at,
-    }))
+    let items: any[] = []
+    try {
+      const rows = await (db as any).dialer_sheets.findMany({ orderBy: { updated_at: 'desc' } })
+        items = rows.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        size: Number(r.size || 0),
+        mtime: Number(r.mtime || 0),
+        active: !!r.active,
+        assignedUserIds: String(r.assigned_user_ids || '').split(',').filter(Boolean).map((s: string) => Number(s)).filter((n: number) => Number.isFinite(n)),
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      }))
+    } catch (e) {
+      try { console.warn('[dialer-sheets] Prisma list failed, falling back to SQL', (e as any)?.message) } catch {}
+      const pool = getPool()
+      const [rows]: any = await pool.query('SELECT id, name, size, mtime, active, assigned_user_ids, created_at, updated_at FROM dialer_sheets ORDER BY updated_at DESC')
+      items = (rows || []).map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        size: Number(r.size || 0),
+        mtime: Number(r.mtime || 0),
+        active: !!r.active,
+        assignedUserIds: String(r.assigned_user_ids || '').split(',').filter(Boolean).map((s: string) => Number(s)).filter((n: number) => Number.isFinite(n)),
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      }))
+    }
     res.json({ items })
   } catch (e) { next(e) }
 })
@@ -87,18 +104,27 @@ router.post('/upload', ...writeMiddlewares, upload.single('file'), async (req: a
     const f = req.file
     if (!f) return res.status(400).json({ message: 'file is required' })
     const stat = fs.statSync(f.path)
-    const pool = getPool()
-    const safe = f.filename
-    const [existing]: any = await pool.query('SELECT id FROM dialer_sheets WHERE name = ?', [safe])
-    if (existing.length) {
-      await pool.query('UPDATE dialer_sheets SET size=?, mtime=?, path=?, updated_at=NOW() WHERE id=?', [stat.size, stat.mtimeMs, f.path, existing[0].id])
-      const [row]: any = await pool.query('SELECT * FROM dialer_sheets WHERE id=?', [existing[0].id])
-      res.status(200).json(row[0])
-    } else {
-      const [result]: any = await pool.query('INSERT INTO dialer_sheets (name, size, mtime, path, active) VALUES (?,?,?,?,0)', [safe, stat.size, stat.mtimeMs, f.path])
-      const id = Number(result.insertId)
-      const [row]: any = await pool.query('SELECT * FROM dialer_sheets WHERE id=?', [id])
-      res.status(201).json(row[0])
+    try {
+      const upserted = await (db as any).dialer_sheets.upsert({
+        where: { name: f.filename },
+        update: { size: BigInt(stat.size), mtime: BigInt(stat.mtimeMs), path: f.path, updated_at: new Date() },
+        create: { name: f.filename, size: BigInt(stat.size), mtime: BigInt(stat.mtimeMs), path: f.path, active: false },
+      })
+      res.status(200).json(upserted)
+    } catch (e) {
+      try { console.warn('[dialer-sheets] Prisma upsert failed, falling back to SQL', (e as any)?.message) } catch {}
+      const pool = getPool()
+      const [existing]: any = await pool.query('SELECT id FROM dialer_sheets WHERE name = ?', [f.filename])
+      if (existing?.length) {
+        await pool.query('UPDATE dialer_sheets SET size=?, mtime=?, path=?, updated_at=NOW() WHERE id=?', [stat.size, stat.mtimeMs, f.path, existing[0].id])
+        const [row]: any = await pool.query('SELECT * FROM dialer_sheets WHERE id=?', [existing[0].id])
+        res.status(200).json(row[0])
+      } else {
+        const [result]: any = await pool.query('INSERT INTO dialer_sheets (name, size, mtime, path, active) VALUES (?,?,?,?,0)', [f.filename, stat.size, stat.mtimeMs, f.path])
+        const id = Number(result.insertId)
+        const [row]: any = await pool.query('SELECT * FROM dialer_sheets WHERE id=?', [id])
+        res.status(201).json(row[0])
+      }
     }
   } catch (e) { next(e) }
 })
@@ -108,10 +134,16 @@ router.post('/:id/assign', ...writeMiddlewares, async (req: any, res: any, next:
     await ensureTable()
     const id = parseInt(String(req.params.id || ''), 10)
     if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ message: 'Invalid id' })
-    const agentIds = Array.isArray(req.body?.agentIds) ? req.body.agentIds.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n)) : []
-    const csv = agentIds.join(',')
-    const pool = getPool()
-    await pool.query('UPDATE dialer_sheets SET assigned_user_ids=?, updated_at=NOW() WHERE id=?', [csv, id])
+    let agentIds: number[] = Array.isArray(req.body?.agentIds) ? req.body.agentIds.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n)) : []
+    if ((!agentIds || agentIds.length === 0) && Array.isArray(req.body?.usernames)) {
+      const usernames = req.body.usernames.map((s: any) => String(s || '').trim()).filter(Boolean)
+      if (usernames.length) {
+        const users = await db.users.findMany({ where: { username: { in: usernames } }, select: { id: true } })
+        agentIds = users.map(u => Number(u.id)).filter(n => Number.isFinite(n))
+      }
+    }
+    const csv = (agentIds || []).join(',')
+    await (db as any).dialer_sheets.update({ where: { id }, data: { assigned_user_ids: csv, updated_at: new Date() } })
     res.json({ success: true })
   } catch (e) { next(e) }
 })
@@ -121,9 +153,8 @@ router.post('/:id/activate', ...writeMiddlewares, async (req: any, res: any, nex
     await ensureTable()
     const id = parseInt(String(req.params.id || ''), 10)
     if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ message: 'Invalid id' })
-    const pool = getPool()
-    await pool.query('UPDATE dialer_sheets SET active=0')
-    await pool.query('UPDATE dialer_sheets SET active=1, updated_at=NOW() WHERE id=?', [id])
+    await (db as any).dialer_sheets.updateMany({ data: { active: false } })
+    await (db as any).dialer_sheets.update({ where: { id }, data: { active: true, updated_at: new Date() } })
     res.json({ success: true })
   } catch (e) { next(e) }
 })
@@ -133,13 +164,11 @@ router.delete('/:id', ...writeMiddlewares, async (req: any, res: any, next: any)
     await ensureTable()
     const id = parseInt(String(req.params.id || ''), 10)
     if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ message: 'Invalid id' })
-    const pool = getPool()
-    const [row]: any = await pool.query('SELECT * FROM dialer_sheets WHERE id=?', [id])
-    const item = row[0]
+    const item = await (db as any).dialer_sheets.findUnique({ where: { id } })
     if (!item) return res.status(404).json({ message: 'Not found' })
     if (item.active) return res.status(400).json({ message: 'Cannot delete active sheet' })
     try { if (item.path && fs.existsSync(item.path)) fs.unlinkSync(item.path) } catch {}
-    await pool.query('DELETE FROM dialer_sheets WHERE id=?', [id])
+    await (db as any).dialer_sheets.delete({ where: { id } })
     res.json({ success: true })
   } catch (e) { next(e) }
 })
@@ -150,10 +179,20 @@ router.get('/download/:id', requireAuth, async (req: any, res: any, next: any) =
     await ensureTable()
     const id = parseInt(String(req.params.id || ''), 10)
     if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ message: 'Invalid id' })
-    const pool = getPool()
-    const [row]: any = await pool.query('SELECT * FROM dialer_sheets WHERE id=?', [id])
-    const item = row[0]
+    const item = await (db as any).dialer_sheets.findUnique({ where: { id } })
     if (!item) return res.status(404).json({ message: 'Not found' })
+    const roles: string[] = Array.isArray(req.user?.roles) ? req.user.roles : []
+    const isManager = roles.includes('manager') || roles.includes('superadmin')
+    if (!isManager) {
+      const uid = Number(req.user?.userId)
+      const assigned = String(item.assigned_user_ids || '')
+        .split(',')
+        .map(s => Number(s))
+        .filter(n => Number.isFinite(n))
+      if (!assigned.includes(uid)) {
+        return res.status(403).json({ message: 'Forbidden' })
+      }
+    }
     const fp = String(item.path || '')
     if (!fp || !fs.existsSync(fp)) return res.status(404).json({ message: 'File missing' })
     res.download(fp, item.name)

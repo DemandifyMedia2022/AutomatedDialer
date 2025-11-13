@@ -1018,7 +1018,6 @@ export default function AutomatedDialerPage() {
                   <div className="flex items-center gap-3">
                     <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
                       <DialogTrigger asChild>
-                        <Button className="gap-2" variant="outline"><UploadCloud className="h-4 w-4" /> Add from Excel/CSV</Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
@@ -1042,7 +1041,7 @@ export default function AutomatedDialerPage() {
                     </Dialog>
                     <Dialog open={loadSheetsOpen} onOpenChange={(o)=>{ setLoadSheetsOpen(o); if (o) fetchMySheets() }}>
                       <DialogTrigger asChild>
-                        <Button variant="outline">Load My Sheets</Button>
+                        <Button variant="outline">Load</Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
@@ -1057,53 +1056,6 @@ export default function AutomatedDialerPage() {
                               <Button size="sm" onClick={()=>downloadAndLoadSheet(s.id, s.name)}>Load</Button>
                             </div>
                           ))}
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                    <Dialog open={manageSheetsOpen} onOpenChange={(o)=>{ setManageSheetsOpen(o); if (o) fetchAllSheets() }}>
-                      <DialogTrigger asChild>
-                        <Button variant="outline">Manage Sheets</Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-2xl">
-                        <DialogHeader>
-                          <DialogTitle>Manage Dialer Sheets</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-3">
-                            <Input type="file" accept=".csv,.xlsx,.xls,.txt" onChange={(e)=> { const f=e.target.files?.[0]; if (f) uploadSheetToServer(f) }} />
-                            <Button disabled={sheetUploading} onClick={()=>{ /* input change auto-uploads */ }}>
-                              {sheetUploading ? 'Uploading…' : 'Upload'}
-                            </Button>
-                          </div>
-                          <div className="max-h-80 overflow-auto border rounded">
-                            {allSheets.length === 0 ? (
-                              <div className="p-3 text-sm text-muted-foreground">No sheets</div>
-                            ) : (
-                              <div className="divide-y">
-                                {allSheets.map((s) => (
-                                  <div key={s.id} className="p-2 flex items-center gap-2">
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm truncate">{s.name}</div>
-                                      {activeAssignId === s.id ? (
-                                        <div className="mt-2 flex items-center gap-2">
-                                          <Input placeholder="Agent IDs CSV (e.g., 3,7,12)" value={assignAgentCsv} onChange={(e)=>setAssignAgentCsv(e.target.value)} />
-                                          <Button size="sm" onClick={()=>assignSheet(s.id, assignAgentCsv)}>Save</Button>
-                                          <Button size="sm" variant="outline" onClick={()=>{ setActiveAssignId(null); setAssignAgentCsv('') }}>Cancel</Button>
-                                        </div>
-                                      ) : (
-                                        <div className="text-[11px] text-muted-foreground">Assigned: -</div>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <Button size="sm" variant={s.active ? 'default' : 'outline'} onClick={()=>activateSheet(s.id)}>{s.active ? 'Active' : 'Activate'}</Button>
-                                      <Button size="sm" variant="outline" onClick={()=>{ setActiveAssignId(s.id); setAssignAgentCsv('') }}>Assign</Button>
-                                      <Button size="sm" variant="destructive" onClick={()=>deleteSheet(s.id)}>Delete</Button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
                         </div>
                       </DialogContent>
                     </Dialog>
