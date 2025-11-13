@@ -10,6 +10,7 @@ import agenticData from './agentic-data';
 import notes from './notes';
 import documents from './documents';
 import presence from './presence';
+import profile from './profile';
 
 import { env } from '../config/env';
 import multer from 'multer';
@@ -33,6 +34,7 @@ router.use('/agentic', agenticData);
 router.use('/notes', notes);
 router.use('/documents', documents);
 router.use('/presence', presence);
+router.use('/profile', profile);
 
 router.get('/sip/config', (_req, res) => {
   res.json({
@@ -60,6 +62,7 @@ const upload = multer({ storage });
 // Lightweight in-memory rate limiter for this route
 function makeLimiter({ windowMs, limit }: { windowMs: number; limit: number }) {
   const buckets = new Map<string, { c: number; t: number }>();
+  // ... rest of the code remains the same ...
   return function limiter(req: any, res: any, next: any) {
     const now = Date.now();
     const key = `${req.ip || req.headers['x-forwarded-for'] || 'ip'}:${req.path}`;

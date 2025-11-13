@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useState } from "react"
 import { AgentSidebar } from "../../components/AgentSidebar"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
@@ -10,17 +10,50 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Save, User as UserIcon } from "lucide-react"
+import { API_BASE } from "@/lib/api"
+import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
 
 export default function ProfileSettingsPage() {
   const [profile, setProfile] = useState({
-    name: "Snehal Mourya",
-    email: "snehal.mourya@demandflymedia.com",
+    name: "",
+    email: "",
   })
   const [passwords, setPasswords] = useState({ current: "", next: "", confirm: "" })
+  const [loading, setLoading] = useState(true)
 
   const onSaveProfile = () => {}
   const onUpdatePassword = () => {}
   const onDeleteAccount = () => {}
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadMe() {
+      try {
+        const url = `${API_BASE}/api/profile/me`
+        const headers: Record<string, string> = {}
+        if (!USE_AUTH_COOKIE) {
+          const t = getToken()
+          if (t) headers["Authorization"] = `Bearer ${t}`
+        }
+        const res = await fetch(url, {
+          method: "GET",
+          headers,
+          credentials: USE_AUTH_COOKIE ? "include" : "same-origin",
+        })
+        if (!res.ok) throw new Error(`Failed to load profile: ${res.status}`)
+        const data = await res.json()
+        if (!cancelled && data?.success && data?.user) {
+          setProfile({ name: data.user.username || "", email: data.user.email || "" })
+        }
+      } catch {
+        // ignore for now
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    loadMe()
+    return () => { cancelled = true }
+  }, [])
 
   return (
     <SidebarProvider>
