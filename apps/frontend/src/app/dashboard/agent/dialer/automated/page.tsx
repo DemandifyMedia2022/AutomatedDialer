@@ -359,19 +359,21 @@ export default function AutomatedDialerPage() {
       })
       session.on("failed", async (e: any) => {
         stopRingback()
-        setStatus("Call Failed")
+        const code = Number(e?.response?.status_code || 0)
+        const reason = e?.response?.reason_phrase || String(e?.cause || '')
+        const reasonL = String(reason).toLowerCase()
+        const isBusy = isBusyCause(e?.cause, code, reason)
+        const isNoAnswer = (!isBusy) && (
+          code === 408 || code === 480 || code === 487 || code === 404 ||
+          reasonL.includes('no answer') || reasonL.includes('timeout') || reasonL.includes('temporarily unavailable') || reasonL.includes('unavailable')
+        )
+        setStatus(isBusy ? "Busy" : isNoAnswer ? "No Answer" : "Call Failed")
         const causeStr = String(e?.cause || "")
-        if (causeStr.toLowerCase() !== 'canceled') {
-          setError(causeStr || "Call failed")
-        } else {
-          setError(null)
-        }
+        if (causeStr.toLowerCase() !== 'canceled') { setError(causeStr || "Call failed") } else { setError(null) }
         clearTimer()
-        setShowPopup(false)
+        // Keep popup visible to show final status
+        setShowPopup(true)
         if (!uploadedOnceRef.current) {
-          const code = Number(e?.response?.status_code || 0)
-          const reason = e?.response?.reason_phrase || String(e?.cause || '')
-          const isBusy = isBusyCause(e?.cause, code, reason)
           if (isBusy) { try { await startBusyTone(); setTimeout(() => stopBusyTone(), 3000) } catch {} }
           setPendingUploadExtra({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : undefined })
           setShowDisposition(true)
@@ -592,8 +594,8 @@ export default function AutomatedDialerPage() {
       return 'Call Failed'
     })()
     form.append('disposition', autoDisposition)
-    // Selected options are feedbacks
-    if (disposition) form.append('feedback', disposition)
+    // Selected options are feedbacks stored as remark
+    if (disposition) form.append('remarks', disposition)
     if (blob) form.append('recording', blob, `call_${Date.now()}.webm`)
 
     try {
