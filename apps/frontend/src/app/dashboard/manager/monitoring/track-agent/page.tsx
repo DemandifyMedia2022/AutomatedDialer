@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Clock3, LogIn, LogOut } from "lucide-react"
 import { io, Socket } from "socket.io-client"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 type AgentLog = {
   name: string
@@ -35,20 +37,24 @@ export default function TrackAgentPage() {
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState<"All" | AgentLog["status"]>("All")
   const [items, setItems] = useState<AgentLog[]>([])
+  const [open, setOpen] = useState(false)
+  const [selected, setSelected] = useState<AgentLog | null>(null)
 
   const fmtTime = (d: string | null) => {
     if (!d) return "-"
     const dt = new Date(d)
-    return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    const hh = String(dt.getHours()).padStart(2, "0")
+    const mm = String(dt.getMinutes()).padStart(2, "0")
+    return `${hh}:${mm}`
   }
 
   const fmtDur = (sec: number) => {
     const s = Math.max(0, Math.floor(sec))
     const h = Math.floor(s / 3600)
     const m = Math.floor((s % 3600) / 60)
-    const mm = String(h > 0 ? (m + h * 60) : m).padStart(2, "0")
-    const ss = String(s % 60).padStart(2, "0")
-    return `${mm}:${ss}`
+    const HH = String(h).padStart(2, "0")
+    const MM = String(m).padStart(2, "0")
+    return `${HH}:${MM}`
   }
 
   const toDisplay = (api: ApiItem): AgentLog => {
@@ -106,11 +112,12 @@ export default function TrackAgentPage() {
   }, [query, status, items])
 
   const onViewTimestamps = (row: AgentLog) => {
-    // placeholder
-    console.log("view timestamps", row)
+    setSelected(row)
+    setOpen(true)
   }
 
   return (
+    <>
     <SidebarProvider>
       <ManagerSidebar />
       <SidebarInset>
@@ -152,15 +159,16 @@ export default function TrackAgentPage() {
                     onChange={(e) => setQuery(e.target.value)}
                     className="w-56"
                   />
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as any)}
-                    className="h-9 rounded-md border bg-background px-3 text-sm"
-                  >
-                    <option value="All">All Status</option>
-                    <option value="Available">Available</option>
-                    <option value="Offline">Offline</option>
-                  </select>
+                  <Select value={status} onValueChange={(v) => setStatus(v as any)}>
+                    <SelectTrigger className="w-[140px] h-9">
+                      <SelectValue placeholder="All Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Status</SelectItem>
+                      <SelectItem value="Available">Available</SelectItem>
+                      <SelectItem value="Offline">Offline</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </CardHeader>
@@ -225,6 +233,31 @@ export default function TrackAgentPage() {
         </div>
       </SidebarInset>
     </SidebarProvider>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Agent Timestamps</DialogTitle>
+        </DialogHeader>
+        {selected ? (
+          <div className="space-y-2 text-sm">
+            <div className="font-medium">{selected.name}</div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">First Login</span>
+              <span>{selected.firstLogin}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Last Logout</span>
+              <span>{selected.lastLogout}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Duration (HH:MM)</span>
+              <span>{selected.duration}</span>
+            </div>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
 

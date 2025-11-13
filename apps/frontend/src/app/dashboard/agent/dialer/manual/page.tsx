@@ -45,6 +45,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
+import { useToast } from "@/hooks/use-toast"
 
 declare global {
   interface Window {
@@ -63,6 +64,7 @@ export default function ManualDialerPage() {
   const [error, setError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
+  const { toast } = useToast()
   const [showPopup, setShowPopup] = useState(false)
   const [callHistory, setCallHistory] = useState<any[]>([])
   const lastDialedNumber = useMemo(() => {
@@ -403,20 +405,29 @@ export default function ManualDialerPage() {
       })
       session.on("failed", async (e: any) => {
         stopRingback()
-        setStatus("Call Failed")
+        const code = Number(e?.response?.status_code || 0)
+        const reason = e?.response?.reason_phrase || String(e?.cause || '')
+        const reasonL = String(reason).toLowerCase()
+        const isBusy = isBusyCause(e?.cause, code, reason)
+        const isNoAnswer = (!isBusy) && (
+          code === 408 || code === 480 || code === 487 || code === 404 ||
+          reasonL.includes('no answer') || reasonL.includes('timeout') || reasonL.includes('temporarily unavailable') || reasonL.includes('unavailable')
+        )
+        setStatus(isBusy ? "Busy" : isNoAnswer ? "No Answer" : "Call Failed")
         setError(e?.cause || "Call failed")
         clearTimer()
         setShowPopup(false)
         if (!uploadedOnceRef.current) {
-          const code = Number(e?.response?.status_code || 0)
-          const reason = e?.response?.reason_phrase || String(e?.cause || '')
-          const isBusy = isBusyCause(e?.cause, code, reason)
           if (isBusy) {
             try { await startBusyTone(); setTimeout(() => stopBusyTone(), 3000) } catch {}
           }
           setPendingUploadExtra({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : undefined })
           setShowDisposition(true)
         }
+        // Notify agent
+        try {
+          toast({ title: isBusy ? 'Busy' : isNoAnswer ? 'No Answer' : 'Call Failed', description: isBusy ? 'Client is currently busy.' : isNoAnswer ? 'Client did not answer.' : 'The call could not be completed.' })
+        } catch {}
       })
       session.on("ended", async () => {
         stopRingback()
@@ -746,7 +757,19 @@ export default function ManualDialerPage() {
     if (extra.sip_reason) form.append('sip_reason', extra.sip_reason)
     if (extra.hangup_cause) form.append('hangup_cause', extra.hangup_cause)
     form.append('platform', 'web')
-    if (disposition) form.append('disposition', disposition)
+    // Determine automatic call disposition from SIP result
+    const autoDisposition = (() => {
+      if (hasAnsweredRef.current) return 'Answered'
+      const code = typeof extra.sip_status === 'number' ? extra.sip_status : undefined
+      const cause = (extra.sip_reason || '').toLowerCase()
+      const hang = (extra.hangup_cause || '').toLowerCase()
+      if (hang.includes('busy') || (code === 486 || code === 603) || cause.includes('busy') || cause.includes('decline')) return 'Busy'
+      if ((code === 408 || code === 480 || code === 487 || code === 404) || cause.includes('no answer') || cause.includes('timeout') || cause.includes('temporarily unavailable') || cause.includes('unavailable')) return 'No Answer'
+      return 'Call Failed'
+    })()
+    form.append('disposition', autoDisposition)
+    // Selected options are feedbacks
+    if (disposition) form.append('feedback', disposition)
 
     if (blob) form.append('recording', blob, `call_${Date.now()}.webm`)
 
@@ -1122,17 +1145,17 @@ export default function ManualDialerPage() {
             </div>
           )}
 
-          {/* Mandatory Disposition Modal */}
+          {/* Mandatory Feedback Modal */}
           {showDisposition && (
             <div className="fixed inset-0 z-50 flex items-center justify-center">
               <div className="absolute inset-0 bg-background/70" />
               <Card className="relative z-50 w-[560px] max-w-[95vw] border shadow-2xl">
-                <div className="px-4 py-3 border-b font-medium">Select Call Disposition</div>
+                <div className="px-4 py-3 border-b font-medium">Select Feedback</div>
                 <div className="p-4 space-y-3">
                   <div className="text-sm text-muted-foreground">This is required before saving the call.</div>
                   <Select value={disposition} onValueChange={setDisposition}>
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Choose disposition" />
+                      <SelectValue placeholder="Choose feedback" />
                     </SelectTrigger>
                     <SelectContent className="max-h-[300px] overflow-auto">
                       {[
@@ -1151,8 +1174,6 @@ export default function ManualDialerPage() {
                       try {
                         if (!uploadedOnceRef.current) uploadedOnceRef.current = true
                         await stopRecordingAndUpload(pendingUploadExtra || {})
-                        // reflect disposition in local history optimistically
-                        setCallHistory((prev) => prev.length ? [{ ...prev[0], disposition }, ...prev.slice(1)] : prev)
                       } finally {
                         setShowDisposition(false)
                         setPendingUploadExtra(null)

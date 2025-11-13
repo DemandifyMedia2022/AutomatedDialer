@@ -580,7 +580,20 @@ export default function AutomatedDialerPage() {
     if (extra.sip_reason) form.append('sip_reason', extra.sip_reason)
     if (extra.hangup_cause) form.append('hangup_cause', extra.hangup_cause)
     form.append('platform', 'web')
-    if (disposition) form.append('disposition', disposition)
+    // Determine automatic call disposition from SIP result
+    const autoDisposition = (() => {
+      // If answered
+      if (hasAnsweredRef.current) return 'Answered'
+      const code = typeof extra.sip_status === 'number' ? extra.sip_status : undefined
+      const cause = (extra.sip_reason || '').toLowerCase()
+      const hang = (extra.hangup_cause || '').toLowerCase()
+      if (hang.includes('busy') || (code === 486 || code === 603) || cause.includes('busy') || cause.includes('decline')) return 'Busy'
+      if (code === 408 || code === 480) return 'No Answer'
+      return 'Call Failed'
+    })()
+    form.append('disposition', autoDisposition)
+    // Selected options are feedbacks
+    if (disposition) form.append('feedback', disposition)
     if (blob) form.append('recording', blob, `call_${Date.now()}.webm`)
 
     try {
@@ -1172,12 +1185,12 @@ export default function AutomatedDialerPage() {
             <div className="fixed inset-0 z-50 flex items-center justify-center">
               <div className="absolute inset-0 bg-background/70" />
               <Card className="relative z-50 w-[560px] max-w-[95vw] border shadow-2xl">
-                <div className="px-4 py-3 border-b font-medium">Select Call Disposition</div>
+                <div className="px-4 py-3 border-b font-medium">Select Feedback</div>
                 <div className="p-4 space-y-3">
                   <div className="text-sm text-muted-foreground">This is required before saving the call.</div>
                   <Select value={disposition} onValueChange={setDisposition}>
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Choose disposition" />
+                      <SelectValue placeholder="Choose feedback" />
                     </SelectTrigger>
                     <SelectContent className="max-h-[300px] overflow-auto">
                       {[
