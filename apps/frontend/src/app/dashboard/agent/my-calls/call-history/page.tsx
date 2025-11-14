@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 type CallRow = {
   id: number | string
   extension: string | null
+  username?: string | null
   destination: string | null
   start_time: string
   end_time: string | null
@@ -57,6 +58,7 @@ const CallHistory = () => {
       if (toDate) qs.set('to', toIso(toDate, true))
       if (query) {
         qs.set('destination', query)
+        qs.set('username', query)
         qs.set('extension', query)
       }
       const effStatus = status === 'all' ? '' : status
@@ -78,6 +80,7 @@ const CallHistory = () => {
         setItems(rows.map(r => ({
           id: r.id,
           extension: r.extension ?? null,
+          username: r.username ?? null,
           destination: r.destination ?? null,
           start_time: r.start_time,
           end_time: r.end_time ?? null,
@@ -370,7 +373,7 @@ const CallHistory = () => {
                 <thead className="bg-muted sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Extension</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">User</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Destination Number</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Start Time (UTC)</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">End Time (UTC)</th>
@@ -400,7 +403,7 @@ const CallHistory = () => {
                       {list.map((row, i) => (
                         <tr key={String(row.id)} className="hover:bg-accent/50 even:bg-muted/5">
                           <td className="px-4 py-3">{i + 1}</td>
-                          <td className="px-4 py-3">{row.extension || '-'}</td>
+                          <td className="px-4 py-3">{row.username || '-'}</td>
                           <td className="px-4 py-3">{row.destination || '-'}</td>
                           <td className="px-4 py-3">{toUtc(row.start_time)}</td>
                           <td className="px-4 py-3">{toUtc(row.end_time)}</td>

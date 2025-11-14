@@ -39,7 +39,9 @@ const CreateUserSchema = z.object({
 
 const UpdateUserSchema = z.object({
   role: z.enum(['agent', 'manager', 'superadmin']).optional(),
-  extension: z.string().trim().min(1).optional(),
+  // allow empty string to unassign
+  extension: z.string().trim().optional(),
+  force: z.boolean().optional(),
 })
 
 const router = Router()
@@ -76,8 +78,8 @@ router.post('/', ...protectIfCookie, mutateLimiter, async (req, res, next) => {
       const pool = getPool()
       const [extRows]: any = await pool.query('SELECT extension_id FROM extensions WHERE extension_id = ? LIMIT 1', [extension])
       if (!extRows || extRows.length === 0) return res.status(400).json({ success: false, message: 'Extension not found' })
-      const assigned = await db.users.findFirst({ where: { extension } })
-      if (assigned) return res.status(400).json({ success: false, message: 'Extension already assigned' })
+      const assignedCount = await db.users.count({ where: { extension } })
+      if (assignedCount >= 10) return res.status(400).json({ success: false, message: 'Extension capacity reached (10)' })
     }
 
     const hash = await bcrypt.hash(password, 10)
@@ -126,15 +128,23 @@ router.patch('/:id', ...protectIfCookie, mutateLimiter, async (req, res, next) =
 
     const data: any = {}
     if (parsed.data.role) data.role = parsed.data.role
-    if (parsed.data.extension) {
-      const ext = parsed.data.extension
-      const pool = getPool()
-      const [extRows]: any = await pool.query('SELECT extension_id FROM extensions WHERE extension_id = ? LIMIT 1', [ext])
-      if (!extRows || extRows.length === 0) return res.status(400).json({ success: false, message: 'Extension not found' })
-      const assigned = await db.users.findFirst({ where: { extension: ext, NOT: { id } } })
-      if (assigned) return res.status(400).json({ success: false, message: 'Extension already assigned' })
-      data.extension = ext
+
+    if (Object.prototype.hasOwnProperty.call(parsed.data, 'extension')) {
+      const extRaw = parsed.data.extension ?? ''
+      const ext = extRaw.trim()
+      if (ext === '') {
+        // unassign
+        data.extension = null
+      } else {
+        const pool = getPool()
+        const [extRows]: any = await pool.query('SELECT extension_id FROM extensions WHERE extension_id = ? LIMIT 1', [ext])
+        if (!extRows || extRows.length === 0) return res.status(400).json({ success: false, message: 'Extension not found' })
+        const assignedCountExcl = await db.users.count({ where: { extension: ext, NOT: { id } } })
+        if (assignedCountExcl >= 10) return res.status(400).json({ success: false, message: 'Extension capacity reached (10)' })
+        data.extension = ext
+      }
     }
+
     if (Object.keys(data).length === 0) return res.status(400).json({ success: false, message: 'No changes provided' })
 
     const updated = await db.users.update({

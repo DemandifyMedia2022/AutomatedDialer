@@ -12,6 +12,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/s
 import { SuperAdminSidebar } from '../components/SuperAdminSidebar'
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { MoreVertical } from 'lucide-react'
 
@@ -29,7 +30,7 @@ type User = {
 type UsersResponse = { success: true; users: User[] }
 type CreateResponse = { success: true; user: User }
 type ApiError = { success: false; message: string; issues?: any }
-type ExtRow = { extensionId: string }
+type ExtRow = { extensionId: string; assignedCount?: number }
 
 export default function UsersPage() {
   const [loading, setLoading] = useState(true)
@@ -43,6 +44,10 @@ export default function UsersPage() {
   const [query, setQuery] = useState('')
   const [availableExts, setAvailableExts] = useState<ExtRow[]>([])
   const [editingIds, setEditingIds] = useState<Set<number>>(new Set())
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmText, setConfirmText] = useState('')
+  const [confirmBusy, setConfirmBusy] = useState(false)
+  const confirmRef = useMemo(() => ({ fn: null as null | (() => Promise<void> | void) }), [])
 
   const headers = useMemo(() => {
     const h: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -72,10 +77,10 @@ export default function UsersPage() {
 
   useEffect(() => {
     fetchUsers()
-    // load available extensions for dropdowns
+    // load all extensions, we'll filter unassigned on the client
     ;(async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/extensions/available`, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
+        const res = await fetch(`${API_BASE}/api/extensions`, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
         if (res.ok) {
           const data = await res.json() as { success: true; extensions: ExtRow[] }
           setAvailableExts(data.extensions)
@@ -115,9 +120,9 @@ export default function UsersPage() {
       setForm({ username: '', email: '', password: '', role: 'agent', extension: '' })
       setConfirmCreate(false)
       setOpenCreate(false)
-      // refresh available extensions after assignment
+      // refresh extensions after assignment
       try {
-        const res2 = await fetch(`${API_BASE}/api/extensions/available`, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
+        const res2 = await fetch(`${API_BASE}/api/extensions`, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
         if (res2.ok) setAvailableExts(((await res2.json()) as any).extensions)
       } catch {}
     } catch (e: any) {
@@ -128,25 +133,28 @@ export default function UsersPage() {
   }
 
   async function onDelete(id: number) {
-    if (!confirm('Delete this user?')) return
     setError(null)
-    try {
-      const res = await fetch(`${API_BASE}/api/users/${id}`, {
-        method: 'DELETE',
-        headers,
-        credentials: USE_AUTH_COOKIE ? 'include' : 'omit',
-      })
-      if (!res.ok) {
-        const err = (await res.json()) as ApiError
-        throw new Error(err.message || 'Delete failed')
+    setConfirmText('Delete this user?')
+    confirmRef.fn = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/users/${id}`, {
+          method: 'DELETE',
+          headers,
+          credentials: USE_AUTH_COOKIE ? 'include' : 'omit',
+        })
+        if (!res.ok) {
+          const err = (await res.json()) as ApiError
+          throw new Error(err.message || 'Delete failed')
+        }
+        setUsers((prev) => prev.filter((u) => u.id !== id))
+      } catch (e: any) {
+        setError(e?.message || 'Delete failed')
       }
-      setUsers((prev) => prev.filter((u) => u.id !== id))
-    } catch (e: any) {
-      setError(e?.message || 'Delete failed')
     }
+    setConfirmOpen(true)
   }
 
-  async function updateUser(id: number, patch: Partial<{ role: string; extension: string }>) {
+  async function updateUser(id: number, patch: Partial<{ role: string; extension: string; force: boolean }>) {
     setError(null)
     try {
       const res = await fetch(`${API_BASE}/api/users/${id}`, {
@@ -161,9 +169,9 @@ export default function UsersPage() {
       }
       const data = await res.json()
       setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...data.user } : u)))
-      // refresh available extensions after (re)assignment
+      // refresh extensions after (re)assignment
       try {
-        const res2 = await fetch(`${API_BASE}/api/extensions/available`, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
+        const res2 = await fetch(`${API_BASE}/api/extensions`, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
         if (res2.ok) setAvailableExts(((await res2.json()) as any).extensions)
       } catch {}
     } catch (e: any) {
@@ -194,6 +202,7 @@ export default function UsersPage() {
   }
 
   return (
+    <>
     <SidebarProvider>
       <SuperAdminSidebar />
       <SidebarInset>
@@ -260,10 +269,10 @@ export default function UsersPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="max-h-64 overflow-auto">
-                        {availableExts.length === 0 ? (
+                        {availableExts.filter(ex => (ex.assignedCount ?? 0) < 10).length === 0 ? (
                           <DropdownMenuItem disabled>No extensions available</DropdownMenuItem>
                         ) : (
-                          availableExts.map((ex) => (
+                          availableExts.filter(ex => (ex.assignedCount ?? 0) < 10).map((ex) => (
                             <DropdownMenuItem key={ex.extensionId} onClick={() => setForm((f) => ({ ...f, extension: ex.extensionId }))}>
                               {ex.extensionId}
                             </DropdownMenuItem>
@@ -340,7 +349,7 @@ export default function UsersPage() {
                             <DropdownMenuContent align="start">
                               <DropdownMenuLabel>Change role</DropdownMenuLabel>
                               <DropdownMenuSeparator />
-                              {['agent','manager','superadmin'].map((r) => (
+                              {(['agent','manager','superadmin'] as const).map((r) => (
                                 <DropdownMenuItem key={r} onClick={() => updateUser(u.id, { role: r })}>{toTitle(r)}</DropdownMenuItem>
                               ))}
                             </DropdownMenuContent>
@@ -355,15 +364,21 @@ export default function UsersPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start" className="max-h-64 overflow-auto">
                               <DropdownMenuItem onClick={() => updateUser(u.id, { extension: '' })}>Unassigned</DropdownMenuItem>
-                              {/* include current extension if not in available list */}
-                              {u.extension && !availableExts.some(ex => ex.extensionId === u.extension) ? (
-                                <DropdownMenuItem onClick={() => updateUser(u.id, { extension: u.extension! })}>{u.extension}</DropdownMenuItem>
-                              ) : null}
-                              {availableExts.map((ex) => (
-                                <DropdownMenuItem key={ex.extensionId} onClick={() => updateUser(u.id, { extension: ex.extensionId })}>
-                                  {ex.extensionId}
-                                </DropdownMenuItem>
-                              ))}
+                              {availableExts.map((ex) => {
+                                const isCurrent = u.extension === ex.extensionId
+                                const count = ex.assignedCount ?? 0
+                                const isFull = count >= 10 && !isCurrent
+                                const label = isFull ? `${ex.extensionId} (Full)` : ex.extensionId
+                                return (
+                                  <DropdownMenuItem
+                                    key={ex.extensionId}
+                                    disabled={isFull}
+                                    onClick={() => updateUser(u.id, { extension: ex.extensionId })}
+                                  >
+                                    {label}
+                                  </DropdownMenuItem>
+                                )
+                              })}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </td>
@@ -372,7 +387,7 @@ export default function UsersPage() {
                         <td className="py-2 pr-4">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button>
+                              <Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4" /></Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => {
@@ -397,5 +412,18 @@ export default function UsersPage() {
         </div>
       </SidebarInset>
     </SidebarProvider>
+    <Dialog open={confirmOpen} onOpenChange={(o) => { if (!confirmBusy) setConfirmOpen(o) }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Confirm</DialogTitle>
+          <DialogDescription>{confirmText}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" disabled={confirmBusy} onClick={() => setConfirmOpen(false)}>Cancel</Button>
+          <Button disabled={confirmBusy} onClick={async () => { if (!confirmRef.fn) return; try { setConfirmBusy(true); await confirmRef.fn(); setConfirmOpen(false) } finally { setConfirmBusy(false) } }}>Confirm</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }

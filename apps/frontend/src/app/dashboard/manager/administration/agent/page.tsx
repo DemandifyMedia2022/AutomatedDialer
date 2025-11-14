@@ -10,12 +10,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
 import * as Dialog from "@radix-ui/react-dialog"
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { ChevronDownIcon, RefreshCcw, Search as SearchIcon } from "lucide-react"
+import { ChevronDownIcon, PlusIcon, RefreshCcw, Search as SearchIcon } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { type DateRange } from "react-day-picker"
 
@@ -29,6 +29,8 @@ type User = {
   unique_user_id?: string | null
   extension: string | null
 }
+
+type ExtRow = { extensionId: string; assignedCount?: number }
 
 const API_PREFIX = `${API_BASE}/api`
 
@@ -50,6 +52,15 @@ export default function AgentPage() {
   const [viewUser, setViewUser] = useState<User | null>(null)
   const [editUser, setEditUser] = useState<User | null>(null)
   const [editExt, setEditExt] = useState<string>("")
+  const [editName, setEditName] = useState<string>("")
+  const [editEmail, setEditEmail] = useState<string>("")
+  const [editStatus, setEditStatus] = useState<'active' | 'inactive'>('active')
+
+  const [createOpen, setCreateOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [form, setForm] = useState({ username: '', email: '', password: '', extension: '' })
+  const [availableExts, setAvailableExts] = useState<ExtRow[]>([])
+  const [confirmCreate, setConfirmCreate] = useState(false)
 
   const headers = useMemo(() => {
     const h: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -57,7 +68,6 @@ export default function AgentPage() {
       const t = getToken()
       if (t) h['Authorization'] = `Bearer ${t}`
     }
-
     return h
   }, [])
 
@@ -83,24 +93,30 @@ export default function AgentPage() {
     }
   }
 
+  const fetchExtensions = async () => {
+    try {
+      const res = await fetch(`${API_PREFIX}/staff/agents/extensions`, {
+        method: 'GET',
+        credentials: USE_AUTH_COOKIE ? 'include' : 'omit',
+        headers,
+      })
+      if (res.ok) {
+        const data = await res.json() as { success: boolean; extensions: ExtRow[] }
+        setAvailableExts(data.extensions || [])
+      }
+    } catch {}
+  }
+
   const computeTotals = async (list: User[]) => {
     const entries = await Promise.all(list.map(async (u) => {
-      const ext = (u.extension || '').trim()
-      // Backend /api/calls supports filtering by extension (not by username/usermail)
-      if (!ext) return [u.id, 0] as const
+      const uname = (u.username || '').trim()
+      if (!uname) return [u.id, 0] as const
       const params = new URLSearchParams()
-      params.set('extension', ext)
-      if (from) {
-        const fromIso = new Date(`${from}T00:00:00.000`).toISOString()
-        params.set('from', fromIso)
-      }
-      if (to) {
-        const toIso = new Date(`${to}T23:59:59.999`).toISOString()
-        params.set('to', toIso)
-      }
-      params.set('pageSize', '1')
+      params.set('username', uname)
+      if (from) params.set('from', new Date(`${from}T00:00:00.000`).toISOString())
+      if (to) params.set('to', new Date(`${to}T23:59:59.999`).toISOString())
       try {
-        const res = await fetch(`${API_PREFIX}/calls?${params.toString()}`, {
+        const res = await fetch(`${API_PREFIX}/staff/agents/call-count?${params.toString()}`, {
           method: 'GET',
           credentials: USE_AUTH_COOKIE ? 'include' : 'omit',
           headers,
@@ -117,7 +133,7 @@ export default function AgentPage() {
     setTotals(map)
   }
 
-  useEffect(() => { fetchUsers() }, [])
+  useEffect(() => { fetchUsers(); fetchExtensions() }, [])
 
   useEffect(() => {
     if (users.length) { computeTotals(users) }
@@ -150,6 +166,9 @@ export default function AgentPage() {
   const openEdit = (u: User) => {
     setEditUser(u)
     setEditExt(u.extension || "")
+    setEditName(u.username || '')
+    setEditEmail(u.usermail || '')
+    setEditStatus((u.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active')
   }
 
   const onSaveEdit = async (e: React.FormEvent) => {
@@ -164,7 +183,12 @@ export default function AgentPage() {
         method: 'PATCH',
         credentials: USE_AUTH_COOKIE ? 'include' : 'omit',
         headers: reqHeaders,
-        body: JSON.stringify({ extension: editExt || undefined })
+        body: JSON.stringify({
+          username: editName || undefined,
+          email: editEmail || undefined,
+          status: editStatus,
+          extension: (editExt ?? '').trim(),
+        })
       })
       if (!res.ok) {
         let msg = `Update failed (${res.status})`
@@ -172,9 +196,43 @@ export default function AgentPage() {
         throw new Error(msg)
       }
       setEditUser(null)
-      await fetchUsers()
+      await fetchUsers(); await fetchExtensions()
     } catch (e: any) {
       setError(e?.message || 'Update failed')
+    }
+  }
+
+  const onCreate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setCreating(true)
+    try {
+      const csrfToken = USE_AUTH_COOKIE ? (document.cookie.split('; ').find(c => c.startsWith('csrf_token='))?.split('=')[1] || '') : ''
+      const reqHeaders: Record<string,string> = { ...headers }
+      if (USE_AUTH_COOKIE && csrfToken) reqHeaders['X-CSRF-Token'] = csrfToken
+      const res = await fetch(`${API_PREFIX}/staff/agents`, {
+        method: 'POST',
+        credentials: USE_AUTH_COOKIE ? 'include' : 'omit',
+        headers: reqHeaders,
+        body: JSON.stringify({
+          username: form.username,
+          email: form.email,
+          password: form.password,
+          extension: form.extension,
+        })
+      })
+      if (!res.ok) {
+        let msg = `Create failed (${res.status})`
+        try { const j = await res.json(); if (j?.message) msg = j.message } catch {}
+        throw new Error(msg)
+      }
+      setCreateOpen(false)
+      setForm({ username: '', email: '', password: '', extension: '' })
+      await fetchUsers(); await fetchExtensions()
+    } catch (e: any) {
+      setError(e?.message || 'Create failed')
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -262,7 +320,8 @@ export default function AgentPage() {
                   />
                 </div>
 
-                <div className="flex items-center justify-end absolute right-3 top-3">
+                <div className="flex items-center gap-2 justify-end absolute right-3 top-3">
+                  <Button size="sm" onClick={() => setCreateOpen(true)}>Add Agent <PlusIcon className="size-4" /></Button>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -311,21 +370,19 @@ export default function AgentPage() {
                         </td>
                         <td className="py-2.5 pr-4">{totals[u.id] ?? 0}</td>
                         <td className="py-2.5 pr-0 text-right">
-                          <DropdownMenu.Root>
-                            <DropdownMenu.Trigger asChild>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" aria-label="More">
                                 ⋯
                               </Button>
-                            </DropdownMenu.Trigger>
-                            <DropdownMenu.Portal>
-                              <DropdownMenu.Content align="end" sideOffset={4} className="min-w-[160px] rounded-md border bg-background p-1 shadow-md">
-                                <DropdownMenu.Item className="px-2 py-1.5 rounded hover:bg-muted cursor-pointer" onSelect={() => setViewUser(u)}>View</DropdownMenu.Item>
-                                <DropdownMenu.Item className="px-2 py-1.5 rounded hover:bg-muted cursor-pointer" onSelect={() => openEdit(u)}>Edit</DropdownMenu.Item>
-                                <DropdownMenu.Separator className="my-1 h-px bg-border" />
-                                <DropdownMenu.Item className="px-2 py-1.5 rounded hover:bg-red-100 text-red-700 cursor-pointer" onSelect={() => onDelete(u.id)}>Delete</DropdownMenu.Item>
-                              </DropdownMenu.Content>
-                            </DropdownMenu.Portal>
-                          </DropdownMenu.Root>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" sideOffset={4} className="min-w-[160px] rounded-md border bg-background p-1 shadow-md">
+                              <DropdownMenuItem className="px-2 py-1.5 rounded hover:bg-muted cursor-pointer" onSelect={() => setViewUser(u)}>View</DropdownMenuItem>
+                              <DropdownMenuItem className="px-2 py-1.5 rounded hover:bg-muted cursor-pointer" onSelect={() => openEdit(u)}>Edit</DropdownMenuItem>
+                              <DropdownMenuSeparator className="my-1 h-px bg-border" />
+                              <DropdownMenuItem className="px-2 py-1.5 rounded hover:bg-red-100 text-red-700 cursor-pointer" onSelect={() => onDelete(u.id)}>Delete</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </td>
                       </tr>
                     ))
@@ -366,12 +423,104 @@ export default function AgentPage() {
               <Dialog.Title className="text-foreground font-semibold mb-2">Edit User</Dialog.Title>
               <form onSubmit={onSaveEdit} className="space-y-3">
                 <div className="grid gap-2">
+                  <Label htmlFor="edit_name">Username</Label>
+                  <Input id="edit_name" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Jane Doe" />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit_email">Email</Label>
+                  <Input id="edit_email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="jane@example.com" />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Status</Label>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="justify-between">{editStatus === 'active' ? 'Active' : 'Inactive'}</Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="min-w-[160px] p-1">
+                      {(['active','inactive'] as const).map(s => (
+                        <DropdownMenuItem key={s} onClick={() => setEditStatus(s)} className="px-2 py-1.5">
+                          {s === 'active' ? 'Active' : 'Inactive'}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div className="grid gap-2">
                   <Label htmlFor="edit_ext">Extension</Label>
-                  <Input id="edit_ext" value={editExt} onChange={(e) => setEditExt(e.target.value)} placeholder="e.g. 1001" />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button id="edit_ext" variant="outline" className="justify-between">{editExt || 'Select extension'}</Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-h-64 overflow-auto min-w-[180px] p-1">
+                      <DropdownMenuItem onClick={() => setEditExt("")}>Unassigned</DropdownMenuItem>
+                      {availableExts.map(ex => {
+                        const isCurrent = (editExt || '') === ex.extensionId
+                        const count = ex.assignedCount ?? 0
+                        const isFull = count >= 10 && !isCurrent
+                        const label = isFull ? `${ex.extensionId} (Full)` : ex.extensionId
+                        return (
+                          <DropdownMenuItem key={ex.extensionId} disabled={isFull} onClick={() => !isFull && setEditExt(ex.extensionId)} className="px-2 py-1.5">
+                            {label}
+                          </DropdownMenuItem>
+                        )
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="button" variant="secondary" onClick={() => setEditUser(null)}>Cancel</Button>
                   <Button type="submit">Save</Button>
+                </div>
+              </form>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+
+        {/* Create Agent Dialog */}
+        <Dialog.Root open={createOpen} onOpenChange={setCreateOpen}>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />
+            <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-md border bg-background p-4 shadow-lg focus:outline-none">
+              <Dialog.Title className="text-foreground font-semibold mb-2">Add Agent</Dialog.Title>
+              <form onSubmit={onCreate} className="space-y-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="create_name">Username</Label>
+                  <Input id="create_name" value={form.username} onChange={(e) => setForm(f => ({ ...f, username: e.target.value }))} placeholder="Jane Doe" required />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="create_email">Email</Label>
+                  <Input id="create_email" type="email" value={form.email} onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))} placeholder="jane@example.com" required />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="create_password">Password</Label>
+                  <Input id="create_password" type="password" value={form.password} onChange={(e) => setForm(f => ({ ...f, password: e.target.value }))} placeholder="••••••" minLength={6} required />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="create_ext">Extension</Label>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button id="create_ext" variant="outline" className="justify-between">{form.extension || 'Select extension'}</Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-h-64 overflow-auto min-w-[180px] p-1">
+                      {availableExts.filter(ex => (ex.assignedCount ?? 0) < 10).length === 0 ? (
+                        <div className="px-2 py-1.5 text-sm text-muted-foreground">No extensions available</div>
+                      ) : (
+                        availableExts.filter(ex => (ex.assignedCount ?? 0) < 10).map(ex => (
+                          <DropdownMenuItem key={ex.extensionId} onClick={() => setForm(f => ({ ...f, extension: ex.extensionId }))} className="px-2 py-1.5">
+                            {ex.extensionId}
+                          </DropdownMenuItem>
+                        ))
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input id="confirm_create" type="checkbox" checked={confirmCreate} onChange={(e) => setConfirmCreate(e.target.checked)} />
+                  <Label htmlFor="confirm_create" className="text-sm text-muted-foreground">I confirm to create this agent</Label>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>Cancel</Button>
+                  <Button type="submit" disabled={creating || !confirmCreate}>{creating ? 'Adding…' : 'Add'}</Button>
                 </div>
               </form>
             </Dialog.Content>

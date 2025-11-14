@@ -19,6 +19,7 @@ import { ManagerSidebar } from '../../components/ManagerSidebar';
 type CallRow = {
   id: number | string
   extension: string | null
+  username?: string | null
   destination: string | null
   start_time: string
   end_time: string | null
@@ -59,13 +60,17 @@ const CallHistory = () => {
       if (toDate) qs.set('to', toIso(toDate, true))
       if (query) {
         qs.set('destination', query)
+        qs.set('username', query)
         qs.set('extension', query)
       }
       const effStatus = status === 'all' ? '' : status
       const effDirection = direction === 'all' ? '' : direction
       if (effStatus) qs.set('status', effStatus)
       if (effDirection) qs.set('direction', effDirection)
-      if (userExtFilter !== 'all') qs.set('extension', userExtFilter)
+      if (userExtFilter !== 'all') {
+        const uname = extToUser[userExtFilter] || userExtFilter
+        qs.set('username', uname)
+      }
       const headers: Record<string, string> = {}
       let credentials: RequestCredentials = 'omit'
       if (USE_AUTH_COOKIE) {
@@ -81,6 +86,7 @@ const CallHistory = () => {
         setItems(rows.map(r => ({
           id: r.id,
           extension: r.extension ?? null,
+          username: r.username ?? null,
           destination: r.destination ?? null,
           start_time: r.start_time,
           end_time: r.end_time ?? null,
@@ -442,7 +448,10 @@ const CallHistory = () => {
                   )}
                   {Object.entries(
                     items
-                      .map(r => ({ ...r, username: r.extension ? (extToUser[String(r.extension).trim()] || null) : null }))
+                      .map(r => ({
+                        ...r,
+                        username: r.username ?? (r.extension ? (extToUser[String(r.extension).trim()] || null) : null)
+                      }))
                       .sort((a: any, b: any) => {
                         const ua = (a.username || 'ZZZ').toLowerCase()
                         const ub = (b.username || 'ZZZ').toLowerCase()
