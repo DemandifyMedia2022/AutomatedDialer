@@ -173,14 +173,12 @@ export default function ManualDialerPage() {
         const t = getToken()
         if (t) headers['Authorization'] = `Bearer ${t}`
       }
-      const res = await fetch(`${API_PREFIX}/calls?limit=5`, { headers, credentials })
+      const res = await fetch(`${API_PREFIX}/calls/mine?page=1&pageSize=5`, { headers, credentials })
       if (!res.ok) return
       const data = await res.json().catch(() => null) as any
-      const list = Array.isArray(data?.data)
-        ? data.data
-        : Array.isArray(data?.items)
+      const list = Array.isArray(data?.items)
         ? data.items
-        : (Array.isArray(data) ? data : [])
+        : (Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []))
       setCallHistory(list)
     } catch {}
   }, [])

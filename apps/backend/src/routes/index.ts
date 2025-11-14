@@ -278,7 +278,6 @@ router.get('/analytics/agent/dispositions', requireAuth, requireRoles(['agent'])
     const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true } })
     const username = me?.username || null
     const usermail = me?.usermail || null
-    const extension = me?.extension || null
     const from = req.query.from ? new Date(String(req.query.from)) : null
     const to = req.query.to ? new Date(String(req.query.to)) : null
     const pool = getPool()
@@ -287,7 +286,6 @@ router.get('/analytics/agent/dispositions', requireAuth, requireRoles(['agent'])
     const params: any[] = []
     if (username) { idParts.push('username = ?'); params.push(username) }
     if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
-    if (extension) { idParts.push('extension = ?'); params.push(extension) }
     if (idParts.length === 0) return res.json({})
     const timeParts: string[] = []
     if (from) { timeParts.push('start_time >= ?'); params.push(from) }
@@ -317,7 +315,6 @@ router.get('/analytics/agent/dispositions/stream', requireAuth, requireRoles(['a
     const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true } })
     const username = me?.username || null
     const usermail = me?.usermail || null
-    const extension = me?.extension || null
     const from = req.query.from ? new Date(String(req.query.from)) : null
     const to = req.query.to ? new Date(String(req.query.to)) : null
     const pool = getPool()
@@ -327,7 +324,6 @@ router.get('/analytics/agent/dispositions/stream', requireAuth, requireRoles(['a
       const params: any[] = []
       if (username) { idParts.push('username = ?'); params.push(username) }
       if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
-      if (extension) { idParts.push('extension = ?'); params.push(extension) }
       if (idParts.length === 0) return { sql: null as any, params }
       const timeParts: string[] = []
       if (from) { timeParts.push('start_time >= ?'); params.push(from) }
@@ -364,7 +360,6 @@ router.get('/analytics/agent', requireAuth, requireRoles(['agent']), async (req:
     const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true } })
     const username = me?.username || null
     const usermail = me?.usermail || null
-    const extension = me?.extension || null
     const from = req.query.from ? new Date(String(req.query.from)) : null
     const to = req.query.to ? new Date(String(req.query.to)) : null
     const pool = getPool()
@@ -372,7 +367,6 @@ router.get('/analytics/agent', requireAuth, requireRoles(['agent']), async (req:
     const params: any[] = []
     if (username) { idParts.push('username = ?'); params.push(username) }
     if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
-    if (extension) { idParts.push('extension = ?'); params.push(extension) }
     if (idParts.length === 0) return res.json({ callsDialed: 0, answered: 0, voicemail: 0, unanswered: 0, conversations: 0, connectRate: 0, conversationRate: 0 })
     const timeParts: string[] = []
     if (from) { timeParts.push('start_time >= ?'); params.push(from) }
@@ -419,7 +413,6 @@ router.get('/analytics/agent/stream', requireAuth, requireRoles(['agent']), asyn
       const params: any[] = []
       if (username) { idParts.push('username = ?'); params.push(username) }
       if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
-      if (extension) { idParts.push('extension = ?'); params.push(extension) }
       if (idParts.length === 0) return { sqls: null as any, params }
       const timeParts: string[] = []
       if (from) { timeParts.push('start_time >= ?'); params.push(from) }
@@ -544,6 +537,8 @@ router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'superadmin'
     if (qUsermail) where.AND.push({ useremail: qUsermail })
     const qExt = (req.query.extension || '').toString().trim()
     if (qExt) where.AND.push({ extension: qExt })
+    const qRemarks = (req.query.remarks || '').toString().trim()
+    if (qRemarks) where.AND.push({ remarks: qRemarks })
     const qStatus = (req.query.status || '').toString().trim()
     if (qStatus) where.AND.push({ disposition: { equals: qStatus } })
     const qDir = (req.query.direction || '').toString().trim()
@@ -579,7 +574,8 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     const where: any = { OR: [] as any[], AND: [] as any[] }
     if (username) where.OR.push({ username })
     if (usermail) where.OR.push({ useremail: usermail })
-    if (extension) where.OR.push({ extension })
+    // Match by extension only for unattributed rows (username/usermail are null)
+    if (extension) where.OR.push({ AND: [{ extension }, { username: null }, { useremail: null }] })
     if (where.OR.length === 0) {
       // No identifiers -> no results (enforce privacy)
       where.OR.push({ id: -1 })
@@ -607,7 +603,11 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
       (db as any).calls.findMany({ where, orderBy: { start_time: 'desc' }, skip, take: pageSize }),
     ])
 
-    res.json({ success: true, page, pageSize, total, items })
+    const safeItems = items.map((r: any) => ({
+      ...r,
+      id: typeof r.id === 'bigint' ? Number(r.id) : r.id,
+    }))
+    res.json({ success: true, page, pageSize, total: Number(total), items: safeItems })
   } catch (e) {
     next(e)
   }

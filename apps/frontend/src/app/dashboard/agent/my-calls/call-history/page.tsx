@@ -54,12 +54,12 @@ const CallHistory = () => {
           return endOfDay ? `${d}T23:59:59.999Z` : `${d}T00:00:00.000Z`
         } catch { return d }
       }
-      if (fromDate) qs.set('from', toIso(fromDate))
-      if (toDate) qs.set('to', toIso(toDate, true))
+      const fStr = fromDate || (range?.from ? new Date(range.from).toISOString().slice(0,10) : '')
+      const tStr = toDate || (range?.to ? new Date(range.to).toISOString().slice(0,10) : (range?.from ? new Date(range.from).toISOString().slice(0,10) : ''))
+      if (fStr) qs.set('from', toIso(fStr))
+      if (tStr) qs.set('to', toIso(tStr, true))
       if (query) {
         qs.set('destination', query)
-        qs.set('username', query)
-        qs.set('extension', query)
       }
       const effStatus = status === 'all' ? '' : status
       const effDirection = direction === 'all' ? '' : direction
@@ -73,7 +73,7 @@ const CallHistory = () => {
         const t = getToken()
         if (t) headers['Authorization'] = `Bearer ${t}`
       }
-      const res = await fetch(`${API_BASE}/api/calls?${qs.toString()}`, { headers, credentials })
+      const res = await fetch(`${API_BASE}/api/calls/mine?${qs.toString()}`, { headers, credentials })
       if (res.ok) {
         const data = await res.json()
         const rows: any[] = data?.items || []
@@ -100,7 +100,7 @@ const CallHistory = () => {
     } finally {
       setLoading(false)
     }
-  }, [pageSize, fromDate, toDate, query, status, direction])
+  }, [pageSize, query, status, direction])
 
   React.useEffect(() => { fetchMine(page) }, [fetchMine, page])
 
