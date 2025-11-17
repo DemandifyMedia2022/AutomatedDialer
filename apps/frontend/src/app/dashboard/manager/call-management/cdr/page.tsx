@@ -8,12 +8,13 @@ import { Separator } from "@/components/ui/separator";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { API_BASE } from "@/lib/api";
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth";
-import { Download, RefreshCcw, ChevronDownIcon, Play, Pause } from "lucide-react";
+import { Download, RefreshCcw, ChevronDownIcon, Play, Pause, ChevronsUpDown, Check } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { type DateRange } from "react-day-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { ManagerSidebar } from '../../components/ManagerSidebar';
 
 type CallRow = {
@@ -44,7 +45,9 @@ const CallHistory = () => {
   const [status, setStatus] = React.useState('all')
   const [direction, setDirection] = React.useState('all')
   const [extToUser, setExtToUser] = React.useState<Record<string, string>>({})
+  const [userNames, setUserNames] = React.useState<string[]>([])
   const [userExtFilter, setUserExtFilter] = React.useState('all')
+  const [userComboOpen, setUserComboOpen] = React.useState(false)
 
   const fetchMine = React.useCallback(async (p: number) => {
     setLoading(true)
@@ -68,8 +71,7 @@ const CallHistory = () => {
       if (effStatus) qs.set('status', effStatus)
       if (effDirection) qs.set('direction', effDirection)
       if (userExtFilter !== 'all') {
-        const uname = extToUser[userExtFilter] || userExtFilter
-        qs.set('username', uname)
+        qs.set('username', userExtFilter)
       }
       const headers: Record<string, string> = {}
       let credentials: RequestCredentials = 'omit'
@@ -127,13 +129,16 @@ const CallHistory = () => {
         }
         if (data) {
           const map: Record<string, string> = {}
+          const names: string[] = []
           const list: any[] = data?.users || []
           for (const u of list) {
             const ext = u?.extension ?? u?.extensionId ?? u?.sip_extension
             const name = u?.username || u?.usermail || u?.unique_user_id || u?.name || u?.email
             if (ext && name) map[String(ext).trim()] = String(name)
+            if (name) names.push(String(name))
           }
           setExtToUser(map)
+          setUserNames(Array.from(new Set(names)).sort((a,b)=>a.localeCompare(b)))
         }
       } catch {}
     })()
@@ -397,17 +402,34 @@ const CallHistory = () => {
                     <SelectItem value="outbound">Outbound</SelectItem>
                   </SelectContent>
                 </Select>
-                <Select value={userExtFilter} onValueChange={setUserExtFilter}>
-                  <SelectTrigger className="h-9 w-[180px] md:w-[200px]"><SelectValue placeholder="Filter by User" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Users</SelectItem>
-                    {Object.entries(extToUser)
-                      .sort((a, b) => a[1].localeCompare(b[1]))
-                      .map(([ext, name]) => (
-                        <SelectItem key={ext} value={ext}>{name} ({ext})</SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={userComboOpen} onOpenChange={setUserComboOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" aria-expanded={userComboOpen} className="h-9 w-[200px] justify-between">
+                      {userExtFilter === 'all' ? 'All Users' : userExtFilter}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[260px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search user..." className="h-9" />
+                      <CommandList>
+                        <CommandEmpty>No users found.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem value="all" onSelect={() => { setUserExtFilter('all'); setUserComboOpen(false) }}>
+                            All Users
+                            <Check className={`ml-auto ${userExtFilter === 'all' ? 'opacity-100' : 'opacity-0'}`} />
+                          </CommandItem>
+                          {userNames.map((name) => (
+                            <CommandItem key={name} value={name} onSelect={() => { setUserExtFilter(name); setUserComboOpen(false) }}>
+                              {name}
+                              <Check className={`ml-auto ${userExtFilter === name ? 'opacity-100' : 'opacity-0'}`} />
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 <Button className="h-9" onClick={() => { setPage(1); fetchMine(1) }}>Search</Button>
                 <div className="flex items-center justify-end absolute right-3 top-3">
                   <TooltipProvider>

@@ -3,7 +3,7 @@
 import React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Download, Play, Pause } from "lucide-react"
+import { Download, Play, Pause, ChevronDownIcon } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
@@ -11,10 +11,14 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import { AgentSidebar } from "../../components/AgentSidebar"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { type DateRange } from "react-day-picker"
 
 type LeadRow = {
   id: number | string
   extension: string | null
+  username?: string | null
   destination: string | null
   source: string | null
   start_time: string | null
@@ -33,8 +37,12 @@ const LeadDetailsPage = () => {
   const [loading, setLoading] = React.useState(false)
 
   const [dest, setDest] = React.useState("")
-  const [from, setFrom] = React.useState("")
-  const [to, setTo] = React.useState("")
+  const [range, setRange] = React.useState<DateRange | undefined>(() => {
+    const today = new Date()
+    return { from: today, to: today }
+  })
+  const [fromDate, setFromDate] = React.useState("")
+  const [toDate, setToDate] = React.useState("")
 
   const toUtc = (iso?: string | null) => {
     if (!iso) return "-"
@@ -158,8 +166,16 @@ const LeadDetailsPage = () => {
         remarks: 'Lead' // Add filter for remarks
       })
       if (dest) qs.set("destination", dest)
-      if (from) qs.set("from", from)
-      if (to) qs.set("to", to)
+      const toIso = (d: string, endOfDay = false) => {
+        try {
+          if (!d) return ''
+          return endOfDay ? `${d}T23:59:59.999Z` : `${d}T00:00:00.000Z`
+        } catch { return d }
+      }
+      const fStr = fromDate || (range?.from ? new Date(range.from).toISOString().slice(0,10) : '')
+      const tStr = toDate || (range?.to ? new Date(range.to).toISOString().slice(0,10) : (range?.from ? new Date(range.from).toISOString().slice(0,10) : ''))
+      if (fStr) qs.set('from', toIso(fStr))
+      if (tStr) qs.set('to', toIso(tStr, true))
       const headers: Record<string, string> = {}
       let credentials: RequestCredentials = "omit"
       if (USE_AUTH_COOKIE) {
@@ -168,7 +184,7 @@ const LeadDetailsPage = () => {
         const t = getToken()
         if (t) headers["Authorization"] = `Bearer ${t}`
       }
-      const url = `${API_BASE}/api/calls?${qs.toString()}`
+      const url = `${API_BASE}/api/calls/mine?${qs.toString()}`
       console.log('Fetching from URL:', url) // Debug log
       const res = await fetch(url, { 
         headers, 
@@ -188,6 +204,7 @@ const LeadDetailsPage = () => {
           return {
             id: r.id,
             extension: r.extension ?? null,
+            username: r.username ?? null,
             destination: r.destination ?? null,
             source: r.source ?? null,
             start_time: r.start_time ?? null,
@@ -211,7 +228,7 @@ const LeadDetailsPage = () => {
     } finally {
       setLoading(false)
     }
-  }, [pageSize, dest, from, to])
+  }, [pageSize, dest, fromDate, toDate, range])
 
   React.useEffect(() => { fetchLeads(page) }, [fetchLeads, page])
 
@@ -223,8 +240,9 @@ const LeadDetailsPage = () => {
   }
   const onReset = () => {
     setDest("")
-    setFrom("")
-    setTo("")
+    setFromDate("")
+    setToDate("")
+    setRange({ from: new Date(), to: new Date() })
     setPage(1)
     fetchLeads(1)
   }
@@ -264,11 +282,32 @@ const LeadDetailsPage = () => {
            
             <div className="mb-4 w-full overflow-x-auto">
               <div className="flex items-center gap-4 min-w-max whitespace-nowrap">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="h-9 w-full sm:w-[280px] justify-between font-normal">
+                      {range?.from && range?.to
+                        ? `${range.from.toLocaleDateString()} - ${range.to.toLocaleDateString()}`
+                        : 'Select date'}
+                      <ChevronDownIcon className="ml-2 size-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="range"
+                      selected={range}
+                      captionLayout="dropdown"
+                      onSelect={(r) => {
+                        setRange(r)
+                        const f = r?.from ? new Date(r.from) : undefined
+                        const t = r?.to ? new Date(r.to) : r?.from ? new Date(r.from) : undefined
+                        if (f) setFromDate(f.toISOString().slice(0,10))
+                        if (t) setToDate(t.toISOString().slice(0,10))
+                      }}
+                    />
+                  </PopoverContent>
+                </Popover>
                 <Input className="w-56" placeholder="Destination Number" value={dest} onChange={(e) => setDest(e.target.value)} />
-                <Input className="w-44" type="date" placeholder="From Date" value={from} onChange={(e) => setFrom(e.target.value)} />
-                <Input className="w-44" type="date" placeholder="To Date" value={to} onChange={(e) => setTo(e.target.value)} />
                 <Button onClick={onSearch}>Search</Button>
-               
               </div>
             </div>
 
@@ -277,7 +316,7 @@ const LeadDetailsPage = () => {
                 <thead className="bg-muted sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Extension</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">User</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Destination</th>
                   
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Start Time (UTC)</th>
@@ -298,7 +337,7 @@ const LeadDetailsPage = () => {
                   {items.map((row, idx) => (
                     <tr key={`${row.id}-${idx}`} className="hover:bg-accent/50">
                       <td className="px-4 py-3">{(page - 1) * pageSize + idx + 1}</td>
-                      <td className="px-4 py-3">{row.extension || "-"}</td>
+                      <td className="px-4 py-3">{row.username || "-"}</td>
                       <td className="px-4 py-3">{row.destination || "-"}</td>
                      
                       <td className="px-4 py-3">{toUtc(row.start_time)}</td>
