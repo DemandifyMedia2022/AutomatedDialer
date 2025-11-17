@@ -8,6 +8,31 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { ManagerSidebar } from "../../components/ManagerSidebar"
+import { Input } from "@/components/ui/input"
+import { useToast } from "@/hooks/use-toast"
+
+const DEFAULT_ACCOUNT_ID = "360"
+const DEFAULT_PLAN_ID = "10332"
+const DEFAULT_DIDS = [
+  "13236595567",
+  "13236931150",
+  "16822431118",
+  "442046000568",
+  "442080683948",
+]
+const DEFAULT_EXTS = [
+  "1033201",
+  "1033202",
+  "1033203",
+  "1033204",
+  "1033205",
+  "1033206",
+  "1033207",
+  "1033208",
+  "1033209",
+  "1033210",
+  "1033211",
+]
 
 
 type ExtItem = {
@@ -15,32 +40,230 @@ type ExtItem = {
   status: string
   callerIds: string[]
   callerId: string
-  permission: "inbound" | "outbound" | "both"
+  allocated: string
+  backup?: string
 }
 
-const initialItems: ExtItem[] = [
-  { ext: "1033203", status: "UNKNOWN", callerIds: ["442080683948", "13236595567"], callerId: "442080683948", permission: "both" },
-  { ext: "1033206", status: "UNKNOWN", callerIds: ["442080683948", "13236595567"], callerId: "442080683948", permission: "both" },
-  { ext: "1033209", status: "UNKNOWN", callerIds: ["442080683948"], callerId: "442080683948", permission: "both" },
-  { ext: "1033205", status: "UNKNOWN", callerIds: ["442080683948"], callerId: "442080683948", permission: "both" },
-  { ext: "1033208", status: "UNKNOWN", callerIds: ["13236595567"], callerId: "13236595567", permission: "both" },
-  { ext: "1033207", status: "UNKNOWN", callerIds: ["442080683948"], callerId: "442080683948", permission: "both" },
-  { ext: "1033204", status: "UNKNOWN", callerIds: ["13236595567"], callerId: "13236595567", permission: "both" },
-  { ext: "1033203", status: "UNKNOWN", callerIds: ["13236595567"], callerId: "13236595567", permission: "both" },
-  { ext: "1033202", status: "UNKNOWN", callerIds: ["13236595567"], callerId: "13236595567", permission: "both" },
-]
-
 export default function Page() {
-  const [items, setItems] = React.useState<ExtItem[]>(initialItems)
+  const [items, setItems] = React.useState<ExtItem[]>([])
+  const [loading, setLoading] = React.useState<boolean>(false)
+  const [savingAll, setSavingAll] = React.useState<boolean>(false)
+  const [accountId, setAccountId] = React.useState<string | null>(null)
+  const [planId, setPlanId] = React.useState<string | null>(null)
+  const [error, setError] = React.useState("")
+  const [lastAccount, setLastAccount] = React.useState<any>(null)
+  const [bulkDid, setBulkDid] = React.useState<string>("")
+  const [didOptions, setDidOptions] = React.useState<string[]>([])
+  const { toast } = useToast()
 
   const updateItem = (idx: number, patch: Partial<ExtItem>) => {
     setItems(prev => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
   }
 
-  const onSave = (idx: number) => {
+  const fetchAccountAndExtensions = React.useCallback(async () => {
+    setLoading(true)
+    setError("")
+    try {
+      // 1) Get account details
+      const accRes = await fetch("/api/telxio/account", { method: "POST" })
+      const acc = await accRes.json()
+      setLastAccount(acc)
+      if (!accRes.ok) {
+        setError(`Account fetch failed (${accRes.status}): ${acc?.error || "Unknown"}`)
+        setItems([])
+        // Try fallbacks even if API failed
+      }
+      // Determine PBX account and planId from payload (handle diagnostic wrappers)
+      const accData = acc?.data ?? acc?.get?.body?.data ?? acc?.post?.body?.data ?? acc?.body?.data ?? null
+      let pbxAccountId: string | null = accData?.account_id ?? acc?.account_id ?? null
+      let planKey = accData?.plan ? Object.keys(accData.plan)[0] : null
+
+      // NEXT_PUBLIC fallbacks
+      const fbAccount = process.env.NEXT_PUBLIC_TELXIO_ACCOUNT_FALLBACK || ""
+      const fbPlan = process.env.NEXT_PUBLIC_TELXIO_PLAN_FALLBACK || ""
+      if (!pbxAccountId && fbAccount) pbxAccountId = fbAccount
+      if (!planKey && fbPlan) planKey = fbPlan
+
+      // Hard defaults as last resort
+      if (!pbxAccountId) pbxAccountId = DEFAULT_ACCOUNT_ID
+      if (!planKey) planKey = DEFAULT_PLAN_ID
+
+      setAccountId(pbxAccountId)
+      setPlanId(planKey)
+      if (!pbxAccountId || !planKey) {
+        setItems([])
+        setError('Account details did not include account_id or plan')
+        // Do not return yet; we may still try extensions fallback
+      }
+
+      // 2) Use extensions directly from account details
+      let extArray: string[] = Array.isArray(accData?.plan?.[planKey]?.extensions)
+        ? (accData.plan[planKey].extensions as any[]).map((e: any) => String(e)).filter(Boolean)
+        : []
+      // Normalize DID numbers for caller ID options
+      let didNumbers: string[] = []
+      const rawNumbers = accData?.plan?.[planKey]?.numbers
+      if (Array.isArray(rawNumbers)) {
+        for (const n of rawNumbers) {
+          if (n == null) continue
+          if (typeof n === 'string' || typeof n === 'number') {
+            didNumbers.push(String(n))
+          } else if (typeof n === 'object') {
+            const v = (n as any).number ?? (n as any).did ?? (Array.isArray(n) ? n[0] : null)
+            if (v != null) didNumbers.push(String(v))
+          }
+        }
+      }
+      // NEXT_PUBLIC fallback for DID numbers
+      if (!didNumbers.length) {
+        didNumbers = (process.env.NEXT_PUBLIC_TELXIO_NUMBERS_FALLBACK || "")
+          .split(",")
+          .map(s => s.trim())
+          .filter(Boolean)
+      }
+      if (!didNumbers.length) {
+        didNumbers = DEFAULT_DIDS
+      }
+      setDidOptions(didNumbers)
+      // NEXT_PUBLIC fallback for known extension list
+      if (!extArray.length) {
+        const fbExts = (process.env.NEXT_PUBLIC_TELXIO_EXTENSIONS_FALLBACK || "")
+          .split(",")
+          .map(s => s.trim())
+          .filter(Boolean)
+        if (fbExts.length) {
+          extArray = fbExts
+        }
+      }
+      // Hard defaults as last resort
+      if (!extArray.length) {
+        extArray = DEFAULT_EXTS
+      }
+      if (!extArray.length) {
+        setError('No extensions found for this account/plan')
+      }
+      const targetExts = extArray.slice(0, 11) // display up to 11 as requested
+
+      // 3) Fetch each extension details
+      const details = await Promise.all(
+        targetExts.map(async (ext: string) => {
+          try {
+            const res = await fetch(`/api/telxio/extensions/${ext}/details`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ accountId: pbxAccountId, planId: planKey }),
+            })
+            const data = await res.json().catch(() => ({}))
+            const extData = data?.data?.extension || {}
+            const callerId = extData?.callerid || data?.data?.callerid || data?.callerid || ""
+            let callerIds: string[] = Array.isArray(data?.data?.callerids)
+              ? data.data.callerids
+              : Array.isArray(data?.callerids)
+                ? data.callerids
+                : []
+            // Always merge with account-level DID numbers for full dropdown options
+            callerIds = Array.from(new Set([...(callerIds || []), ...didNumbers])).filter(Boolean)
+            const allocated = callerId || (callerIds[0] || "")
+            // Initialize editable field to currently allocated DID
+            return { ext, status: res.ok ? "OK" : "ERROR", callerId: allocated, callerIds, allocated } as ExtItem
+          } catch {
+            // On failure, still present the plan DID numbers to allow selection
+            const allocated = didNumbers[0] || ""
+            return { ext, status: "ERROR", callerId: allocated, callerIds: didNumbers, allocated } as ExtItem
+          }
+        })
+      )
+      setItems(details)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    fetchAccountAndExtensions()
+  }, [fetchAccountAndExtensions])
+
+  const onSave = async (idx: number) => {
     const it = items[idx]
-    // TODO: wire API call to save CallerID / Permission for the extension
-    console.log("update:", it)
+    const previousAllocated = it.allocated
+    const res = await fetch(`/api/telxio/extensions/${it.ext}/update`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId, planId, data: { callerid: it.callerId } }),
+    })
+    const ok = res.ok
+    let verifiedCallerId = it.callerId
+    try {
+      const payload = await res.json()
+      verifiedCallerId = payload?.callerid ?? payload?.verify?.data?.extension?.callerid ?? it.callerId
+    } catch {}
+    updateItem(idx, { status: ok ? "OK" : "ERROR", allocated: ok ? (verifiedCallerId || it.callerId) : previousAllocated, backup: ok ? previousAllocated : it.backup })
+    if (ok) {
+      // Refresh from PBX to ensure UI mirrors portal state
+      void fetchAccountAndExtensions()
+      toast({
+        title: "DID updated",
+        description: `Extension ${it.ext} now uses ${verifiedCallerId || it.callerId}`,
+      })
+    } else {
+      toast({
+        title: "Update failed",
+        description: `Extension ${it.ext} could not be updated. See status card for details.`,
+        variant: "destructive",
+      })
+    }
+  }
+
+  const onSaveAll = async () => {
+    setSavingAll(true)
+    try {
+      // Attempt bulk API first for consistency with PBX portal
+      const payload = {
+        accountId,
+        planId,
+        items: items.map(it => ({ ext: it.ext, data: { callerid: it.callerId } })),
+      }
+      const res = await fetch(`/api/telxio/extensions/bulk-update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        // Fallback to per-item updates
+        await Promise.all(items.map((_it, idx) => onSave(idx)))
+        void fetchAccountAndExtensions()
+        toast({
+          title: "Bulk update fallback",
+          description: "Primary Telxio request failed; ran individual updates instead.",
+          variant: "destructive",
+        })
+        return
+      }
+      const data = await res.json().catch(() => ({} as any))
+      const results = data?.results || {}
+      setItems(prev => prev.map((it) => {
+        const r = results[it.ext]
+        if (!r) return it
+        const ok = r?.ok !== false
+        const verified = r?.callerid ?? r?.verify?.data?.extension?.callerid ?? it.callerId
+        return {
+          ...it,
+          status: ok ? "OK" : "ERROR",
+          allocated: ok ? (verified || it.callerId) : it.allocated,
+          backup: ok ? it.allocated : it.backup,
+        }
+      }))
+      // Final refresh after bulk to mirror portal
+      void fetchAccountAndExtensions()
+      const failed = Object.values(results).some((r: any) => r?.ok === false)
+      toast({
+        title: failed ? "Some DIDs failed" : "DIDs updated",
+        description: failed ? "Check cards marked ERROR for details." : "All visible extensions refreshed.",
+        variant: failed ? "destructive" : "default",
+      })
+    } finally {
+      setSavingAll(false)
+    }
   }
 
   const badge = (label: string) => (
@@ -74,6 +297,31 @@ export default function Page() {
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
+            <div className="ml-auto flex items-center gap-2">
+              <Select value={bulkDid} onValueChange={setBulkDid} disabled={didOptions.length === 0}>
+                <SelectTrigger className="h-9 w-[220px]">
+                  <SelectValue placeholder="Select DID" />
+                </SelectTrigger>
+                <SelectContent>
+                  {didOptions.map(did => (
+                    <SelectItem key={did} value={did}>{did}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                placeholder="Or enter DID manually"
+                value={bulkDid}
+                onChange={(e) => setBulkDid(e.target.value)}
+                className="h-9 w-[220px]"
+              />
+              <Button
+                variant="outline"
+                disabled={!bulkDid || items.length === 0}
+                onClick={() => setItems(prev => prev.map(it => ({ ...it, callerId: bulkDid })))}
+              >
+                Apply to All
+              </Button>
+            </div>
           </div>
         </header>
 
@@ -81,9 +329,30 @@ export default function Page() {
           <div className="p-6">
             <div className="mb-4 flex items-center justify-between">
               <h1 className="text-l font-medium">Manage Extensions</h1>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={fetchAccountAndExtensions} disabled={loading}>
+                  {loading ? "Loading..." : "Reload"}
+                </Button>
+                <Button onClick={onSaveAll} disabled={savingAll || items.length === 0}>
+                  {savingAll ? "Updating..." : "Update All"}
+                </Button>
+              </div>
             </div>
 
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {error && (
+                <div className="col-span-full text-sm text-red-600">{error}</div>
+              )}
+              {(error || items.length === 0) && (
+                <div className="col-span-full text-xs text-muted-foreground space-y-2">
+                  <div>Derived accountId: {accountId || "-"}, planId: {planId || "-"}</div>
+                  {lastAccount && (
+                    <pre className="max-h-64 overflow-auto rounded border bg-muted p-3 text-[11px] whitespace-pre-wrap break-all">
+{JSON.stringify(lastAccount, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              )}
               {items.map((it, idx) => (
                 <Card key={`${it.ext}-${idx}`} className="shadow-sm">
                   <CardHeader>
@@ -96,6 +365,16 @@ export default function Page() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">Allocated DID</div>
+                        <div className="text-[12px]">{it.allocated || "-"}</div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">Backup (previous)</div>
+                        <div className="text-[12px]">{it.backup || "-"}</div>
+                      </div>
+
                       <div className="space-y-1">
                         <div className="text-xs text-muted-foreground">Caller ID</div>
                         <Select
@@ -111,27 +390,16 @@ export default function Page() {
                             ))}
                           </SelectContent>
                         </Select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Calls Allowed</div>
-                        <Select
-                          value={it.permission}
-                          onValueChange={(v: any) => updateItem(idx, { permission: v })}
-                        >
-                          <SelectTrigger className="h-9">
-                            <SelectValue placeholder="Select Permission" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="inbound">Inbound</SelectItem>
-                            <SelectItem value="outbound">Outbound</SelectItem>
-                            <SelectItem value="both">Inbound & Outbound</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <div className="text-[11px] text-muted-foreground">or enter manually</div>
+                        <Input
+                          placeholder="e.g. 442046003675"
+                          value={it.callerId}
+                          onChange={(e) => updateItem(idx, { callerId: e.target.value })}
+                        />
                       </div>
 
                       <div className="pt-1">
-                        <Button variant="outline" className="w-full" onClick={() => onSave(idx)}  style={{color:"blue", borderColor:"blue"}}>Update</Button>
+                        <Button variant="outline" className="w-full" onClick={() => onSave(idx)} disabled={!it.callerId} style={{color:"blue", borderColor:"blue"}}>Update</Button>
                       </div>
                     </div>
                   </CardContent>
