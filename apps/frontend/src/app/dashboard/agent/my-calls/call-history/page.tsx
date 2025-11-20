@@ -169,9 +169,27 @@ const CallHistory = () => {
     URL.revokeObjectURL(url)
   }, [transcript, transcriptCallId])
 
-  React.useEffect(() => { fetchMine(page) }, [fetchMine, page])
+  const downloadRecording = React.useCallback(async (url: string, id: string | number) => {
+    if (!url) return
+    try {
+      const res = await fetch(`${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
+      if (!res.ok) throw new Error(String(res.status))
 
-  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+      const ct = res.headers.get('content-type')
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = `recording_${id}${guessExt(ct)}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(objectUrl)
+    } catch {
+      // no-op
+    }
+  }, [])
+
   const toUtc = (iso?: string | null) => {
     if (!iso) return '-'
     try {
@@ -186,6 +204,62 @@ const CallHistory = () => {
     } catch { return iso }
   }
   const fmtDur = (n?: number | null) => (n ?? null) !== null ? `${n} Sec` : '-'
+  const toAbsUrl = (url: string) => url && !url.startsWith('http')
+    ? `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`
+    : url
+  const guessExt = (ct: string | null) => {
+    if (!ct) return '.webm'
+    const m: Record<string, string> = {
+      'audio/webm': '.webm',
+      'audio/ogg': '.ogg',
+      'audio/mpeg': '.mp3',
+      'audio/wav': '.wav',
+      'video/webm': '.webm',
+    }
+    return m[ct] || '.webm'
+  }
+
+  const exportToCsv = React.useCallback(() => {
+    if (!items.length) return
+
+    const escapeCsv = (value: string | number | null | undefined) => {
+      if (value === null || value === undefined) return ''
+      const str = String(value)
+      return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str
+    }
+
+    const headers = ['#', 'User', 'Extension', 'Destination', 'Start Time (UTC)', 'End Time (UTC)', 'Duration (sec)', 'Disposition', 'Recording URL']
+    const rows = items.map((row, idx) => [
+      idx + 1,
+      row.username || '-',
+      row.extension || '-',
+      row.destination || '-',
+      toUtc(row.start_time),
+      toUtc(row.end_time),
+      row.call_duration ?? '',
+      row.disposition || '-',
+      row.recording_url ? toAbsUrl(row.recording_url) : '',
+    ])
+
+    const csvContent = [headers, ...rows]
+      .map(cols => cols.map(escapeCsv).join(','))
+      .join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+    a.download = `call-history-${stamp}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }, [items, toAbsUrl, toUtc])
+
+  React.useEffect(() => { fetchMine(page) }, [fetchMine, page])
+
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
 
   const badgeFor = (d?: string | null) => {
     const v = (d || '').toUpperCase()
@@ -201,37 +275,6 @@ const CallHistory = () => {
     const label = v ? v.charAt(0) + v.slice(1).toLowerCase() : '-'
     return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{label}</span>
   }
-
-  const guessExt = (ct: string | null) => {
-    if (!ct) return '.webm'
-    const m: Record<string, string> = {
-      'audio/webm': '.webm',
-      'audio/ogg': '.ogg',
-      'audio/mpeg': '.mp3',
-      'audio/wav': '.wav',
-      'video/webm': '.webm',
-    }
-    return m[ct] || '.webm'
-  }
-
-  const downloadRecording = React.useCallback(async (url: string, id: string | number) => {
-    try {
-      const res = await fetch(url, { credentials: USE_AUTH_COOKIE ? 'include' : 'omit' })
-      if (!res.ok) throw new Error(String(res.status))
-      const ct = res.headers.get('content-type')
-      const blob = await res.blob()
-      const objectUrl = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = objectUrl
-      a.download = `recording_${id}${guessExt(ct)}`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(objectUrl)
-    } catch {
-      // no-op
-    }
-  }, [])
 
   const WaveBars: React.FC<{ active: boolean }> = ({ active }) => (
     <div className="flex items-end gap-[1.5px] h-4 w-24">
@@ -316,7 +359,7 @@ const CallHistory = () => {
           {Math.floor(progress)}s
         </div>
 
-        <audio ref={audioRef} src={src} preload="none" />
+        <audio ref={audioRef} src={toAbsUrl(src)} preload="none" />
 
         <TooltipProvider>
           <Tooltip>
@@ -432,6 +475,15 @@ const CallHistory = () => {
                     </Tooltip>
                   </TooltipProvider>
                 </div>
+                <Button
+                  variant="outline"
+                  className="h-9 gap-2"
+                  onClick={exportToCsv}
+                  disabled={!items.length}
+                >
+                  <Download className="h-4 w-4" />
+                  Export CSV
+                </Button>
               </div>
             </div>
 
