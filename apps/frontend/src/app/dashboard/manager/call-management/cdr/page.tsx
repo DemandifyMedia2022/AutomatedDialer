@@ -149,6 +149,37 @@ const CallHistory = () => {
     })()
   }, [])
 
+  const downloadTranscriptText = React.useCallback(() => {
+    if (!transcript) return
+    let text = ''
+    if (transcript.metadata?.full_transcript) {
+      text = String(transcript.metadata.full_transcript ?? '')
+    } else if (Array.isArray(transcript.segments) && transcript.segments.length > 0) {
+      text = transcript.segments.map((s: any, idx: number) => {
+        const rawSpeaker = typeof s.speaker === 'string' ? s.speaker.toLowerCase() : ''
+        let speakerLabel: 'Agent' | 'Prospect'
+        if (rawSpeaker === 'agent' || rawSpeaker === 'prospect') {
+          speakerLabel = rawSpeaker === 'agent' ? 'Agent' : 'Prospect'
+        } else {
+          speakerLabel = idx % 2 === 0 ? 'Agent' : 'Prospect'
+        }
+        const body = typeof s.text === 'string' ? s.text : ''
+        return `${speakerLabel}: ${body}`.trim()
+      }).join('\n')
+    }
+    text = text.trim()
+    if (!text) return
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `transcript_${transcriptCallId ?? 'call'}.txt`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }, [transcript, transcriptCallId])
+
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const toUtc = (iso?: string | null) => {
     if (!iso) return '-'
@@ -600,6 +631,7 @@ const CallHistory = () => {
                 <DialogHeader>
                   <DialogTitle>Call Transcript</DialogTitle>
                 </DialogHeader>
+
                 <div className="min-h-[120px] max-h-[60vh] overflow-y-auto">
                   {transcriptLoading && (
                     <div>Loading transcript…</div>
@@ -649,13 +681,25 @@ const CallHistory = () => {
                     <div className="text-xs md:text-sm text-muted-foreground">No transcript available yet.</div>
                   )}
                 </div>
+
+                <div className="mt-4 flex justify-end">
+                  {!transcriptLoading && !transcriptError && transcript && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={downloadTranscriptText}
+                    >
+                      Download
+                    </Button>
+                  )}
+                </div>
               </DialogContent>
             </Dialog>
+
           </div>
         </div>
       </SidebarInset>
     </SidebarProvider>
   );
-};
-
+}
 export default CallHistory;

@@ -372,11 +372,11 @@ export async function transcribeCallRecordingForCall(callId: bigint | number): P
 
         const audioFile = await toFile(audioBuffer, filename, { type: 'audio/webm' });
 
-        const transcription: any = await openai.audio.transcriptions.create({
+        const transcription: any = await openai.audio.translations.create({
             file: audioFile,
             model: 'whisper-1',
             response_format: 'verbose_json',
-            timestamp_granularities: ['segment'],
+            temperature: 0,
         });
 
         let fullTranscript = '';
@@ -392,7 +392,7 @@ export async function transcribeCallRecordingForCall(callId: bigint | number): P
             sentiment?: string | null;
         }[] = [];
 
-        if (Array.isArray(transcription.segments)) {
+        if (Array.isArray(transcription.segments) && transcription.segments.length) {
             for (const segment of transcription.segments) {
                 const text: string = segment.text ?? '';
                 fullTranscript += text ? text + ' ' : '';
@@ -408,9 +408,23 @@ export async function transcribeCallRecordingForCall(callId: bigint | number): P
                     sentiment: null,
                 });
             }
+        } else if (typeof transcription.text === 'string' && transcription.text.trim()) {
+            const text = transcription.text.trim();
+            fullTranscript = text;
+            segmentsData.push({
+                call_id: id,
+                speaker: null,
+                text,
+                segment_start_time: 0,
+                segment_end_time: 0,
+                confidence: null,
+                is_final: true,
+                words_json: null,
+                sentiment: null,
+            });
         }
 
-        const trimmedTranscript = fullTranscript.trim();
+        const trimmedTranscript = fullTranscript.replace(/\s+/g, ' ').trim();
         const wordCount = trimmedTranscript ? trimmedTranscript.split(/\s+/).length : 0;
         const avgConfidence = segmentsData.length
             ? segmentsData.reduce((sum, s) => sum + (s.confidence ?? 0), 0) / segmentsData.length
