@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { UploadCloud, Play, Pause, SkipForward, PhoneOff, Trash2, Search, Mic, MicOff, Grid2X2, UserPlus } from "lucide-react"
+import { UploadCloud, Play, Pause, SkipForward, PhoneOff, Trash2, Search, Mic, MicOff, Grid2X2, UserPlus, Phone } from "lucide-react"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -79,6 +79,27 @@ export default function AutomatedDialerPage() {
   const [queue, setQueue] = useState<Prospect[]>([])
   const [currentIndex, setCurrentIndex] = useState<number>(0)
   const [autoRun, setAutoRun] = useState(false)
+  const [queueSearch, setQueueSearch] = useState("")
+  const [visibleCount, setVisibleCount] = useState(50)
+
+  const filteredQueue = useMemo(() => {
+    if (!queueSearch) return queue
+    const lower = queueSearch.toLowerCase()
+    return queue.filter(p => 
+      p.phone.includes(lower) || 
+      (p.name && p.name.toLowerCase().includes(lower)) ||
+      (p.company && p.company.toLowerCase().includes(lower))
+    )
+  }, [queue, queueSearch])
+
+  const visibleQueue = useMemo(() => filteredQueue.slice(0, visibleCount), [filteredQueue, visibleCount])
+
+  const onQueueScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
+    if (scrollHeight - scrollTop - clientHeight < 100) {
+      setVisibleCount(prev => Math.min(prev + 50, filteredQueue.length))
+    }
+  }
   // Fixed delay (30s)
   const FIXED_DELAY_MS = 30000
 
@@ -1128,18 +1149,57 @@ export default function AutomatedDialerPage() {
               )}
 
               <Card className="p-5">
-                <div className="text-sm text-muted-foreground mb-2">Queue</div>
-                <div className="text-xs text-muted-foreground mb-2">{queue.length} numbers • Index {Math.min(currentIndex + 1, queue.length)} / {queue.length}</div>
-                <div className="max-h-80 overflow-auto border rounded">
-                  {queue.length === 0 ? (
-                    <div className="p-3 text-sm text-muted-foreground">No numbers loaded</div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm text-muted-foreground">Queue</div>
+                  <div className="text-xs text-muted-foreground">{queue.length} numbers • Index {Math.min(currentIndex + 1, queue.length)} / {queue.length}</div>
+                </div>
+                
+                <div className="relative mb-3">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                  <Input 
+                    placeholder="Search queue..." 
+                    value={queueSearch} 
+                    onChange={(e) => { setQueueSearch(e.target.value); setVisibleCount(50) }} 
+                    className="pl-8 h-8 text-xs" 
+                  />
+                </div>
+
+                <div 
+                  className="max-h-80 overflow-auto border rounded"
+                  onScroll={onQueueScroll}
+                >
+                  {visibleQueue.length === 0 ? (
+                    <div className="p-3 text-sm text-muted-foreground">No numbers found</div>
                   ) : (
                     <ul className="text-sm">
-                      {queue.map((p, i) => (
-                        <li key={`${p.phone}-${i}`} className={`${i === currentIndex ? 'bg-accent/50 font-medium' : ''} px-3 py-2 border-b last:border-b-0`}>
-                          {i + 1}. {p.name ? `${p.name} — ` : ''}{p.company ? `${p.company} — ` : ''}{p.phone}
+                      {visibleQueue.map((p, i) => {
+                        const isCurrent = queue[currentIndex] === p
+                        return (
+                        <li key={`${p.phone}-${i}`} className={`${isCurrent ? 'bg-accent/50 font-medium' : ''} flex items-center justify-between px-3 py-2 border-b last:border-b-0`}>
+                          <div className="truncate mr-2">
+                             {p.name ? `${p.name} — ` : ''}{p.company ? `${p.company} — ` : ''}{p.phone}
+                          </div>
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            className="h-6 w-6 shrink-0" 
+                            onClick={() => {
+                                const idx = queue.indexOf(p)
+                                if (idx !== -1) {
+                                    setCurrentIndex(idx)
+                                    currentIndexRef.current = idx
+                                    placeCallTo(p.phone)
+                                }
+                            }}
+                            title="Call this contact"
+                          >
+                            <Phone className="h-3 w-3" />
+                          </Button>
                         </li>
-                      ))}
+                      )})}
+                      {visibleCount < filteredQueue.length && (
+                        <li className="p-2 text-center text-xs text-muted-foreground">Loading more...</li>
+                      )}
                     </ul>
                   )}
                 </div>

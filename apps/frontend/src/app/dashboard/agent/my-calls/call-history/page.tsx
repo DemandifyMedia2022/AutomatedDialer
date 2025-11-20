@@ -15,6 +15,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { type DateRange } from "react-day-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type CallRow = {
   id: number | string
@@ -43,6 +44,10 @@ const CallHistory = () => {
   const [query, setQuery] = React.useState('')
   const [status, setStatus] = React.useState('all')
   const [direction, setDirection] = React.useState('all')
+  const [transcriptCallId, setTranscriptCallId] = React.useState<number | string | null>(null)
+  const [transcript, setTranscript] = React.useState<any | null>(null)
+  const [transcriptLoading, setTranscriptLoading] = React.useState(false)
+  const [transcriptError, setTranscriptError] = React.useState<string | null>(null)
 
   const fetchMine = React.useCallback(async (p: number) => {
     setLoading(true)
@@ -54,8 +59,8 @@ const CallHistory = () => {
           return endOfDay ? `${d}T23:59:59.999Z` : `${d}T00:00:00.000Z`
         } catch { return d }
       }
-      const fStr = fromDate || (range?.from ? new Date(range.from).toISOString().slice(0,10) : '')
-      const tStr = toDate || (range?.to ? new Date(range.to).toISOString().slice(0,10) : (range?.from ? new Date(range.from).toISOString().slice(0,10) : ''))
+      const fStr = fromDate || (range?.from ? new Date(range.from).toISOString().slice(0, 10) : '')
+      const tStr = toDate || (range?.to ? new Date(range.to).toISOString().slice(0, 10) : (range?.from ? new Date(range.from).toISOString().slice(0, 10) : ''))
       if (fStr) qs.set('from', toIso(fStr))
       if (tStr) qs.set('to', toIso(tStr, true))
       if (query) {
@@ -100,7 +105,38 @@ const CallHistory = () => {
     } finally {
       setLoading(false)
     }
-  }, [pageSize, query, status, direction])
+  }, [pageSize, query, status, direction, fromDate, toDate, range])
+
+  const fetchTranscript = React.useCallback(async (callId: number | string) => {
+    setTranscriptLoading(true)
+    setTranscriptError(null)
+    setTranscript(null)
+    try {
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const res = await fetch(`${API_BASE}/api/transcription/call/${callId}`, { headers, credentials })
+      if (!res.ok) {
+        if (res.status === 404) {
+          setTranscript({ metadata: null, segments: [] })
+        } else {
+          throw new Error(String(res.status))
+        }
+      } else {
+        const data = await res.json().catch(() => null) as any
+        setTranscript(data?.data ?? null)
+      }
+    } catch {
+      setTranscriptError('Failed to load transcript')
+    } finally {
+      setTranscriptLoading(false)
+    }
+  }, [])
 
   React.useEffect(() => { fetchMine(page) }, [fetchMine, page])
 
@@ -125,12 +161,12 @@ const CallHistory = () => {
     const cls = v === 'ANSWERED'
       ? 'bg-green-100 text-green-700'
       : v === 'NO ANSWER'
-      ? 'bg-gray-100 text-gray-700'
-      : v === 'BUSY'
-      ? 'bg-amber-100 text-amber-700'
-      : v === 'FAILED' || v === 'REJECTED'
-      ? 'bg-red-100 text-red-700'
-      : 'bg-slate-100 text-slate-700'
+        ? 'bg-gray-100 text-gray-700'
+        : v === 'BUSY'
+          ? 'bg-amber-100 text-amber-700'
+          : v === 'FAILED' || v === 'REJECTED'
+            ? 'bg-red-100 text-red-700'
+            : 'bg-slate-100 text-slate-700'
     const label = v ? v.charAt(0) + v.slice(1).toLowerCase() : '-'
     return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{label}</span>
   }
@@ -169,13 +205,13 @@ const CallHistory = () => {
   const WaveBars: React.FC<{ active: boolean }> = ({ active }) => (
     <div className="flex items-end gap-[1.5px] h-4 w-24">
       {[0.4, 0.6, 0.8, 1, 0.7, 0.5, 0.6, 0.8, 1, 0.8, 0.6, 0.4].map((height, i) => (
-        <span 
-          key={i} 
-          style={{ 
+        <span
+          key={i}
+          style={{
             height: `${height * 100}%`,
             animation: active ? `wave 0.7s ${0.05 * i}s infinite ease-in-out` : 'none',
             animationFillMode: active ? 'both' : 'forwards',
-          }} 
+          }}
           className="w-[1.5px] bg-foreground/70 rounded-sm origin-bottom"
         />
       ))}
@@ -216,7 +252,7 @@ const CallHistory = () => {
         a.removeEventListener('loadedmetadata', onTime)
       }
     }, [])
-    const pct = dur ? Math.min(100, (progress/dur)*100) : 0
+    const pct = dur ? Math.min(100, (progress / dur) * 100) : 0
     const seek = (e: React.MouseEvent<HTMLDivElement>) => {
       const a = audioRef.current
       if (!a || !dur) return
@@ -227,48 +263,48 @@ const CallHistory = () => {
     }
     return (
       <div className="flex items-center gap-4 w-full max-w-md">
-      <button 
-        onClick={toggle} 
-        className="text-foreground hover:bg-accent/50 rounded p-1.5 transition-colors focus:outline-none"
-        aria-label={playing ? 'Pause' : 'Play'}
-      >
-        {playing ? (
-          <Pause className="h-4 w-4" strokeWidth={2.5} />
-        ) : (
-          <Play className="h-4 w-4 ml-0.5" strokeWidth={2.5} />
-        )}
-      </button>
-      
-      <div className="flex-1 min-w-0 flex items-center">
-        <div className="hidden sm:block">
-          <WaveBars active={playing} />
+        <button
+          onClick={toggle}
+          className="text-foreground hover:bg-accent/50 rounded p-1.5 transition-colors focus:outline-none"
+          aria-label={playing ? 'Pause' : 'Play'}
+        >
+          {playing ? (
+            <Pause className="h-4 w-4" strokeWidth={2.5} />
+          ) : (
+            <Play className="h-4 w-4 ml-0.5" strokeWidth={2.5} />
+          )}
+        </button>
+
+        <div className="flex-1 min-w-0 flex items-center">
+          <div className="hidden sm:block">
+            <WaveBars active={playing} />
+          </div>
         </div>
+
+        <div className="text-xs tabular-nums text-muted-foreground w-10 text-right">
+          {Math.floor(progress)}s
+        </div>
+
+        <audio ref={audioRef} src={src} preload="none" />
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className="text-muted-foreground hover:bg-accent/50 rounded p-1.5 transition-colors focus:outline-none"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  downloadRecording(src, name);
+                }}
+                aria-label="Download"
+              >
+                <Download className="h-4 w-4" strokeWidth={2.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Download</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
-      
-      <div className="text-xs tabular-nums text-muted-foreground w-10 text-right">
-        {Math.floor(progress)}s
-      </div>
-      
-      <audio ref={audioRef} src={src} preload="none" />
-      
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button 
-              className="text-muted-foreground hover:bg-accent/50 rounded p-1.5 transition-colors focus:outline-none"
-              onClick={(e) => {
-                e.stopPropagation();
-                downloadRecording(src, name);
-              }} 
-              aria-label="Download"
-            >
-              <Download className="h-4 w-4" strokeWidth={2.5} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Download</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    </div>
     )
   }
 
@@ -302,8 +338,8 @@ const CallHistory = () => {
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0"> 
-          
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+
           <div className="p-6">
             <div className="mb-4 rounded-md border bg-muted/20 p-3 relative">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center pr-12">
@@ -326,8 +362,8 @@ const CallHistory = () => {
                           setRange(r)
                           const f = r?.from ? new Date(r.from) : undefined
                           const t = r?.to ? new Date(r.to) : r?.from ? new Date(r.from) : undefined
-                          if (f) setFromDate(f.toISOString().slice(0,10))
-                          if (t) setToDate(t.toISOString().slice(0,10))
+                          if (f) setFromDate(f.toISOString().slice(0, 10))
+                          if (t) setToDate(t.toISOString().slice(0, 10))
                         }}
                       />
                     </PopoverContent>
@@ -380,43 +416,58 @@ const CallHistory = () => {
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Call Duration</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Call Disposition</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Recording</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Transcript</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {items.length === 0 && (
                     <tr>
-                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={8}>
+                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={9}>
                         {loading ? 'Loading…' : 'No records'}
                       </td>
                     </tr>
                   )}
                   {Object.entries(items.reduce((acc: Record<string, CallRow[]>, row) => {
-                    const d = toUtc(row.start_time).slice(0,10)
+                    const d = toUtc(row.start_time).slice(0, 10)
                     acc[d] = acc[d] || []
                     acc[d].push(row)
                     return acc
                   }, {})).map(([day, list]) => (
                     <React.Fragment key={day}>
                       <tr className="bg-muted/20">
-                        <td className="px-4 py-2 text-xs font-medium text-muted-foreground" colSpan={8}>{day}</td>
+                        <td className="px-4 py-2 text-xs font-medium text-muted-foreground" colSpan={9}>{day}</td>
                       </tr>
                       {list.map((row, i) => (
-                        <tr key={String(row.id)} className="hover:bg-accent/50 even:bg-muted/5">
-                          <td className="px-4 py-3">{i + 1}</td>
-                          <td className="px-4 py-3">{row.username || '-'}</td>
-                          <td className="px-4 py-3">{row.destination || '-'}</td>
-                          <td className="px-4 py-3">{toUtc(row.start_time)}</td>
-                          <td className="px-4 py-3">{toUtc(row.end_time)}</td>
-                          <td className="px-4 py-3">{fmtDur(row.call_duration)}</td>
-                          <td className="px-4 py-3">{badgeFor(row.disposition)}</td>
-                          <td className="px-4 py-3">
-                            {row.recording_url ? (
-                              <CompactAudio src={row.recording_url} name={row.id} />
-                            ) : (
-                              '-'
-                            )}
-                          </td>
-                        </tr>
+                        <React.Fragment key={String(row.id)}>
+                          <tr className="hover:bg-accent/50 even:bg-muted/5">
+                            <td className="px-4 py-3">{i + 1}</td>
+                            <td className="px-4 py-3">{row.username || '-'}</td>
+                            <td className="px-4 py-3">{row.destination || '-'}</td>
+                            <td className="px-4 py-3">{toUtc(row.start_time)}</td>
+                            <td className="px-4 py-3">{toUtc(row.end_time)}</td>
+                            <td className="px-4 py-3">{fmtDur(row.call_duration)}</td>
+                            <td className="px-4 py-3">{badgeFor(row.disposition)}</td>
+                            <td className="px-4 py-3">
+                              {row.recording_url ? (
+                                <CompactAudio src={row.recording_url} name={row.id} />
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setTranscriptCallId(row.id)
+                                  fetchTranscript(row.id)
+                                }}
+                              >
+                                {transcriptCallId === row.id && transcriptLoading ? 'Loading…' : 'View'}
+                              </Button>
+                            </td>
+                          </tr>
+                        </React.Fragment>
                       ))}
                     </React.Fragment>
                   ))}
@@ -430,6 +481,72 @@ const CallHistory = () => {
                 </Button>
               ))}
             </div>
+
+            <Dialog
+              open={transcriptCallId !== null}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setTranscriptCallId(null)
+                  setTranscript(null)
+                  setTranscriptError(null)
+                }
+              }}
+            >
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Call Transcript</DialogTitle>
+                </DialogHeader>
+                <div className="min-h-[120px] max-h-[60vh] overflow-y-auto">
+                  {transcriptLoading && (
+                    <div>Loading transcript…</div>
+                  )}
+                  {!transcriptLoading && transcriptError && (
+                    <div className="text-sm text-red-500">{transcriptError}</div>
+                  )}
+                  {!transcriptLoading && !transcriptError && transcript && (
+                    <div className="space-y-3">
+                      {transcript.metadata?.full_transcript && (
+                        <p className="whitespace-pre-wrap break-words">{transcript.metadata.full_transcript}</p>
+                      )}
+                      {!transcript.metadata?.full_transcript && Array.isArray(transcript.segments) && transcript.segments.length > 0 && (
+                        <div className="space-y-2">
+                          {transcript.segments.map((s: any, idx: number) => {
+                            const rawSpeaker = typeof s.speaker === 'string' ? s.speaker.toLowerCase() : ''
+                            let speaker: 'agent' | 'prospect'
+                            if (rawSpeaker === 'agent' || rawSpeaker === 'prospect') {
+                              speaker = rawSpeaker as 'agent' | 'prospect'
+                            } else {
+                              speaker = idx % 2 === 0 ? 'agent' : 'prospect'
+                            }
+                            const isAgent = speaker === 'agent'
+                            return (
+                              <div key={idx} className={isAgent ? 'flex justify-end' : 'flex justify-start'}>
+                                <div className={
+                                  isAgent
+                                    ? 'max-w-[80%] rounded-lg px-3 py-2 text-sm bg-primary text-primary-foreground'
+                                    : 'max-w-[80%] rounded-lg px-3 py-2 text-sm bg-muted text-foreground'
+                                }>
+                                  <div className="text-[10px] font-semibold uppercase tracking-wide mb-1 opacity-80">
+                                    {isAgent ? 'Agent' : 'Prospect'}
+                                  </div>
+                                  <div className="whitespace-pre-wrap break-words">{s.text}</div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {!transcript.metadata?.full_transcript && (!transcript.segments || transcript.segments.length === 0) && (
+                        <span>No transcript available yet.</span>
+                      )}
+                    </div>
+                  )}
+                  {!transcriptLoading && !transcriptError && !transcript && (
+                    <div className="text-sm text-muted-foreground">No transcript available yet.</div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </SidebarInset>

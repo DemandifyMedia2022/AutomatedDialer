@@ -25,37 +25,41 @@ model agent_stats {
 }
 
 model calls {
-  id               BigInt        @id @default(autoincrement())
-  campaign_name    String?       @db.VarChar(255)
-  useremail        String?       @db.VarChar(255)
-  username         String?       @db.VarChar(255)
-  unique_id        String?       @db.VarChar(255)
-  start_time       DateTime      @default(now()) @db.Timestamp(0)
-  answer_time      DateTime?     @db.Timestamp(0)
-  end_time         DateTime?     @db.Timestamp(0)
-  call_duration    Int?
-  billed_duration  Int?
-  source           String?       @db.VarChar(255)
-  extension        String?       @db.VarChar(255)
-  region           String?       @db.VarChar(255)
-  charges          Decimal?      @db.Decimal(10, 2)
-  direction        String?       @db.VarChar(255)
-  destination      String?       @db.VarChar(255)
-  disposition      String?       @db.VarChar(255)
-  platform         String?       @db.VarChar(255)
-  recording_url    String?       @db.VarChar(2000)
-  call_type        String?       @db.VarChar(255)
-  remarks          String?       @db.VarChar(22)
-  prospect_name    String?       @db.VarChar(55)
-  prospect_email   String?       @db.VarChar(55)
-  prospect_company String?       @db.VarChar(100)
-  job_title        String?       @db.VarChar(55)
-  job_level        String?       @db.VarChar(255)
-  data_source_type String?       @db.VarChar(255)
-  created_at       DateTime      @default(now()) @db.Timestamp(0)
-  updated_at       DateTime      @default(now()) @db.Timestamp(0)
-  notes            notes[]
-  transcripts      transcripts[]
+  id                          BigInt                       @id @default(autoincrement())
+  campaign_name               String?                      @db.VarChar(255)
+  useremail                   String?                      @db.VarChar(255)
+  username                    String?                      @db.VarChar(255)
+  unique_id                   String?                      @db.VarChar(255)
+  start_time                  DateTime                     @default(now()) @db.Timestamp(0)
+  answer_time                 DateTime?                    @db.Timestamp(0)
+  end_time                    DateTime?                    @db.Timestamp(0)
+  call_duration               Int?
+  billed_duration             Int?
+  source                      String?                      @db.VarChar(255)
+  extension                   String?                      @db.VarChar(255)
+  region                      String?                      @db.VarChar(255)
+  charges                     Decimal?                     @db.Decimal(10, 2)
+  direction                   String?                      @db.VarChar(255)
+  destination                 String?                      @db.VarChar(255)
+  disposition                 String?                      @db.VarChar(255)
+  platform                    String?                      @db.VarChar(255)
+  recording_url               String?                      @db.VarChar(2000)
+  call_type                   String?                      @db.VarChar(255)
+  remarks                     String?                      @db.VarChar(22)
+  prospect_name               String?                      @db.VarChar(55)
+  prospect_email              String?                      @db.VarChar(55)
+  prospect_company            String?                      @db.VarChar(100)
+  job_title                   String?                      @db.VarChar(55)
+  job_level                   String?                      @db.VarChar(255)
+  data_source_type            String?                      @db.VarChar(255)
+  created_at                  DateTime                     @default(now()) @db.Timestamp(0)
+  updated_at                  DateTime                     @default(now()) @db.Timestamp(0)
+  call_transcription_metadata call_transcription_metadata?
+  notes                       notes[]
+  transcription_keywords      transcription_keywords[]
+  transcription_segments      transcription_segments[]
+  transcription_sessions      transcription_sessions[]
+  transcripts                 transcripts[]
 }
 
 model campaigns {
@@ -84,37 +88,46 @@ model extensions {
 }
 
 model users {
-  id                    Int                     @id @default(autoincrement())
-  role                  String?                 @db.VarChar(255)
-  unique_user_id        String?                 @unique(map: "unique_user_name") @db.VarChar(255)
-  username              String?                 @db.VarChar(255)
-  usermail              String?                 @db.VarChar(255)
-  password              String?                 @db.VarChar(255)
-  extension             String?                 @db.VarChar(255)
-  status                String?                 @db.VarChar(255)
-  created_at            DateTime?               @db.Timestamp(6)
-  updated_at            DateTime?               @db.Timestamp(6)
-  agent_breaks          agent_breaks[]
-  agent_heartbeats      agent_heartbeats[]
-  agent_presence_events agent_presence_events[]
-  agent_sessions        agent_sessions[]
-  document_shares       document_shares[]
-  documents             documents[]
-  notes                 notes[]
-  password_resets       password_resets[]
+  id                     Int                      @id @default(autoincrement())
+  role                   String?                  @db.VarChar(255)
+  unique_user_id         String?                  @unique(map: "unique_user_name") @db.VarChar(255)
+  username               String?                  @db.VarChar(255)
+  usermail               String?                  @db.VarChar(255)
+  password               String?                  @db.VarChar(255)
+  extension              String?                  @db.VarChar(255)
+  status                 String?                  @db.VarChar(255)
+  created_at             DateTime?                @db.Timestamp(6)
+  updated_at             DateTime?                @db.Timestamp(6)
+  agent_breaks           agent_breaks[]
+  agent_heartbeats       agent_heartbeats[]
+  agent_presence_events  agent_presence_events[]
+  agent_sessions         agent_sessions[]
+  document_shares        document_shares[]
+  documents              documents[]
+  notes                  notes[]
+  password_resets        password_resets[]
+  transcription_sessions transcription_sessions[]
 }
 
 model transcripts {
-  id         BigInt   @id @default(autoincrement())
-  call_id    BigInt
-  ts         DateTime @default(now()) @db.Timestamp(0)
-  speaker    String   @db.VarChar(32)
-  text       String   @db.VarChar(2000)
-  sentiment  String?  @db.VarChar(32)
-  confidence Float?
-  calls      calls    @relation(fields: [call_id], references: [id], onDelete: Cascade)
+  id                     BigInt                   @id @default(autoincrement())
+  call_id                BigInt
+  ts                     DateTime                 @default(now()) @db.Timestamp(0)
+  speaker                String                   @db.VarChar(32)
+  text                   String                   @db.VarChar(2000)
+  sentiment              String?                  @db.VarChar(32)
+  confidence             Float?
+  start_time             Decimal?                 @db.Decimal(10, 3)
+  end_time               Decimal?                 @db.Decimal(10, 3)
+  is_final               Boolean?                 @default(true)
+  words_json             String?                  @db.LongText
+  transcription_segments transcription_segments[]
+  calls                  calls                    @relation(fields: [call_id], references: [id], onDelete: Cascade)
 
   @@index([call_id, ts])
+  @@index([is_final], map: "idx_transcripts_is_final")
+  @@index([speaker], map: "idx_transcripts_speaker")
+  @@index([start_time], map: "idx_transcripts_start_time")
 }
 
 model agentic_campaigns {
@@ -323,6 +336,84 @@ model password_resets {
   @@index([user_id], map: "idx_password_resets_user")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model call_transcription_metadata {
+  id               BigInt    @id @default(autoincrement())
+  call_id          BigInt    @unique(map: "uk_call_transcription")
+  full_transcript  String?   @db.LongText
+  language         String?   @default("en-US") @db.VarChar(10)
+  avg_confidence   Float?    @db.Float
+  word_count       Int?      @default(0) @db.UnsignedInt
+  duration_seconds Decimal?  @db.Decimal(10, 3)
+  provider         String?   @default("deepgram") @db.VarChar(50)
+  metadata_json    String?   @db.LongText
+  created_at       DateTime? @default(now()) @db.Timestamp(0)
+  updated_at       DateTime? @default(now()) @db.Timestamp(0)
+  calls            calls     @relation(fields: [call_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_transcription_meta_call")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model transcription_keywords {
+  id                    BigInt    @id @default(autoincrement())
+  call_id               BigInt
+  keyword               String    @db.VarChar(255)
+  occurrences           Int?      @default(1) @db.UnsignedInt
+  first_occurrence_time Decimal?  @db.Decimal(10, 3)
+  category              String?   @db.VarChar(50)
+  created_at            DateTime? @default(now()) @db.Timestamp(0)
+  calls                 calls     @relation(fields: [call_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_keyword_call")
+
+  @@index([call_id], map: "idx_keyword_call_id")
+  @@index([category], map: "idx_keyword_category")
+  @@index([keyword], map: "idx_keyword_text")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model transcription_segments {
+  id                 BigInt       @id @default(autoincrement())
+  call_id            BigInt
+  transcript_id      BigInt?
+  speaker            String?      @default("unknown") @db.VarChar(32)
+  text               String       @db.Text
+  segment_start_time Decimal      @db.Decimal(10, 3)
+  segment_end_time   Decimal      @db.Decimal(10, 3)
+  confidence         Float?       @db.Float
+  is_final           Boolean?     @default(true)
+  words_json         String?      @db.LongText
+  sentiment          String?      @db.VarChar(32)
+  created_at         DateTime?    @default(now()) @db.Timestamp(0)
+  calls              calls        @relation(fields: [call_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_segment_call")
+  transcripts        transcripts? @relation(fields: [transcript_id], references: [id], onUpdate: Restrict, map: "fk_segment_transcript")
+
+  @@index([call_id], map: "idx_segment_call_id")
+  @@index([is_final], map: "idx_segment_is_final")
+  @@index([speaker], map: "idx_segment_speaker")
+  @@index([segment_start_time], map: "idx_segment_start_time")
+  @@index([transcript_id], map: "idx_segment_transcript_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model transcription_sessions {
+  id            BigInt                         @id @default(autoincrement())
+  session_id    String                         @unique(map: "uk_session_id") @db.VarChar(64)
+  call_id       BigInt?
+  user_id       Int?
+  status        transcription_sessions_status? @default(pending)
+  provider      String?                        @default("deepgram") @db.VarChar(50)
+  language      String?                        @default("en-US") @db.VarChar(10)
+  started_at    DateTime?                      @db.Timestamp(0)
+  ended_at      DateTime?                      @db.Timestamp(0)
+  error_message String?                        @db.Text
+  created_at    DateTime?                      @default(now()) @db.Timestamp(0)
+  updated_at    DateTime?                      @default(now()) @db.Timestamp(0)
+  calls         calls?                         @relation(fields: [call_id], references: [id], onUpdate: Restrict, map: "fk_session_call")
+  users         users?                         @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "fk_session_user")
+
+  @@index([call_id], map: "idx_session_call_id")
+  @@index([status], map: "idx_session_status")
+  @@index([user_id], map: "idx_session_user_id")
+}
+
 enum documents_type {
   template
   guide
@@ -396,4 +487,11 @@ enum agent_sessions_initial_status {
   ON_CALL
   IDLE
   BREAK
+}
+
+enum transcription_sessions_status {
+  pending
+  active
+  completed
+  failed
 }

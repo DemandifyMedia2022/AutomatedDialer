@@ -1,0 +1,5 @@
+// Add this line to apps/backend/src/routes/index.ts after line 14:
+// import transcription from './transcription';
+
+// Add this line to apps/backend/src/routes/index.ts after line 39 (after router.use('/profile', profile);):
+// router.use('/transcription', transcription);

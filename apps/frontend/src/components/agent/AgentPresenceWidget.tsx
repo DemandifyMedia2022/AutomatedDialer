@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator'
 import { RotateCw, Clock } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-function StatusBadge({ status }: { status: 'OFFLINE'|'AVAILABLE'|'ON_CALL'|'IDLE'|'BREAK' }) {
+function StatusBadge({ status }: { status: 'OFFLINE' | 'AVAILABLE' | 'ON_CALL' | 'IDLE' | 'BREAK' }) {
   const map: Record<string, string> = {
     AVAILABLE: 'bg-emerald-600',
     ON_CALL: 'bg-sky-600',
@@ -19,7 +19,7 @@ function StatusBadge({ status }: { status: 'OFFLINE'|'AVAILABLE'|'ON_CALL'|'IDLE
   }
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold text-white tracking-wide ${map[status] || 'bg-slate-600'}`}>
-      {status.replace('_',' ')}
+      {status.replace('_', ' ')}
     </span>
   )
 }
@@ -52,7 +52,28 @@ export default function AgentPresenceWidget() {
 
       <Separator />
 
-      {status !== 'BREAK' ? (
+      {status === 'BREAK' ? (
+        <div className="space-y-2">
+          <div className="text-xs text-muted-foreground">You are currently on a break</div>
+          <div className="grid grid-cols-1 gap-2">
+            <Button className="w-full" variant="secondary" disabled={loading} onClick={() => endBreak()}>End Break</Button>
+            <Button className="w-full" variant="outline" disabled={loading} onClick={() => setStatus('AVAILABLE')}>Go Available</Button>
+          </div>
+        </div>
+      ) : status === 'IDLE' || status === 'OFFLINE' ? (
+        <div className="space-y-2">
+          <div className="text-xs text-muted-foreground">
+            {status === 'IDLE' ? 'Your session is idle' : 'You are currently offline'}
+          </div>
+          <Button className="w-full" disabled={loading} onClick={() => setStatus('AVAILABLE')}>
+            Resume Session
+          </Button>
+        </div>
+      ) : status === 'ON_CALL' ? (
+        <div className="space-y-2">
+          <div className="text-xs text-muted-foreground">You are currently on a call</div>
+        </div>
+      ) : (
         <div className="space-y-2">
           <div className="text-xs text-muted-foreground">Select a break reason</div>
           {breakReasons.length === 0 ? (
@@ -70,14 +91,6 @@ export default function AgentPresenceWidget() {
             </Select>
           )}
           <Button className="w-full" disabled={loading || !reason} onClick={() => startBreak(Number(reason))}>Start Break</Button>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <div className="text-xs text-muted-foreground">You are currently on a break</div>
-          <div className="grid grid-cols-1 gap-2">
-            <Button className="w-full" variant="secondary" disabled={loading} onClick={() => endBreak()}>End Break</Button>
-            <Button className="w-full" variant="outline" disabled={loading} onClick={() => setStatus('AVAILABLE')}>Go Available</Button>
-          </div>
         </div>
       )}
     </Card>

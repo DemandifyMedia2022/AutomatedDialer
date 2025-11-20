@@ -12,6 +12,7 @@ import documents from './documents';
 import dialerSheets from './dialerSheets';
 import presence from './presence';
 import profile from './profile';
+import transcription from './transcription';
 
 import { env } from '../config/env';
 import multer from 'multer';
@@ -21,6 +22,7 @@ import { getPool } from '../db/pool';
 import { requireAuth, requireRoles } from '../middlewares/auth';
 import { csrfProtect } from '../middlewares/csrf';
 import { z } from 'zod';
+import { transcribeCallRecordingForCall } from '../services/transcriptionService';
 
 const router = Router();
 
@@ -37,6 +39,7 @@ router.use('/documents', documents);
 router.use('/dialer-sheets', dialerSheets);
 router.use('/presence', presence);
 router.use('/profile', profile);
+router.use('/transcription', transcription);
 
 router.get('/sip/config', (_req, res) => {
   res.json({
@@ -128,8 +131,8 @@ const callsHandler = async (req: any, res: any, next: any) => {
       ? `${env.PUBLIC_BASE_URL}/uploads/${file.filename}`
       : b.recording_url || null;
 
-    try { console.log('[calls] incoming body', b); } catch {}
-    try { console.log('[calls] file', !!file, 'recording_url', recording_url); } catch {}
+    try { console.log('[calls] incoming body', b); } catch { }
+    try { console.log('[calls] file', !!file, 'recording_url', recording_url); } catch { }
 
     // Fallback: if username not provided, use authenticated user's name
     let usernameVal = b.username || null;
@@ -137,7 +140,7 @@ const callsHandler = async (req: any, res: any, next: any) => {
       try {
         const u = await db.users.findUnique({ where: { id: req.user.userId }, select: { username: true } });
         usernameVal = u?.username || null;
-      } catch {}
+      } catch { }
     }
 
     // Fallback: if extension not provided, use authenticated user's assigned extension
@@ -146,7 +149,7 @@ const callsHandler = async (req: any, res: any, next: any) => {
       try {
         const u = await db.users.findUnique({ where: { id: req.user.userId }, select: { extension: true } });
         extensionVal = u?.extension || null;
-      } catch {}
+      } catch { }
     }
 
     // Normalize and compute times/duration
@@ -237,10 +240,19 @@ const callsHandler = async (req: any, res: any, next: any) => {
     } as any;
 
     const saved = await (db as any).calls.create({ data });
-    try { console.log('[calls] saved id', saved?.id); } catch {}
-    res.status(201).json(saved);
+    try { console.log('[calls] saved id', saved?.id); } catch { }
+    try {
+      if (file && saved?.id != null) {
+        void transcribeCallRecordingForCall(saved.id);
+      }
+    } catch { }
+    const safeSaved = {
+      ...saved,
+      id: typeof saved.id === 'bigint' ? Number(saved.id) : saved.id,
+    };
+    res.status(201).json(safeSaved);
   } catch (err) {
-    try { console.error('[calls] error', err); } catch {}
+    try { console.error('[calls] error', err); } catch { }
     next(err);
   }
 };
@@ -342,12 +354,12 @@ router.get('/analytics/agent/dispositions/stream', requireAuth, requireRoles(['a
         const items = (rows || []).map((r: any) => ({ name: String(r.disp || '') || 'UNKNOWN', count: Number(r.cnt || 0) }))
         const payload = JSON.stringify({ items })
         if (payload !== last) { last = payload; res.write(`data: ${payload}\n\n`) }
-      } catch {}
+      } catch { }
     }
 
     await tick()
     const timer = setInterval(tick, 3000)
-    req.on('close', () => { try { clearInterval(timer) } catch {} })
+    req.on('close', () => { try { clearInterval(timer) } catch { } })
   } catch (e) {
     next(e)
   }
@@ -441,12 +453,12 @@ router.get('/analytics/agent/stream', requireAuth, requireRoles(['agent']), asyn
         const conversationRate = callsDialed ? Math.round((conversations / callsDialed) * 100) : 0
         const payload = JSON.stringify({ callsDialed, answered, voicemail, unanswered, conversations, connectRate, conversationRate })
         if (payload !== last) { last = payload; res.write(`data: ${payload}\n\n`) }
-      } catch {}
+      } catch { }
     }
 
     await tick()
     const timer = setInterval(tick, 3000)
-    req.on('close', () => { try { clearInterval(timer) } catch {} })
+    req.on('close', () => { try { clearInterval(timer) } catch { } })
   } catch (e) {
     next(e)
   }
@@ -508,12 +520,12 @@ router.get('/analytics/leaderboard/stream', requireAuth, requireRoles(['agent', 
         const items = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
         const payload = JSON.stringify({ items })
         if (payload !== last) { last = payload; res.write(`data: ${payload}\n\n`) }
-      } catch {}
+      } catch { }
     }
 
     await tick()
     const timer = setInterval(tick, 3000)
-    req.on('close', () => { try { clearInterval(timer) } catch {} })
+    req.on('close', () => { try { clearInterval(timer) } catch { } })
   } catch (e) {
     next(e)
   }

@@ -144,6 +144,11 @@ export const getLeads = async (page = 1): Promise<{
   return data
 }
 
+export const getCallTranscription = async (callId: number) => {
+  const { data } = await api.get(`/api/transcription/call/${callId}`)
+  return data
+}
+
 export const getCampaigns = async (): Promise<{ campaigns: Campaign[] }> => {
   const { data } = await api.get('/api/campaigns')
   return data

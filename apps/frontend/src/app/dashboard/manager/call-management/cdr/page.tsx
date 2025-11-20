@@ -16,6 +16,7 @@ import { type DateRange } from "react-day-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { ManagerSidebar } from '../../components/ManagerSidebar';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type CallRow = {
   id: number | string
@@ -48,6 +49,10 @@ const CallHistory = () => {
   const [userNames, setUserNames] = React.useState<string[]>([])
   const [userExtFilter, setUserExtFilter] = React.useState('all')
   const [userComboOpen, setUserComboOpen] = React.useState(false)
+  const [transcriptCallId, setTranscriptCallId] = React.useState<number | string | null>(null)
+  const [transcript, setTranscript] = React.useState<any | null>(null)
+  const [transcriptLoading, setTranscriptLoading] = React.useState(false)
+  const [transcriptError, setTranscriptError] = React.useState<string | null>(null)
 
   const fetchMine = React.useCallback(async (p: number) => {
     setLoading(true)
@@ -169,6 +174,37 @@ const CallHistory = () => {
       return `${hh}:${mi}:${ss}`
     } catch { return iso }
   }
+
+  const fetchTranscript = React.useCallback(async (callId: number | string) => {
+    setTranscriptLoading(true)
+    setTranscriptError(null)
+    setTranscript(null)
+    try {
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const res = await fetch(`${API_BASE}/api/transcription/call/${callId}`, { headers, credentials })
+      if (!res.ok) {
+        if (res.status === 404) {
+          setTranscript({ metadata: null, segments: [] })
+        } else {
+          throw new Error(String(res.status))
+        }
+      } else {
+        const data = await res.json().catch(() => null) as any
+        setTranscript(data?.data ?? null)
+      }
+    } catch {
+      setTranscriptError('Failed to load transcript')
+    } finally {
+      setTranscriptLoading(false)
+    }
+  }, [])
 
   const badgeFor = (d?: string | null) => {
     const v = (d || '').toUpperCase()
@@ -458,12 +494,13 @@ const CallHistory = () => {
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground">Call Duration</th>
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground">Call Disposition</th>
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground">Recording</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Transcript</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {items.length === 0 && (
                     <tr>
-                      <td className="px-3 py-6 text-center text-muted-foreground" colSpan={8}>
+                      <td className="px-3 py-6 text-center text-muted-foreground" colSpan={9}>
                         {loading ? 'Loading…' : 'No records'}
                       </td>
                     </tr>
@@ -490,7 +527,7 @@ const CallHistory = () => {
                   ).map(([user, userList]) => (
                     <React.Fragment key={user}>
                       <tr className="bg-muted/40">
-                        <td className="px-3 py-2 text-xs font-medium text-muted-foreground" colSpan={8}>{user}</td>
+                        <td className="px-3 py-2 text-xs font-medium text-muted-foreground" colSpan={9}>{user}</td>
                       </tr>
                       {Object.entries(userList.reduce((acc: Record<string, any[]>, row: any) => {
                         const d = toUtc(row.start_time).slice(0,10)
@@ -500,25 +537,39 @@ const CallHistory = () => {
                       }, {})).map(([day, list]) => (
                         <React.Fragment key={`${user}-${day}`}>
                           <tr className="bg-muted/20">
-                            <td className="px-3 py-2 text-xs font-medium text-muted-foreground" colSpan={8}>{day}</td>
+                            <td className="px-3 py-2 text-xs font-medium text-muted-foreground" colSpan={9}>{day}</td>
                           </tr>
                           {list.map((row: any, i: number) => (
-                            <tr key={String(row.id)} className="hover:bg-accent/50 even:bg-muted/5">
-                              <td className="px-3 py-2">{i + 1}</td>
-                              <td className="px-3 py-2">{row.username || '-'}</td>
-                              <td className="px-3 py-2 max-w-[140px] md:max-w-[200px] truncate">{row.destination || '-'}</td>
-                              <td className="px-3 py-2 whitespace-nowrap">{toUtcTime(row.start_time)}</td>
-                              <td className="px-3 py-2 whitespace-nowrap">{toUtcTime(row.end_time)}</td>
-                              <td className="px-3 py-2 whitespace-nowrap">{fmtDur(row.call_duration)}</td>
-                              <td className="px-3 py-2 whitespace-nowrap">{badgeFor(row.disposition)}</td>
-                              <td className="px-3 py-2">
-                                {row.recording_url ? (
-                                  <CompactAudio src={row.recording_url} name={row.id} />
-                                ) : (
-                                  '-'
-                                )}
-                              </td>
-                            </tr>
+                            <React.Fragment key={String(row.id)}>
+                              <tr className="hover:bg-accent/50 even:bg-muted/5">
+                                <td className="px-3 py-2">{i + 1}</td>
+                                <td className="px-3 py-2">{row.username || '-'}</td>
+                                <td className="px-3 py-2 max-w-[140px] md:max-w-[200px] truncate">{row.destination || '-'}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">{toUtcTime(row.start_time)}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">{toUtcTime(row.end_time)}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">{fmtDur(row.call_duration)}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">{badgeFor(row.disposition)}</td>
+                                <td className="px-3 py-2">
+                                  {row.recording_url ? (
+                                    <CompactAudio src={row.recording_url} name={row.id} />
+                                  ) : (
+                                    '-'
+                                  )}
+                                </td>
+                                <td className="px-3 py-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setTranscriptCallId(row.id)
+                                      fetchTranscript(row.id)
+                                    }}
+                                  >
+                                    {transcriptCallId === row.id && transcriptLoading ? 'Loading…' : 'View'}
+                                  </Button>
+                                </td>
+                              </tr>
+                            </React.Fragment>
                           ))}
                         </React.Fragment>
                       ))}
@@ -534,6 +585,72 @@ const CallHistory = () => {
                 </Button>
               ))}
             </div>
+
+            <Dialog
+              open={transcriptCallId !== null}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setTranscriptCallId(null)
+                  setTranscript(null)
+                  setTranscriptError(null)
+                }
+              }}
+            >
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Call Transcript</DialogTitle>
+                </DialogHeader>
+                <div className="min-h-[120px] max-h-[60vh] overflow-y-auto">
+                  {transcriptLoading && (
+                    <div>Loading transcript…</div>
+                  )}
+                  {!transcriptLoading && transcriptError && (
+                    <div className="text-xs md:text-sm text-red-500">{transcriptError}</div>
+                  )}
+                  {!transcriptLoading && !transcriptError && transcript && (
+                    <div className="space-y-3">
+                      {transcript.metadata?.full_transcript && (
+                        <p className="whitespace-pre-wrap break-words">{transcript.metadata.full_transcript}</p>
+                      )}
+                      {!transcript.metadata?.full_transcript && Array.isArray(transcript.segments) && transcript.segments.length > 0 && (
+                        <div className="space-y-2">
+                          {transcript.segments.map((s: any, idx: number) => {
+                            const rawSpeaker = typeof s.speaker === 'string' ? s.speaker.toLowerCase() : ''
+                            let speaker: 'agent' | 'prospect'
+                            if (rawSpeaker === 'agent' || rawSpeaker === 'prospect') {
+                              speaker = rawSpeaker as 'agent' | 'prospect'
+                            } else {
+                              speaker = idx % 2 === 0 ? 'agent' : 'prospect'
+                            }
+                            const isAgent = speaker === 'agent'
+                            return (
+                              <div key={idx} className={isAgent ? 'flex justify-end' : 'flex justify-start'}>
+                                <div className={
+                                  isAgent
+                                    ? 'max-w-[80%] rounded-lg px-3 py-2 text-xs md:text-sm bg-primary text-primary-foreground'
+                                    : 'max-w-[80%] rounded-lg px-3 py-2 text-xs md:text-sm bg-muted text-foreground'
+                                }>
+                                  <div className="text-[10px] font-semibold uppercase tracking-wide mb-1 opacity-80">
+                                    {isAgent ? 'Agent' : 'Prospect'}
+                                  </div>
+                                  <div className="whitespace-pre-wrap break-words">{s.text}</div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {!transcript.metadata?.full_transcript && (!transcript.segments || transcript.segments.length === 0) && (
+                        <span>No transcript available yet.</span>
+                      )}
+                    </div>
+                  )}
+                  {!transcriptLoading && !transcriptError && !transcript && (
+                    <div className="text-xs md:text-sm text-muted-foreground">No transcript available yet.</div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </SidebarInset>
