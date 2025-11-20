@@ -11,6 +11,7 @@ export default function HomePage() {
     if (loading) return
     if (role === "manager") router.replace("/dashboard/manager")
     else if (role === "superadmin") router.replace("/dashboard/superadmin")
+    else if (role === "qa") router.replace("/dashboard/qa")
     else router.replace("/dashboard/agent")
   }, [loading, role, router])
 

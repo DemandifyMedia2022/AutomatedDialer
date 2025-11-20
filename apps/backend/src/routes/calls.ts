@@ -187,7 +187,7 @@ if (env.USE_AUTH_COOKIE) {
 }
 
 // List calls with optional filters and pagination
-router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
+router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'qa', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1)
     const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize || '20'), 10) || 20))

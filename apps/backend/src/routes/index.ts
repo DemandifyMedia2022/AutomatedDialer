@@ -464,7 +464,7 @@ router.get('/analytics/agent/stream', requireAuth, requireRoles(['agent']), asyn
   }
 })
 
-router.get('/analytics/leaderboard', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
+router.get('/analytics/leaderboard', requireAuth, requireRoles(['agent', 'manager', 'qa', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
     const from = req.query.from ? new Date(String(req.query.from)) : null
     const to = req.query.to ? new Date(String(req.query.to)) : null
@@ -487,7 +487,7 @@ router.get('/analytics/leaderboard', requireAuth, requireRoles(['agent', 'manage
   }
 })
 
-router.get('/analytics/leaderboard/stream', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
+router.get('/analytics/leaderboard/stream', requireAuth, requireRoles(['agent', 'manager', 'qa', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache, no-transform')
@@ -531,7 +531,7 @@ router.get('/analytics/leaderboard/stream', requireAuth, requireRoles(['agent', 
   }
 })
 
-router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
+router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'qa', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1)
     const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize || '20'), 10) || 20))

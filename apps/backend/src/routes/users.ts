@@ -33,12 +33,12 @@ const CreateUserSchema = z.object({
   username: z.string().trim().min(1),
   email: z.string().email(),
   password: z.string().min(6),
-  role: z.enum(['agent', 'manager', 'superadmin']).default('agent'),
+  role: z.enum(['agent', 'manager', 'qa', 'superadmin']).default('agent'),
   extension: z.string().trim().min(1).optional().nullable(),
 })
 
 const UpdateUserSchema = z.object({
-  role: z.enum(['agent', 'manager', 'superadmin']).optional(),
+  role: z.enum(['agent', 'manager', 'qa', 'superadmin']).optional(),
   // allow empty string to unassign
   extension: z.string().trim().optional(),
   force: z.boolean().optional(),

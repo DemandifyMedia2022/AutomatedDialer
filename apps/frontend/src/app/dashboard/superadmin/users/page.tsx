@@ -288,7 +288,7 @@ export default function UsersPage() {
                         <Button variant="outline" className="justify-between">{toTitle(form.role)}<span className="sr-only">select</span></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start">
-                        {(['agent','manager','superadmin'] as const).map(r => (
+                        {(['agent','manager','qa','superadmin'] as const).map(r => (
                           <DropdownMenuItem key={r} onClick={() => setForm((f) => ({ ...f, role: r }))}>{toTitle(r)}</DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
@@ -349,7 +349,7 @@ export default function UsersPage() {
                             <DropdownMenuContent align="start">
                               <DropdownMenuLabel>Change role</DropdownMenuLabel>
                               <DropdownMenuSeparator />
-                              {(['agent','manager','superadmin'] as const).map((r) => (
+                              {(['agent','manager','qa','superadmin'] as const).map((r) => (
                                 <DropdownMenuItem key={r} onClick={() => updateUser(u.id, { role: r })}>{toTitle(r)}</DropdownMenuItem>
                               ))}
                             </DropdownMenuContent>

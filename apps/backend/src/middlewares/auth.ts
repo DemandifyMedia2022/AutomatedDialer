@@ -46,7 +46,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-export function requireRoles(roles: Array<'agent' | 'manager' | 'superadmin'>) {
+export function requireRoles(roles: Array<'agent' | 'manager' | 'qa' | 'superadmin'>) {
   return (req: Request, res: Response, next: NextFunction) => {
     const role = (req.user?.role || '').toLowerCase()
     const allowed = new Set(roles)
