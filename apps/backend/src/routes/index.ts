@@ -13,6 +13,7 @@ import dialerSheets from './dialerSheets';
 import presence from './presence';
 import profile from './profile';
 import transcription from './transcription';
+import qa from './qa';
 
 import { env } from '../config/env';
 import multer from 'multer';
@@ -40,6 +41,7 @@ router.use('/dialer-sheets', dialerSheets);
 router.use('/presence', presence);
 router.use('/profile', profile);
 router.use('/transcription', transcription);
+router.use('/qa', qa);
 
 router.get('/sip/config', (_req, res) => {
   res.json({

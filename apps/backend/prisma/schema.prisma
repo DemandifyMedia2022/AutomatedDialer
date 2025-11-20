@@ -56,6 +56,7 @@ model calls {
   updated_at                  DateTime                     @default(now()) @db.Timestamp(0)
   call_transcription_metadata call_transcription_metadata?
   notes                       notes[]
+  qa_call_reviews             qa_call_reviews[]
   transcription_keywords      transcription_keywords[]
   transcription_segments      transcription_segments[]
   transcription_sessions      transcription_sessions[]
@@ -88,25 +89,27 @@ model extensions {
 }
 
 model users {
-  id                     Int                      @id @default(autoincrement())
-  role                   String?                  @db.VarChar(255)
-  unique_user_id         String?                  @unique(map: "unique_user_name") @db.VarChar(255)
-  username               String?                  @db.VarChar(255)
-  usermail               String?                  @db.VarChar(255)
-  password               String?                  @db.VarChar(255)
-  extension              String?                  @db.VarChar(255)
-  status                 String?                  @db.VarChar(255)
-  created_at             DateTime?                @db.Timestamp(6)
-  updated_at             DateTime?                @db.Timestamp(6)
-  agent_breaks           agent_breaks[]
-  agent_heartbeats       agent_heartbeats[]
-  agent_presence_events  agent_presence_events[]
-  agent_sessions         agent_sessions[]
-  document_shares        document_shares[]
-  documents              documents[]
-  notes                  notes[]
-  password_resets        password_resets[]
-  transcription_sessions transcription_sessions[]
+  id                                                      Int                      @id @default(autoincrement())
+  role                                                    String?                  @db.VarChar(255)
+  unique_user_id                                          String?                  @unique(map: "unique_user_name") @db.VarChar(255)
+  username                                                String?                  @db.VarChar(255)
+  usermail                                                String?                  @db.VarChar(255)
+  password                                                String?                  @db.VarChar(255)
+  extension                                               String?                  @db.VarChar(255)
+  status                                                  String?                  @db.VarChar(255)
+  created_at                                              DateTime?                @db.Timestamp(6)
+  updated_at                                              DateTime?                @db.Timestamp(6)
+  agent_breaks                                            agent_breaks[]
+  agent_heartbeats                                        agent_heartbeats[]
+  agent_presence_events                                   agent_presence_events[]
+  agent_sessions                                          agent_sessions[]
+  document_shares                                         document_shares[]
+  documents                                               documents[]
+  notes                                                   notes[]
+  password_resets                                         password_resets[]
+  qa_call_reviews_qa_call_reviews_agent_user_idTousers    qa_call_reviews[]        @relation("qa_call_reviews_agent_user_idTousers")
+  qa_call_reviews_qa_call_reviews_reviewer_user_idTousers qa_call_reviews[]        @relation("qa_call_reviews_reviewer_user_idTousers")
+  transcription_sessions                                  transcription_sessions[]
 }
 
 model transcripts {
@@ -412,6 +415,33 @@ model transcription_sessions {
   @@index([call_id], map: "idx_session_call_id")
   @@index([status], map: "idx_session_status")
   @@index([user_id], map: "idx_session_user_id")
+}
+
+model qa_call_reviews {
+  id                                            BigInt   @id @default(autoincrement())
+  call_id                                       BigInt
+  reviewer_user_id                              Int
+  agent_user_id                                 Int?
+  overall_score                                 Int?     @db.TinyInt
+  tone_score                                    Int?     @db.TinyInt
+  compliance_score                              Int?     @db.TinyInt
+  is_lead                                       Boolean  @default(false)
+  lead_quality                                  String   @default("none") @db.VarChar(32)
+  lead_tags_csv                                 String   @default("") @db.VarChar(500)
+  disposition_override                          String?  @db.VarChar(255)
+  comments                                      String?  @db.Text
+  issues_json                                   String?  @db.LongText
+  created_at                                    DateTime @default(now()) @db.Timestamp(0)
+  updated_at                                    DateTime @default(now()) @db.Timestamp(0)
+  users_qa_call_reviews_agent_user_idTousers    users?   @relation("qa_call_reviews_agent_user_idTousers", fields: [agent_user_id], references: [id], onUpdate: Restrict, map: "fk_qa_reviews_agent")
+  calls                                         calls    @relation(fields: [call_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_qa_reviews_call")
+  users_qa_call_reviews_reviewer_user_idTousers users    @relation("qa_call_reviews_reviewer_user_idTousers", fields: [reviewer_user_id], references: [id], onUpdate: Restrict, map: "fk_qa_reviews_reviewer")
+
+  @@index([agent_user_id], map: "idx_qa_reviews_agent_id")
+  @@index([call_id], map: "idx_qa_reviews_call_id")
+  @@index([is_lead], map: "idx_qa_reviews_is_lead")
+  @@index([lead_quality], map: "idx_qa_reviews_lead_quality")
+  @@index([reviewer_user_id], map: "idx_qa_reviews_reviewer_id")
 }
 
 enum documents_type {
