@@ -15,9 +15,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { Download, Pause, Play, RefreshCcw, ChevronDownIcon } from "lucide-react"
 import { type DateRange } from "react-day-picker"
@@ -49,8 +47,8 @@ export default function QaCallReviewPage() {
   const [calls, setCalls] = React.useState<CallRow[]>([])
   const [loadingCalls, setLoadingCalls] = React.useState(false)
   const [selectedCallId, setSelectedCallId] = React.useState<number | string | null>(null)
-  const [fromDate, setFromDate] = React.useState("")
-  const [toDate, setToDate] = React.useState("")
+  const [fromDate, setFromDate] = React.useState(() => todayIso)
+  const [toDate, setToDate] = React.useState(() => todayIso)
   const [userFilter, setUserFilter] = React.useState("all")
   const [userComboOpen, setUserComboOpen] = React.useState(false)
   const [userNames, setUserNames] = React.useState<string[]>([])
@@ -81,8 +79,6 @@ export default function QaCallReviewPage() {
     const today = new Date()
     return { from: today, to: today }
   })
-  const [fromDate, setFromDate] = React.useState(() => todayIso)
-  const [toDate, setToDate] = React.useState(() => todayIso)
   const [transcript, setTranscript] = React.useState<any | null>(null)
   const [transcriptLoading, setTranscriptLoading] = React.useState(false)
   const [transcriptError, setTranscriptError] = React.useState<string | null>(null)
@@ -92,22 +88,11 @@ export default function QaCallReviewPage() {
     setLoadingCalls(true)
     setMessage(null)
     try {
-      const qs = new URLSearchParams({ page: "1", pageSize: "20" })
       const toIso = (d: string, endOfDay = false) => {
         if (!d) return ""
         return endOfDay ? `${d}T23:59:59.999Z` : `${d}T00:00:00.000Z`
       }
-      if (fromDate) qs.set("from", toIso(fromDate))
-      if (toDate) qs.set("to", toIso(toDate, true))
-      const qs = new URLSearchParams()
-      const toIso = (d: string, endOfDay = false) => {
-        try {
-          if (!d) return ""
-          return endOfDay ? `${d}T23:59:59.999Z` : `${d}T00:00:00.000Z`
-        } catch {
-          return d
-        }
-      }
+      const qs = new URLSearchParams({ page: "1", pageSize: "20" })
       if (fromDate) qs.set("from", toIso(fromDate))
       if (toDate) qs.set("to", toIso(toDate, true))
       if (userFilter !== "all") qs.set("username", userFilter)
@@ -130,6 +115,7 @@ export default function QaCallReviewPage() {
               username: r.username ?? null,
               destination: r.destination ?? null,
               start_time: r.start_time,
+              disposition: r.disposition ?? null,
               recording_url: r.recording_url ?? null,
             }))
           )
@@ -418,24 +404,20 @@ export default function QaCallReviewPage() {
           setLeadQuality(r.lead_quality || "none")
           setLeadTags(r.lead_tags_csv || "")
           setComments(r.comments || "")
+          setFQaStatus(r.f_qa_status || "")
+          setFDqReason1(r.f_dq_reason1 || "")
+          setFDqReason2(r.f_dq_reason2 || "")
+          setFDqReason3(r.f_dq_reason3 || "")
+          setFDqReason4(r.f_dq_reason4 || "")
+          setFQaComments(r.f_qa_comments || "")
+          setFCallRating(r.f_call_rating != null ? String(r.f_call_rating) : "")
+          setFCallNotes(r.f_call_notes || "")
+          setFeedback(r.feedback || "")
+          setFCallLinks(r.f_call_links || "")
+          setFQaName(r.f_qa_name || "")
+          setFAuditDate(r.f_audit_date ? String(r.f_audit_date).slice(0, 10) : "")
         }
       }
-      const data = await res.json()
-      const r = data?.review
-      if (!r) return
-      setComments(r.comments || "")
-      setFQaStatus(r.f_qa_status || "")
-      setFDqReason1(r.f_dq_reason1 || "")
-      setFDqReason2(r.f_dq_reason2 || "")
-      setFDqReason3(r.f_dq_reason3 || "")
-      setFDqReason4(r.f_dq_reason4 || "")
-      setFQaComments(r.f_qa_comments || "")
-      setFCallRating(r.f_call_rating != null ? String(r.f_call_rating) : "")
-      setFCallNotes(r.f_call_notes || "")
-      setFeedback(r.feedback || "")
-      setFCallLinks(r.f_call_links || "")
-      setFQaName(r.f_qa_name || "")
-      setFAuditDate(r.f_audit_date ? String(r.f_audit_date).slice(0, 10) : "")
     } catch {
       setMessage("Failed to load existing review")
     } finally {
@@ -516,7 +498,7 @@ export default function QaCallReviewPage() {
     [calls, selectedCallId]
   )
 
-  const downloadRecording = async () => {
+  const downloadSelectedRecording = async () => {
     if (!selectedCall || !selectedCall.recording_url) return
     try {
       const res = await fetch(selectedCall.recording_url, { credentials: USE_AUTH_COOKIE ? "include" : "omit" })
@@ -968,7 +950,7 @@ export default function QaCallReviewPage() {
                     variant="outline"
                     size="sm"
                     className="mt-1"
-                    onClick={downloadRecording}
+                    onClick={downloadSelectedRecording}
                   >
                     Download recording
                   </Button>
