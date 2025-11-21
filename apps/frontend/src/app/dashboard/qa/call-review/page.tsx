@@ -673,6 +673,7 @@ export default function QaCallReviewPage() {
 
               <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
                 Click <strong>Review</strong> on any call to open the QA form in a dialog and capture detailed audit data.
+              </div>
               <div className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center gap-2 text-xs md:text-sm">
