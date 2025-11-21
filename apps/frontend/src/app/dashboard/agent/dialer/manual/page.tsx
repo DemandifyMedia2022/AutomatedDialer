@@ -117,6 +117,7 @@ export default function ManualDialerPage() {
   const remoteRecorderRef = useRef<MediaRecorder | null>(null)
   const remoteRecordedChunksRef = useRef<BlobPart[]>([])
   const wantRemoteRecordingRef = useRef<boolean>(false)
+  const currentCallIdRef = useRef<number | null>(null)
 
   // Ringback tone helpers
   const ringGainRef = useRef<GainNode | null>(null)
@@ -289,6 +290,10 @@ export default function ManualDialerPage() {
           const seg = payload.segment
           if (!seg || typeof seg.text !== "string" || !seg.text.trim()) return
           setLiveSegments(prev => [...prev, { speaker: seg.speaker, text: seg.text }])
+        } catch {}
+        try {
+          const dest = lastDialDestinationRef.current || `${countryCode}${number}`
+          void sendPhase('connected', { source: ext, destination: dest || '', direction: 'OUT' }).catch(() => {})
         } catch {}
       })
       s.on("transcription:error", (_payload: any) => {
@@ -494,6 +499,30 @@ export default function ManualDialerPage() {
     return (await res.json()) as { wssUrl: string; domain: string; stunServer?: string }
   }, [])
 
+  const sendPhase = useCallback(async (
+    phase: 'dialing' | 'ringing' | 'connected' | 'ended',
+    extra?: Partial<{ source: string; destination: string; direction: string }>
+  ) => {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies(); if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const t = getToken(); if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const callId = currentCallIdRef.current || Date.now()
+      currentCallIdRef.current = callId
+      await fetch(`${API_PREFIX}/calls/phase`, {
+        method: 'POST',
+        headers,
+        credentials,
+        body: JSON.stringify({ phase, callId, ...extra })
+      }).catch(() => { })
+    } catch { }
+  }, [])
+
   const startUA = useCallback(async (extension: string, password: string) => {
     setError(null)
     if (!window.JsSIP) throw new Error("JsSIP not loaded")
@@ -539,7 +568,12 @@ export default function ManualDialerPage() {
         } catch {}
       })
 
-      session.on("progress", () => { setStatus("Ringing"); startRingback() })
+      session.on("progress", () => {
+        setStatus("Ringing");
+        startRingback()
+        const dest = lastDialDestinationRef.current || `${countryCode}${number}`
+        try { sendPhase('ringing', { source: ext, destination: dest || '', direction: 'OUT' }) } catch {}
+      })
       session.on("accepted", async () => {
         stopRingback()
         setStatus("In Call")
@@ -587,6 +621,7 @@ export default function ManualDialerPage() {
           setPendingUploadExtra({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : undefined })
           setShowDisposition(true)
         }
+        try { await sendPhase('ended') } catch {}
       })
       session.on("ended", async () => {
         stopRingback()
@@ -597,6 +632,7 @@ export default function ManualDialerPage() {
           setPendingUploadExtra({})
           setShowDisposition(true)
         }
+        try { await sendPhase('ended') } catch {}
       })
     })
 
@@ -755,6 +791,9 @@ export default function ManualDialerPage() {
       await ensureAudioCtx()
       const dialNum = `${countryCode}${number}`
       lastDialDestinationRef.current = dialNum || null
+      // Track and broadcast live call phase
+      currentCallIdRef.current = Date.now()
+      try { await sendPhase('dialing', { source: ext, destination: dialNum, direction: 'OUT' }) } catch {}
       // Show popup immediately when dialing and center it
       setShowPopup(true)
       try {
