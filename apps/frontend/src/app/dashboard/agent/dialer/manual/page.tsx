@@ -46,6 +46,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
 import { io } from "socket.io-client"
+import { useCampaigns } from "@/hooks/agentic/useCampaigns"
 
 declare global {
   interface Window {
@@ -84,6 +85,8 @@ export default function ManualDialerPage() {
   const [docsLoading, setDocsLoading] = useState(false)
   const [docQuery, setDocQuery] = useState("")
   const [previewDoc, setPreviewDoc] = useState<any | null>(null)
+  const [selectedCampaign, setSelectedCampaign] = useState<string | undefined>(undefined)
+  const { campaigns, loading: campaignsLoading } = useCampaigns()
 
   // Draggable in-call popup position
   const [popupPos, setPopupPos] = useState<{ x: number; y: number }>({ x: 420, y: 160 })
@@ -132,6 +135,26 @@ export default function ManualDialerPage() {
   const [showDisposition, setShowDisposition] = useState(false)
   const [disposition, setDisposition] = useState("")
   const [pendingUploadExtra, setPendingUploadExtra] = useState<any>(null)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("manual_dialer_campaign")
+      if (saved) setSelectedCampaign(saved)
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    try {
+      if (!selectedCampaign) localStorage.removeItem("manual_dialer_campaign")
+      else localStorage.setItem("manual_dialer_campaign", selectedCampaign)
+    } catch {}
+  }, [selectedCampaign])
+
+  const selectedCampaignLabel = useMemo(() => {
+    if (!selectedCampaign) return ""
+    const found = campaigns.find((c: { key: string; label: string }) => c.key === selectedCampaign)
+    return found?.label || selectedCampaign
+  }, [campaigns, selectedCampaign])
 
   const currentPhone = useMemo(() => {
     const dialNum = number ? `${countryCode}${number}` : (lastDialedNumber || "")
@@ -931,6 +954,7 @@ export default function ManualDialerPage() {
     const destination = (number || lastDialDestinationRef.current || sipUser || '').toString()
     if (destination) form.append('destination', destination)
     form.append('direction', 'outbound')
+    if (selectedCampaign) form.append('campaign_name', selectedCampaign)
     if (typeof extra.sip_status === 'number') form.append('sip_status', String(extra.sip_status))
     if (extra.sip_reason) form.append('sip_reason', extra.sip_reason)
     if (extra.hangup_cause) form.append('hangup_cause', extra.hangup_cause)
@@ -1106,6 +1130,35 @@ export default function ManualDialerPage() {
             <Card className="p-4 lg:col-span-1">
               <div className="mb-2 text-base font-semibold">Dialer</div>
               <div className="mb-3">
+                <Label className="text-xs text-muted-foreground">Campaign</Label>
+                <Select
+                  value={selectedCampaign ?? undefined}
+                  onValueChange={(value) => setSelectedCampaign(value)}
+                  disabled={campaignsLoading || campaigns.length === 0}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={campaignsLoading ? "Loading campaigns..." : "Select campaign"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {campaigns.length === 0 ? (
+                      <SelectItem value="no-campaign" disabled>
+                        {campaignsLoading ? "Loading..." : "No campaigns available"}
+                      </SelectItem>
+                    ) : (
+                      campaigns.map((campaign: { key: string; label: string }) => (
+                        <SelectItem key={campaign.key} value={campaign.key}>
+                          {campaign.label || campaign.key}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {selectedCampaign ? `Calling under ${selectedCampaignLabel}` : "Select a campaign to enable dialing."}
+                </p>
+              </div>
+
+              <div className="mb-3">
                 <Label className="text-xs text-muted-foreground">Phone Number</Label>
                 <div className="mt-1 flex gap-2">
                   <Select value={countryCode} onValueChange={(v) => { setCountryCode(v); try { localStorage.setItem('dial_cc', v) } catch {} }}>
@@ -1158,7 +1211,11 @@ export default function ManualDialerPage() {
                     <PhoneOff className="h-4 w-4" /> End Call
                   </Button>
                 ) : (
-                  <Button onClick={placeCall} className="gap-2 flex-1" disabled={!number || !uaRef.current || !status.includes("Registered") }>
+                  <Button
+                    onClick={placeCall}
+                    className="gap-2 flex-1"
+                    disabled={!number || !uaRef.current || !status.includes("Registered") || !selectedCampaign}
+                  >
                     <PhoneCall className="h-4 w-4" /> Call
                   </Button>
                 )}
