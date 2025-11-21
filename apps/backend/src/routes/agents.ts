@@ -2,14 +2,14 @@ import { Router } from 'express'
 import { requireAuth, requireRoles } from '../middlewares/auth'
 import { db } from '../db/prisma'
 import { getPool } from '../db/pool'
-
+ 
 const router = Router()
-
-// Agent-only routes
-router.use(requireAuth, requireRoles(['agent']))
-
+ 
+// Auth required for all routes in this file
+router.use(requireAuth)
+ 
 // Return SIP credentials for the authenticated agent
-router.get('/me/credentials', async (req, res, next) => {
+router.get('/me/credentials', requireRoles(['agent', 'manager', 'superadmin']), async (req, res, next) => {
   try {
     const id = req.user!.userId
     const user = await db.users.findUnique({ where: { id }, select: { extension: true } })
@@ -23,5 +23,5 @@ router.get('/me/credentials', async (req, res, next) => {
     next(e)
   }
 })
-
+ 
 export default router

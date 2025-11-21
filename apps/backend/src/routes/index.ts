@@ -12,8 +12,10 @@ import documents from './documents';
 import dialerSheets from './dialerSheets';
 import presence from './presence';
 import profile from './profile';
+import extensionDids from './extensionsDids';
 import transcription from './transcription';
 import qa from './qa';
+import { getLiveCalls, updateLiveCallPhase } from './livecalls';
 
 import { env } from '../config/env';
 import multer from 'multer';
@@ -40,6 +42,7 @@ router.use('/documents', documents);
 router.use('/dialer-sheets', dialerSheets);
 router.use('/presence', presence);
 router.use('/profile', profile);
+router.use('/extension-dids', extensionDids);
 router.use('/transcription', transcription);
 router.use('/qa', qa);
 
@@ -49,6 +52,32 @@ router.get('/sip/config', (_req, res) => {
     domain: env.SIP_DOMAIN,
     stunServer: env.STUN_SERVER,
   });
+});
+
+// Update live call phase (agents/managers) -> updates shared liveCalls state
+router.post('/calls/phase', requireAuth, async (req: any, res: any, next: any) => {
+  try {
+    const phase = String(req.body?.phase || '');
+    const callIdRaw = req.body?.callId;
+    const callId = typeof callIdRaw === 'number' ? callIdRaw : parseInt(String(callIdRaw || ''), 10);
+    if (!phase || !callId || Number.isNaN(callId)) {
+      return res.status(400).json({ success: false, message: 'Invalid payload' });
+    }
+    await updateLiveCallPhase(req, phase as any, callId);
+    return res.json({ success: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Live calls snapshot for manager dashboard
+router.get('/live-calls', requireAuth, requireRoles(['manager', 'superadmin']), async (_req, res) => {
+  try {
+    const items = getLiveCalls();
+    res.json({ success: true, items });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Failed to load live calls' });
+  }
 });
 
 // Storage for recordings

@@ -6,6 +6,8 @@ import { db } from '../db/prisma'
 import { requireAuth, requireRoles } from '../middlewares/auth'
 import { csrfProtect } from '../middlewares/csrf'
 import { z } from 'zod'
+import { emitToManagers, emitToUser } from '../utils/ws'
+import { updateLiveCallPhase } from '../routes/livecalls'
 
 const router = Router()
 
@@ -280,6 +282,27 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
 // Optional: live monitoring placeholder
 router.get('/monitoring/live', requireAuth, requireRoles(['manager', 'superadmin']), async (_req, res) => {
   res.json({ success: true, calls: [] })
+})
+
+router.post('/calls/phase', requireAuth, async (req: any, res: any, next: any) => {
+  try {
+    const phase = req.body.phase
+    const callId = req.body.callId
+    const userId = req.user?.userId
+
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
+
+    if (!phase || !callId) return res.status(400).json({ success: false, message: 'Invalid payload' })
+
+    await emitToManagers(`call:phase:${phase}`, { callId, userId })
+    await emitToUser(userId, `call:phase:${phase}`, { callId })
+
+    await updateLiveCallPhase(req, phase, callId)
+
+    res.json({ success: true })
+  } catch (e) {
+    next(e)
+  }
 })
 
 export default router
