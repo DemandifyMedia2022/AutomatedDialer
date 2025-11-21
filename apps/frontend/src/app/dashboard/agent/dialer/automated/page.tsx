@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { UploadCloud, Play, Pause, SkipForward, PhoneOff, Trash2, Search, Mic, MicOff, Grid2X2, UserPlus, Phone } from "lucide-react"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
+import { io } from "socket.io-client"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -68,6 +69,7 @@ export default function AutomatedDialerPage() {
   const [popupPos, setPopupPos] = useState<{ x: number; y: number }>({ x: 420, y: 160 })
   const dragOffsetRef = useRef<{ x: number; y: number } | null>(null)
   const [isMuted, setIsMuted] = useState(false)
+  const [liveSegments, setLiveSegments] = useState<Array<{ speaker?: string; text: string }>>([])
 
   // Disposition modal state
   const [showDisposition, setShowDisposition] = useState(false)
@@ -178,6 +180,10 @@ export default function AutomatedDialerPage() {
   const dialStartRef = useRef<number | null>(null)
   const lastDialDestinationRef = useRef<string | null>(null)
 
+  // Live transcription (client-only) refs
+  const liveSessionIdRef = useRef<string | null>(null)
+  const socketRef = useRef<any>(null)
+
   // Recording refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recordedChunksRef = useRef<BlobPart[]>([])
@@ -268,6 +274,71 @@ export default function AutomatedDialerPage() {
   }, [docQuery])
 
   useEffect(() => { fetchDocs() }, [fetchDocs])
+
+  // --- Live transcription helpers ---
+  const ensureSocket = useCallback(() => {
+    if (socketRef.current) return socketRef.current
+    try {
+      const opts: any = { transports: ["websocket"] }
+      if (USE_AUTH_COOKIE) {
+        opts.withCredentials = true
+      } else {
+        const t = getToken()
+        if (t) opts.auth = { token: t }
+      }
+      const s = io(API_BASE, opts)
+      s.on("transcription:segment", (payload: any) => {
+        try {
+          if (!payload || payload.sessionId !== liveSessionIdRef.current || !payload.segment) return
+          const seg = payload.segment
+          if (!seg || typeof seg.text !== "string" || !seg.text.trim()) return
+          setLiveSegments(prev => [...prev, { speaker: seg.speaker, text: seg.text }])
+        } catch {}
+      })
+      s.on("transcription:error", (_payload: any) => {
+        // ignore in UI for now
+      })
+      socketRef.current = s
+      return s
+    } catch {
+      return null
+    }
+  }, [])
+
+  const createLiveSession = useCallback(async () => {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const res = await fetch(`${API_PREFIX}/transcription/session/create`, {
+        method: 'POST',
+        headers,
+        credentials,
+        body: JSON.stringify({ language: 'en' }),
+      })
+      if (!res.ok) return null
+      const data = await res.json().catch(() => null) as any
+      const sid = typeof data?.sessionId === 'string' ? data.sessionId : null
+      if (!sid) return null
+      liveSessionIdRef.current = sid
+      setLiveSegments([])
+      return sid
+    } catch {
+      return null
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      try { socketRef.current?.disconnect() } catch {}
+      socketRef.current = null
+    }
+  }, [])
 
   // ---- Dialer Sheets (Option A) helpers ----
   const buildAuthHeaders = () => {
@@ -427,8 +498,23 @@ export default function AutomatedDialerPage() {
         try {
           const rec = new MediaRecorder(stream, { mimeType: 'audio/webm' })
           remoteRecordedChunksRef.current = []
-          rec.ondataavailable = (e) => { if (e.data && e.data.size) remoteRecordedChunksRef.current.push(e.data) }
-          rec.start(250)
+          rec.ondataavailable = (e) => {
+            if (e.data && e.data.size) {
+              remoteRecordedChunksRef.current.push(e.data)
+              if (liveSessionIdRef.current && socketRef.current) {
+                e.data.arrayBuffer().then((buf) => {
+                  try {
+                    socketRef.current?.emit('transcription:audio_chunk', {
+                      sessionId: liveSessionIdRef.current,
+                      audioData: buf,
+                      speaker: 'customer',
+                    })
+                  } catch {}
+                }).catch(() => {})
+              }
+            }
+          }
+          rec.start(3000) // Changed from 250 to 3000
           remoteRecorderRef.current = rec
         } catch {}
       }
@@ -454,8 +540,23 @@ export default function AutomatedDialerPage() {
             try {
               const rec = new MediaRecorder(stream, { mimeType: 'audio/webm' })
               remoteRecordedChunksRef.current = []
-              rec.ondataavailable = (e) => { if (e.data && e.data.size) remoteRecordedChunksRef.current.push(e.data) }
-              rec.start(250)
+              rec.ondataavailable = (e) => {
+                if (e.data && e.data.size) {
+                  remoteRecordedChunksRef.current.push(e.data)
+                  if (liveSessionIdRef.current && socketRef.current) {
+                    e.data.arrayBuffer().then((buf) => {
+                      try {
+                        socketRef.current?.emit('transcription:audio_chunk', {
+                          sessionId: liveSessionIdRef.current,
+                          audioData: buf,
+                          speaker: 'customer',
+                        })
+                      } catch {}
+                    }).catch(() => {})
+                  }
+                }
+              }
+              rec.start(3000)
               remoteRecorderRef.current = rec
             } catch {}
           }
@@ -518,6 +619,10 @@ export default function AutomatedDialerPage() {
         if (timerRef.current) window.clearInterval(timerRef.current)
         timerRef.current = window.setInterval(() => { setStatus((s) => (s.startsWith("In Call") ? `In Call ${elapsed()}` : s)) }, 1000)
         try { await startRecording() } catch {}
+        try {
+          ensureSocket()
+          await createLiveSession()
+        } catch {}
         setShowPopup(true)
         try { const w = window.innerWidth; const h = window.innerHeight; const px = Math.max(8, Math.floor(w / 2 - 180)); const py = Math.max(60, Math.floor(h / 2 - 120)); setPopupPos({ x: px, y: py }) } catch {}
       })
@@ -559,7 +664,7 @@ export default function AutomatedDialerPage() {
 
     ua.start()
     uaRef.current = ua
-  }, [attachRemoteAudio, fetchSipConfig])
+  }, [attachRemoteAudio, fetchSipConfig, ensureSocket, createLiveSession])
 
   const clearTimer = () => {
     if (timerRef.current) window.clearInterval(timerRef.current)
@@ -704,8 +809,23 @@ export default function AutomatedDialerPage() {
         try {
           const rrec = new MediaRecorder(lastRemoteStreamRef.current, { mimeType: 'audio/webm' })
           remoteRecordedChunksRef.current = []
-          rrec.ondataavailable = (e) => { if (e.data && e.data.size) remoteRecordedChunksRef.current.push(e.data) }
-          rrec.start(250)
+          rrec.ondataavailable = (e) => {
+            if (e.data && e.data.size) {
+              remoteRecordedChunksRef.current.push(e.data)
+              if (liveSessionIdRef.current && socketRef.current) {
+                e.data.arrayBuffer().then((buf) => {
+                  try {
+                    socketRef.current?.emit('transcription:audio_chunk', {
+                      sessionId: liveSessionIdRef.current,
+                      audioData: buf,
+                      speaker: 'customer',
+                    })
+                  } catch {}
+                }).catch(() => {})
+              }
+            }
+          }
+          rrec.start(3000)
           remoteRecorderRef.current = rrec
         } catch {}
       }
