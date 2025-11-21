@@ -184,7 +184,7 @@ router.get('/me', requireAuth, requireRoles(['agent','manager','superadmin']), a
 router.get('/manager/agents', requireAuth, requireRoles(['manager', 'superadmin']), async (_req: any, res: any, next: any) => {
   try {
     // Get all users with role agent (and optionally managers if needed)
-    const users: any[] = await (db as any).users.findMany({ where: { role: { in: ['agent', 'Agent'] as any } }, select: { id: true, username: true, usermail: true } })
+    const users: any[] = await (db as any).users.findMany({ where: { role: { in: ['agent', 'Agent'] as any } }, select: { id: true, username: true, usermail: true, extension: true } })
 
     const todayStart = new Date(); todayStart.setHours(0,0,0,0)
     const now = new Date()
@@ -196,6 +196,7 @@ router.get('/manager/agents', requireAuth, requireRoles(['manager', 'superadmin'
       let firstLogin: Date | null = null
       let lastLogout: Date | null = null
       let durationSeconds = 0
+      let lastStatusTs: Date | null = null
       let onBreak = false
       let breakReason: string | null = null
       let totalBreakSecondsToday = 0
@@ -210,7 +211,9 @@ router.get('/manager/agents', requireAuth, requireRoles(['manager', 'superadmin'
         // Determine current status from last event
         const lastEv = await (db as any).agent_presence_events.findFirst({ where: { session_id: active.id, to_status: { not: null } }, orderBy: { ts: 'desc' } })
         status = (lastEv?.to_status || active.initial_status || 'AVAILABLE')
-        durationSeconds = Math.max(0, Math.floor((now.getTime() - new Date(active.login_at).getTime()) / 1000))
+        lastStatusTs = (lastEv?.ts || active.login_at)
+        const baseTs: Date = (lastStatusTs instanceof Date ? lastStatusTs : active.login_at)
+        durationSeconds = Math.max(0, Math.floor((now.getTime() - new Date(baseTs).getTime()) / 1000))
 
         // Current break info
         const openBreak = await (db as any).agent_breaks.findFirst({ where: { user_id: u.id, session_id: active.id, end_at: null }, orderBy: { id: 'desc' } })
@@ -244,10 +247,12 @@ router.get('/manager/agents', requireAuth, requireRoles(['manager', 'superadmin'
       results.push({
         userId: u.id,
         name: u.username || u.usermail || `User ${u.id}`,
+        extension: u.extension || null,
         status,
         firstLogin,
         lastLogout,
         durationSeconds,
+        lastStatusTs,
         onBreak,
         breakReason,
         totalBreakSecondsToday,

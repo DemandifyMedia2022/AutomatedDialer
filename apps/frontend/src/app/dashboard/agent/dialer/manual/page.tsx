@@ -45,6 +45,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
+import { io } from "socket.io-client"
 
 declare global {
   interface Window {
@@ -65,6 +66,7 @@ export default function ManualDialerPage() {
   const [isLoaded, setIsLoaded] = useState(false)
   const [showPopup, setShowPopup] = useState(false)
   const [callHistory, setCallHistory] = useState<any[]>([])
+  const [liveSegments, setLiveSegments] = useState<Array<{ speaker?: string; text: string }>>([])
   const lastDialedNumber = useMemo(() => {
     if (typeof window === "undefined") return null
     return localStorage.getItem("lastDialedNumber")
@@ -87,6 +89,10 @@ export default function ManualDialerPage() {
   const [popupPos, setPopupPos] = useState<{ x: number; y: number }>({ x: 420, y: 160 })
   const dragOffsetRef = useRef<{ x: number; y: number } | null>(null)
 
+  // Live transcription (client-only) refs
+  const liveSessionIdRef = useRef<string | null>(null)
+  const socketRef = useRef<any>(null)
+
   const uaRef = useRef<any>(null)
   const sessionRef = useRef<any>(null)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -101,9 +107,13 @@ export default function ManualDialerPage() {
   const recordedChunksRef = useRef<BlobPart[]>([])
   const audioCtxRef = useRef<AudioContext | null>(null) // also used for ringback
   const mixDestRef = useRef<MediaStreamAudioDestinationNode | null>(null)
+  const remoteInMixRef = useRef<boolean>(false)
   const lastRemoteStreamRef = useRef<MediaStream | null>(null)
   const localMicStreamRef = useRef<MediaStream | null>(null)
   const lastDialDestinationRef = useRef<string | null>(null)
+  const remoteRecorderRef = useRef<MediaRecorder | null>(null)
+  const remoteRecordedChunksRef = useRef<BlobPart[]>([])
+  const wantRemoteRecordingRef = useRef<boolean>(false)
 
   // Ringback tone helpers
   const ringGainRef = useRef<GainNode | null>(null)
@@ -238,6 +248,71 @@ export default function ManualDialerPage() {
 
   useEffect(() => { fetchDocs() }, [fetchDocs])
 
+  // --- Live transcription helpers ---
+  const ensureSocket = useCallback(() => {
+    if (socketRef.current) return socketRef.current
+    try {
+      const opts: any = { transports: ["websocket"] }
+      if (USE_AUTH_COOKIE) {
+        opts.withCredentials = true
+      } else {
+        const t = getToken()
+        if (t) opts.auth = { token: t }
+      }
+      const s = io(API_BASE, opts)
+      s.on("transcription:segment", (payload: any) => {
+        try {
+          if (!payload || payload.sessionId !== liveSessionIdRef.current || !payload.segment) return
+          const seg = payload.segment
+          if (!seg || typeof seg.text !== "string" || !seg.text.trim()) return
+          setLiveSegments(prev => [...prev, { speaker: seg.speaker, text: seg.text }])
+        } catch {}
+      })
+      s.on("transcription:error", (_payload: any) => {
+        // ignore for now in UI
+      })
+      socketRef.current = s
+      return s
+    } catch {
+      return null
+    }
+  }, [])
+
+  const createLiveSession = useCallback(async () => {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const res = await fetch(`${API_PREFIX}/transcription/session/create`, {
+        method: 'POST',
+        headers,
+        credentials,
+        body: JSON.stringify({ language: 'en' }),
+      })
+      if (!res.ok) return null
+      const data = await res.json().catch(() => null) as any
+      const sid = typeof data?.sessionId === 'string' ? data.sessionId : null
+      if (!sid) return null
+      liveSessionIdRef.current = sid
+      setLiveSegments([])
+      return sid
+    } catch {
+      return null
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      try { socketRef.current?.disconnect() } catch {}
+      socketRef.current = null
+    }
+  }, [])
+
   // Auto-fetch agent SIP credentials from backend and auto-login
   useEffect(() => {
     if (!isLoaded) return
@@ -302,10 +377,41 @@ export default function ManualDialerPage() {
 
     pc.ontrack = (event) => {
       const [stream] = event.streams
+      lastRemoteStreamRef.current = stream
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = stream
-        lastRemoteStreamRef.current = stream
         safePlay()
+      }
+      if (audioCtxRef.current && mixDestRef.current && !remoteInMixRef.current) {
+        try {
+          const src = audioCtxRef.current.createMediaStreamSource(stream)
+          src.connect(mixDestRef.current)
+          remoteInMixRef.current = true
+        } catch {}
+      }
+      if (wantRemoteRecordingRef.current && !remoteRecorderRef.current) {
+        try {
+          const rec = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+          remoteRecordedChunksRef.current = []
+          rec.ondataavailable = (e) => {
+            if (e.data && e.data.size) {
+              remoteRecordedChunksRef.current.push(e.data)
+              if (liveSessionIdRef.current && socketRef.current) {
+                e.data.arrayBuffer().then((buf) => {
+                  try {
+                    socketRef.current?.emit('transcription:audio_chunk', {
+                      sessionId: liveSessionIdRef.current,
+                      audioData: buf,
+                      speaker: 'customer',
+                    })
+                  } catch {}
+                }).catch(() => {})
+              }
+            }
+          }
+          rec.start(3000)
+          remoteRecorderRef.current = rec
+        } catch {}
       }
     }
 
@@ -313,11 +419,44 @@ export default function ManualDialerPage() {
     const setFromReceivers = () => {
       try {
         const tracks = pc.getReceivers().map((r) => r.track).filter(Boolean) as MediaStreamTrack[]
-        if (tracks.length && remoteAudioRef.current) {
+        if (tracks.length) {
           const stream = new MediaStream(tracks)
-          remoteAudioRef.current.srcObject = stream
           lastRemoteStreamRef.current = stream
-          safePlay()
+          if (remoteAudioRef.current) {
+            remoteAudioRef.current.srcObject = stream
+            safePlay()
+          }
+          if (audioCtxRef.current && mixDestRef.current && !remoteInMixRef.current) {
+            try {
+              const src = audioCtxRef.current.createMediaStreamSource(stream)
+              src.connect(mixDestRef.current)
+              remoteInMixRef.current = true
+            } catch {}
+          }
+          if (wantRemoteRecordingRef.current && !remoteRecorderRef.current) {
+            try {
+              const rec = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+              remoteRecordedChunksRef.current = []
+              rec.ondataavailable = (e) => {
+                if (e.data && e.data.size) {
+                  remoteRecordedChunksRef.current.push(e.data)
+                  if (liveSessionIdRef.current && socketRef.current) {
+                    e.data.arrayBuffer().then((buf) => {
+                      try {
+                        socketRef.current?.emit('transcription:audio_chunk', {
+                          sessionId: liveSessionIdRef.current,
+                          audioData: buf,
+                          speaker: 'customer',
+                        })
+                      } catch {}
+                    }).catch(() => {})
+                  }
+                }
+              }
+              rec.start(3000)
+              remoteRecorderRef.current = rec
+            } catch {}
+          }
         }
       } catch {}
     }
@@ -389,6 +528,10 @@ export default function ManualDialerPage() {
         }, 1000)
         // Start recording once call is accepted
         try { await startRecording() } catch {}
+        try {
+          ensureSocket()
+          await createLiveSession()
+        } catch {}
         // Ensure popup is visible and centered on screen when call is active
         setShowPopup(true)
         try {
@@ -436,7 +579,7 @@ export default function ManualDialerPage() {
 
     ua.start()
     uaRef.current = ua
-  }, [attachRemoteAudio, fetchSipConfig])
+  }, [attachRemoteAudio, fetchSipConfig, ensureSocket, createLiveSession])
 
   const clearTimer = () => {
     if (timerRef.current) window.clearInterval(timerRef.current)
@@ -655,15 +798,18 @@ export default function ManualDialerPage() {
       // Build a mixed stream of local mic + remote audio if available
       const dest = ctx.createMediaStreamDestination()
       mixDestRef.current = dest
+      remoteInMixRef.current = false
+      wantRemoteRecordingRef.current = true
 
-      const addStream = (ms: MediaStream | null) => {
+      const addStream = (ms: MediaStream | null, markRemote?: boolean) => {
         if (!ms) return
         try {
           const src = ctx.createMediaStreamSource(ms)
           src.connect(dest)
+          if (markRemote) remoteInMixRef.current = true
         } catch {}
       }
-      addStream(lastRemoteStreamRef.current)
+      addStream(lastRemoteStreamRef.current, true)
       addStream(await getLocalMicStream())
 
       const mime = 'audio/webm'
@@ -672,6 +818,31 @@ export default function ManualDialerPage() {
       rec.ondataavailable = (e) => { if (e.data && e.data.size) recordedChunksRef.current.push(e.data) }
       rec.start(250)
       mediaRecorderRef.current = rec
+
+      if (wantRemoteRecordingRef.current && lastRemoteStreamRef.current && !remoteRecorderRef.current) {
+        try {
+          const rrec = new MediaRecorder(lastRemoteStreamRef.current, { mimeType: 'audio/webm' })
+          remoteRecordedChunksRef.current = []
+          rrec.ondataavailable = (e) => {
+            if (e.data && e.data.size) {
+              remoteRecordedChunksRef.current.push(e.data)
+              if (liveSessionIdRef.current && socketRef.current) {
+                e.data.arrayBuffer().then((buf) => {
+                  try {
+                    socketRef.current?.emit('transcription:audio_chunk', {
+                      sessionId: liveSessionIdRef.current,
+                      audioData: buf,
+                      speaker: 'customer',
+                    })
+                  } catch {}
+                }).catch(() => {})
+              }
+            }
+          }
+          rrec.start(3000)
+          remoteRecorderRef.current = rrec
+        } catch {}
+      }
     } catch {}
   }
 
@@ -706,9 +877,23 @@ export default function ManualDialerPage() {
       }
     } catch {}
 
+    try {
+      const rrec = remoteRecorderRef.current
+      if (rrec && rrec.state !== 'inactive') {
+        await new Promise<void>((resolve) => {
+          rrec.onstop = () => resolve()
+          try { rrec.stop() } catch { resolve() }
+        })
+      }
+    } catch {}
+
     const blob = recordedChunksRef.current.length ? new Blob(recordedChunksRef.current, { type: 'audio/webm' }) : null
+    const remoteBlob = remoteRecordedChunksRef.current.length ? new Blob(remoteRecordedChunksRef.current, { type: 'audio/webm' }) : null
     mediaRecorderRef.current = null
     recordedChunksRef.current = []
+    remoteRecorderRef.current = null
+    remoteRecordedChunksRef.current = []
+    wantRemoteRecordingRef.current = false
 
     // Prepare metadata
     const now = new Date()
@@ -765,6 +950,7 @@ export default function ManualDialerPage() {
     if (disposition) form.append('remarks', disposition)
 
     if (blob) form.append('recording', blob, `call_${Date.now()}.webm`)
+    if (remoteBlob) form.append('remote_recording', remoteBlob, `call_remote_${Date.now()}.webm`)
 
     try {
       const headers: Record<string, string> = {}
@@ -1119,6 +1305,21 @@ export default function ManualDialerPage() {
               <div className="px-4 pt-3 pb-4">
                 <div className="text-center font-semibold tracking-wide text-foreground">{number || lastDialedNumber || "Unknown"}</div>
                 <div className="mt-1 text-center text-xs text-muted-foreground">{elapsed() || "00:00"}</div>
+
+                {/* Live client subtitles */}
+                <div className="mt-3 border rounded-md bg-background/70 px-3 py-2 max-h-28 overflow-y-auto">
+                  <div className="text-[11px] font-semibold text-muted-foreground mb-1">Live Transcript</div>
+                  {liveSegments.length === 0 ? (
+                    <div className="text-[11px] text-muted-foreground">Waiting for speech…</div>
+                  ) : (
+                    liveSegments.slice(-6).map((seg, idx) => (
+                      <div key={idx} className="text-xs whitespace-pre-wrap break-words">
+                        <span className="font-semibold mr-1">Prospect:</span>
+                        {seg.text}
+                      </div>
+                    ))
+                  )}
+                </div>
                 <div className="mt-4 grid grid-cols-5 gap-3 place-items-center">
                   <Button size="icon" variant="outline" className="rounded-full h-10 w-10" onClick={toggleMute}>
                     {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { ManagerSidebar } from "../../components/ManagerSidebar"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
+import { API_BASE } from "@/lib/api"
 
 const DEFAULT_ACCOUNT_ID = "360"
 const DEFAULT_PLAN_ID = "10332"
@@ -55,6 +56,18 @@ export default function Page() {
   const [bulkDid, setBulkDid] = React.useState<string>("")
   const [didOptions, setDidOptions] = React.useState<string[]>([])
   const { toast } = useToast()
+
+  const upsertDid = React.useCallback(async (ext: string, did: string) => {
+    if (!ext) return
+    try {
+      await fetch(`${API_BASE}/api/extension-dids/${encodeURIComponent(ext)}/did`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ did }),
+      })
+    } catch {}
+  }, [])
 
   const updateItem = (idx: number, patch: Partial<ExtItem>) => {
     setItems(prev => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
@@ -174,6 +187,8 @@ export default function Page() {
         })
       )
       setItems(details)
+      // Seed DB with current allocated DIDs for visible extensions
+      try { await Promise.all(details.map(d => upsertDid(d.ext, d.allocated || ''))) } catch {}
     } finally {
       setLoading(false)
     }
@@ -197,13 +212,16 @@ export default function Page() {
       const payload = await res.json()
       verifiedCallerId = payload?.callerid ?? payload?.verify?.data?.extension?.callerid ?? it.callerId
     } catch {}
-    updateItem(idx, { status: ok ? "OK" : "ERROR", allocated: ok ? (verifiedCallerId || it.callerId) : previousAllocated, backup: ok ? previousAllocated : it.backup })
+    const newAlloc = ok ? (verifiedCallerId || it.callerId) : previousAllocated
+    updateItem(idx, { status: ok ? "OK" : "ERROR", allocated: newAlloc, backup: ok ? previousAllocated : it.backup })
     if (ok) {
+      // Persist mapping in DB
+      void upsertDid(it.ext, newAlloc || '')
       // Refresh from PBX to ensure UI mirrors portal state
       void fetchAccountAndExtensions()
       toast({
         title: "DID updated",
-        description: `Extension ${it.ext} now uses ${verifiedCallerId || it.callerId}`,
+        description: `Extension ${it.ext} now uses ${newAlloc}`,
       })
     } else {
       toast({
@@ -241,18 +259,24 @@ export default function Page() {
       }
       const data = await res.json().catch(() => ({} as any))
       const results = data?.results || {}
-      setItems(prev => prev.map((it) => {
-        const r = results[it.ext]
-        if (!r) return it
-        const ok = r?.ok !== false
-        const verified = r?.callerid ?? r?.verify?.data?.extension?.callerid ?? it.callerId
-        return {
-          ...it,
-          status: ok ? "OK" : "ERROR",
-          allocated: ok ? (verified || it.callerId) : it.allocated,
-          backup: ok ? it.allocated : it.backup,
-        }
-      }))
+      let nextItems: ExtItem[] = []
+      setItems(prev => {
+        nextItems = prev.map((it) => {
+          const r = results[it.ext]
+          if (!r) return it
+          const ok = r?.ok !== false
+          const verified = r?.callerid ?? r?.verify?.data?.extension?.callerid ?? it.callerId
+          return {
+            ...it,
+            status: ok ? "OK" : "ERROR",
+            allocated: ok ? (verified || it.callerId) : it.allocated,
+            backup: ok ? it.allocated : it.backup,
+          }
+        })
+        return nextItems
+      })
+      // Persist mappings for all
+      try { await Promise.all(nextItems.map(it => upsertDid(it.ext, it.allocated || it.callerId || ''))) } catch {}
       // Final refresh after bulk to mirror portal
       void fetchAccountAndExtensions()
       const failed = Object.values(results).some((r: any) => r?.ok === false)

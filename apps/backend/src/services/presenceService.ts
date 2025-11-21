@@ -1,6 +1,7 @@
 import { db } from '../db/prisma'
 import { env } from '../config/env'
 import { getIo } from '../utils/ws'
+import { updateLiveCallPhase } from '../routes/livecalls'
 
 export type AgentStatus = 'OFFLINE' | 'AVAILABLE' | 'ON_CALL' | 'IDLE' | 'BREAK'
 
@@ -52,6 +53,18 @@ export async function setStatus(userId: number, to: AgentStatus, meta?: any) {
   })
   await (db as any).agent_sessions.update({ where: { id: s.id }, data: { last_activity_at: new Date() } })
   try { getIo()?.emit('presence:update', { userId, sessionId: Number(s.id), from, to }) } catch {}
+
+  // Auto-wire live calls without manual posts: ON_CALL -> connected; leaving ON_CALL -> ended
+  try {
+    const reqShim: any = { user: { userId } } // minimal shape for updateLiveCallPhase
+    const callId = Number(s.id)
+    const prevWasOnCall = from === 'ON_CALL'
+    if (to === 'ON_CALL') {
+      await updateLiveCallPhase(reqShim, 'connected' as any, callId)
+    } else if (prevWasOnCall) {
+      await updateLiveCallPhase(reqShim, 'ended' as any, callId)
+    }
+  } catch {}
   return { session: s, status: to }
 }
 
