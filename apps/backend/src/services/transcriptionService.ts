@@ -348,35 +348,7 @@ export async function transcribeCallRecordingForCall(callId: bigint | number): P
 
         const call = await db.calls.findUnique({
             where: { id },
-            select: { recording_url: true },
-        });
-
-        if (!call || !call.recording_url) {
-            return;
-        }
-
-        let filename: string | null = null;
-        try {
-            const u = new URL(call.recording_url);
-            filename = path.basename(u.pathname);
-        } catch {
-            filename = path.basename(call.recording_url);
-        }
-
-        if (!filename) {
-            return;
-        }
-
-        const fullPath = path.join(recordingsPath, filename);
-        const audioBuffer = await fs.promises.readFile(fullPath);
-
-        const audioFile = await toFile(audioBuffer, filename, { type: 'audio/webm' });
-
-        const transcription: any = await openai.audio.translations.create({
-            file: audioFile,
-            model: 'whisper-1',
-            response_format: 'verbose_json',
-            temperature: 0,
+            select: { recording_url: true, remote_recording_url: true },
         });
 
         let fullTranscript = '';
@@ -392,36 +364,74 @@ export async function transcribeCallRecordingForCall(callId: bigint | number): P
             sentiment?: string | null;
         }[] = [];
 
-        if (Array.isArray(transcription.segments) && transcription.segments.length) {
-            for (const segment of transcription.segments) {
-                const text: string = segment.text ?? '';
+        if (!call || (!call.recording_url && !call.remote_recording_url)) {
+            return;
+        }
+
+        // We want both sides: use mixed recording as 'agent' and remote-only as 'customer' when available.
+        const sources: { url: string; speaker: 'agent' | 'customer' }[] = [];
+        if (call.recording_url) {
+            sources.push({ url: call.recording_url, speaker: 'agent' });
+        }
+        if (call.remote_recording_url) {
+            sources.push({ url: call.remote_recording_url, speaker: 'customer' });
+        }
+
+        for (const source of sources) {
+            let filename: string | null = null;
+            try {
+                const u = new URL(source.url);
+                filename = path.basename(u.pathname);
+            } catch {
+                filename = path.basename(source.url);
+            }
+
+            if (!filename) {
+                continue;
+            }
+
+            const fullPath = path.join(recordingsPath, filename);
+            const audioBuffer = await fs.promises.readFile(fullPath);
+            const audioFile = await toFile(audioBuffer, filename, { type: 'audio/webm' });
+
+            const transcription: any = await openai.audio.translations.create({
+                file: audioFile,
+                model: 'whisper-1',
+                response_format: 'verbose_json',
+                temperature: 0,
+            });
+
+            if (Array.isArray(transcription.segments) && transcription.segments.length) {
+                for (const segment of transcription.segments) {
+                    const text: string = segment.text ?? '';
+                    fullTranscript += text ? text + ' ' : '';
+                    segmentsData.push({
+                        call_id: id,
+                        speaker: source.speaker,
+                        text,
+                        segment_start_time: Number(segment.start ?? 0),
+                        segment_end_time: Number(segment.end ?? 0),
+                        confidence: typeof segment.no_speech_prob === 'number' ? 1 - segment.no_speech_prob : null,
+                        is_final: true,
+                        words_json: null,
+                        sentiment: null,
+                    });
+                }
+            } else if (typeof transcription.text === 'string' && transcription.text.trim()) {
+                const text = transcription.text.trim();
                 fullTranscript += text ? text + ' ' : '';
                 segmentsData.push({
                     call_id: id,
-                    speaker: null,
+                    speaker: source.speaker,
                     text,
-                    segment_start_time: Number(segment.start ?? 0),
-                    segment_end_time: Number(segment.end ?? 0),
-                    confidence: typeof segment.no_speech_prob === 'number' ? 1 - segment.no_speech_prob : null,
+                    segment_start_time: 0,
+                    segment_end_time: 0,
+                    confidence: null,
                     is_final: true,
                     words_json: null,
                     sentiment: null,
                 });
             }
-        } else if (typeof transcription.text === 'string' && transcription.text.trim()) {
-            const text = transcription.text.trim();
-            fullTranscript = text;
-            segmentsData.push({
-                call_id: id,
-                speaker: null,
-                text,
-                segment_start_time: 0,
-                segment_end_time: 0,
-                confidence: null,
-                is_final: true,
-                words_json: null,
-                sentiment: null,
-            });
         }
 
         const trimmedTranscript = fullTranscript.replace(/\s+/g, ' ').trim();

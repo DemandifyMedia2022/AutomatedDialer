@@ -183,6 +183,10 @@ export default function AutomatedDialerPage() {
   const recordedChunksRef = useRef<BlobPart[]>([])
   const audioCtxRef = useRef<AudioContext | null>(null)
   const mixDestRef = useRef<MediaStreamAudioDestinationNode | null>(null)
+  const remoteRecorderRef = useRef<MediaRecorder | null>(null)
+  const remoteRecordedChunksRef = useRef<BlobPart[]>([])
+  const wantRemoteRecordingRef = useRef<boolean>(false)
+  const remoteInMixRef = useRef<boolean>(false)
   const lastRemoteStreamRef = useRef<MediaStream | null>(null)
   const localMicStreamRef = useRef<MediaStream | null>(null)
 
@@ -398,23 +402,63 @@ export default function AutomatedDialerPage() {
   useEffect(() => () => teardownUA(), [teardownUA])
 
   const attachRemoteAudio = useCallback((pc: RTCPeerConnection) => {
-    const safePlay = async () => { try { await remoteAudioRef.current?.play() } catch (e: any) { setError((p) => p || `Audio play blocked: ${e?.message || 'permission or autoplay'}`) } }
+    const safePlay = async () => {
+      try {
+        await remoteAudioRef.current?.play()
+      } catch (e: any) {
+        setError((p) => p || `Audio play blocked: ${e?.message || 'permission or autoplay'}`)
+      }
+    }
     pc.ontrack = (event) => {
       const [stream] = event.streams
+      lastRemoteStreamRef.current = stream
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = stream
-        lastRemoteStreamRef.current = stream
         safePlay()
+      }
+      if (audioCtxRef.current && mixDestRef.current && !remoteInMixRef.current) {
+        try {
+          const src = audioCtxRef.current.createMediaStreamSource(stream)
+          src.connect(mixDestRef.current)
+          remoteInMixRef.current = true
+        } catch {}
+      }
+      if (wantRemoteRecordingRef.current && !remoteRecorderRef.current) {
+        try {
+          const rec = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+          remoteRecordedChunksRef.current = []
+          rec.ondataavailable = (e) => { if (e.data && e.data.size) remoteRecordedChunksRef.current.push(e.data) }
+          rec.start(250)
+          remoteRecorderRef.current = rec
+        } catch {}
       }
     }
     const setFromReceivers = () => {
       try {
         const tracks = pc.getReceivers().map((r) => r.track).filter(Boolean) as MediaStreamTrack[]
-        if (tracks.length && remoteAudioRef.current) {
+        if (tracks.length) {
           const stream = new MediaStream(tracks)
-          remoteAudioRef.current.srcObject = stream
           lastRemoteStreamRef.current = stream
-          safePlay()
+          if (remoteAudioRef.current) {
+            remoteAudioRef.current.srcObject = stream
+            safePlay()
+          }
+          if (audioCtxRef.current && mixDestRef.current && !remoteInMixRef.current) {
+            try {
+              const src = audioCtxRef.current.createMediaStreamSource(stream)
+              src.connect(mixDestRef.current)
+              remoteInMixRef.current = true
+            } catch {}
+          }
+          if (wantRemoteRecordingRef.current && !remoteRecorderRef.current) {
+            try {
+              const rec = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+              remoteRecordedChunksRef.current = []
+              rec.ondataavailable = (e) => { if (e.data && e.data.size) remoteRecordedChunksRef.current.push(e.data) }
+              rec.start(250)
+              remoteRecorderRef.current = rec
+            } catch {}
+          }
         }
       } catch {}
     }
@@ -637,11 +681,17 @@ export default function AutomatedDialerPage() {
       const ctx = audioCtxRef.current!
       const dest = ctx.createMediaStreamDestination()
       mixDestRef.current = dest
-      const addStream = (ms: MediaStream | null) => {
+      remoteInMixRef.current = false
+      wantRemoteRecordingRef.current = true
+      const addStream = (ms: MediaStream | null, markRemote?: boolean) => {
         if (!ms) return
-        try { const src = ctx.createMediaStreamSource(ms); src.connect(dest) } catch {}
+        try {
+          const src = ctx.createMediaStreamSource(ms)
+          src.connect(dest)
+          if (markRemote) remoteInMixRef.current = true
+        } catch {}
       }
-      addStream(lastRemoteStreamRef.current)
+      addStream(lastRemoteStreamRef.current, true)
       addStream(await getLocalMicStream())
       const mime = 'audio/webm'
       recordedChunksRef.current = []
@@ -649,6 +699,16 @@ export default function AutomatedDialerPage() {
       rec.ondataavailable = (e) => { if (e.data && e.data.size) recordedChunksRef.current.push(e.data) }
       rec.start(250)
       mediaRecorderRef.current = rec
+
+      if (wantRemoteRecordingRef.current && lastRemoteStreamRef.current && !remoteRecorderRef.current) {
+        try {
+          const rrec = new MediaRecorder(lastRemoteStreamRef.current, { mimeType: 'audio/webm' })
+          remoteRecordedChunksRef.current = []
+          rrec.ondataavailable = (e) => { if (e.data && e.data.size) remoteRecordedChunksRef.current.push(e.data) }
+          rrec.start(250)
+          remoteRecorderRef.current = rrec
+        } catch {}
+      }
     } catch {}
   }
 
@@ -671,9 +731,19 @@ export default function AutomatedDialerPage() {
         await new Promise<void>((resolve) => { rec.onstop = () => resolve(); try { rec.stop() } catch { resolve() } })
       }
     } catch {}
+    try {
+      const rrec = remoteRecorderRef.current
+      if (rrec && rrec.state !== 'inactive') {
+        await new Promise<void>((resolve) => { rrec.onstop = () => resolve(); try { rrec.stop() } catch { resolve() } })
+      }
+    } catch {}
     const blob = recordedChunksRef.current.length ? new Blob(recordedChunksRef.current, { type: 'audio/webm' }) : null
+    const remoteBlob = remoteRecordedChunksRef.current.length ? new Blob(remoteRecordedChunksRef.current, { type: 'audio/webm' }) : null
     mediaRecorderRef.current = null
     recordedChunksRef.current = []
+    remoteRecorderRef.current = null
+    remoteRecordedChunksRef.current = []
+    wantRemoteRecordingRef.current = false
 
     const now = new Date()
     const start_time = new Date((dialStartRef.current || sessionRef.current?._created || Date.now()))
@@ -717,6 +787,7 @@ export default function AutomatedDialerPage() {
     // Selected options are feedbacks stored as remarks
     if (disposition) form.append('remarks', disposition)
     if (blob) form.append('recording', blob, `call_${Date.now()}.webm`)
+    if (remoteBlob) form.append('remote_recording', remoteBlob, `call_remote_${Date.now()}.webm`)
 
     try {
       const headers: Record<string, string> = {}

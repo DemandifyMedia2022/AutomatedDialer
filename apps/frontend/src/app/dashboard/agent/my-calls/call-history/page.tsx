@@ -141,21 +141,25 @@ const CallHistory = () => {
   const downloadTranscriptText = React.useCallback(() => {
     if (!transcript) return
     let text = ''
-    if (transcript.metadata?.full_transcript) {
-      text = String(transcript.metadata.full_transcript ?? '')
-    } else if (Array.isArray(transcript.segments) && transcript.segments.length > 0) {
+    // Prefer segment-based, speaker-labelled export when available
+    if (Array.isArray(transcript.segments) && transcript.segments.length > 0) {
       text = transcript.segments.map((s: any, idx: number) => {
         const rawSpeaker = typeof s.speaker === 'string' ? s.speaker.toLowerCase() : ''
         let speakerLabel: 'Agent' | 'Prospect'
-        if (rawSpeaker === 'agent' || rawSpeaker === 'prospect') {
-          speakerLabel = rawSpeaker === 'agent' ? 'Agent' : 'Prospect'
+        if (rawSpeaker === 'agent') {
+          speakerLabel = 'Agent'
+        } else if (rawSpeaker === 'prospect' || rawSpeaker === 'customer') {
+          speakerLabel = 'Prospect'
         } else {
           speakerLabel = idx % 2 === 0 ? 'Agent' : 'Prospect'
         }
         const body = typeof s.text === 'string' ? s.text : ''
         return `${speakerLabel}: ${body}`.trim()
       }).join('\n')
+    } else if (transcript.metadata?.full_transcript) {
+      text = String(transcript.metadata.full_transcript ?? '')
     }
+
     text = text.trim()
     if (!text) return
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
@@ -537,20 +541,20 @@ const CallHistory = () => {
                   )}
                   {!transcriptLoading && !transcriptError && transcript && (
                     <div className="space-y-3">
-                      {transcript.metadata?.full_transcript && (
-                        <p className="whitespace-pre-wrap break-words">{transcript.metadata.full_transcript}</p>
-                      )}
-                      {!transcript.metadata?.full_transcript && Array.isArray(transcript.segments) && transcript.segments.length > 0 && (
+                      {Array.isArray(transcript.segments) && transcript.segments.length > 0 && (
                         <div className="space-y-2">
                           {transcript.segments.map((s: any, idx: number) => {
                             const rawSpeaker = typeof s.speaker === 'string' ? s.speaker.toLowerCase() : ''
                             let speaker: 'agent' | 'prospect'
-                            if (rawSpeaker === 'agent' || rawSpeaker === 'prospect') {
-                              speaker = rawSpeaker as 'agent' | 'prospect'
+                            if (rawSpeaker === 'agent') {
+                              speaker = 'agent'
+                            } else if (rawSpeaker === 'prospect' || rawSpeaker === 'customer') {
+                              speaker = 'prospect'
                             } else {
                               speaker = idx % 2 === 0 ? 'agent' : 'prospect'
                             }
                             const isAgent = speaker === 'agent'
+
                             return (
                               <div key={idx} className={isAgent ? 'flex justify-end' : 'flex justify-start'}>
                                 <div className={
@@ -568,7 +572,10 @@ const CallHistory = () => {
                           })}
                         </div>
                       )}
-                      {!transcript.metadata?.full_transcript && (!transcript.segments || transcript.segments.length === 0) && (
+                      {(!transcript.segments || transcript.segments.length === 0) && transcript.metadata?.full_transcript && (
+                        <p className="whitespace-pre-wrap break-words">{transcript.metadata.full_transcript}</p>
+                      )}
+                      {(!transcript.metadata?.full_transcript && (!transcript.segments || transcript.segments.length === 0)) && (
                         <span>No transcript available yet.</span>
                       )}
                     </div>

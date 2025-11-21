@@ -106,6 +106,7 @@ const CallsSchema = z.object({
   disposition: z.string().optional().nullable(),
   platform: z.string().optional().nullable(),
   recording_url: z.string().url().optional().nullable(),
+  remote_recording_url: z.string().url().optional().nullable(),
   call_type: z.string().optional().nullable(),
   remarks: z.string().optional().nullable(),
   prospect_name: z.string().optional().nullable(),
@@ -123,15 +124,21 @@ const CallsSchema = z.object({
 const callsHandler = async (req: any, res: any, next: any) => {
   try {
     const parsed = CallsSchema.safeParse(req.body ?? {});
+
     if (!parsed.success) {
       return res.status(400).json({ success: false, message: 'Invalid payload', issues: parsed.error.flatten() });
     }
     const b = parsed.data as any;
-    const file = (req as any).file;
+    const files = (req as any).files as any;
+    const file: Express.Multer.File | undefined = Array.isArray((files?.recording as any)) ? (files.recording as Express.Multer.File[])[0] : (req as any).file;
+    const remoteFile: Express.Multer.File | undefined = Array.isArray((files?.remote_recording as any)) ? (files.remote_recording as Express.Multer.File[])[0] : undefined;
 
     const recording_url = file
       ? `${env.PUBLIC_BASE_URL}/uploads/${file.filename}`
       : b.recording_url || null;
+    const remote_recording_url = remoteFile
+      ? `${env.PUBLIC_BASE_URL}/uploads/${remoteFile.filename}`
+      : null;
 
     try { console.log('[calls] incoming body', b); } catch { }
     try { console.log('[calls] file', !!file, 'recording_url', recording_url); } catch { }
@@ -230,6 +237,7 @@ const callsHandler = async (req: any, res: any, next: any) => {
       disposition: dispositionFinal || null,
       platform: b.platform || 'web',
       recording_url,
+      remote_recording_url,
       call_type: b.call_type || 'manual',
       remarks: b.remarks || null,
       prospect_name: b.prospect_name || null,
@@ -242,12 +250,14 @@ const callsHandler = async (req: any, res: any, next: any) => {
     } as any;
 
     const saved = await (db as any).calls.create({ data });
+
     try { console.log('[calls] saved id', saved?.id); } catch { }
     try {
-      if (file && saved?.id != null) {
+      if ((file || remoteFile) && saved?.id != null) {
         void transcribeCallRecordingForCall(saved.id);
       }
     } catch { }
+
     const safeSaved = {
       ...saved,
       id: typeof saved.id === 'bigint' ? Number(saved.id) : saved.id,
@@ -259,6 +269,11 @@ const callsHandler = async (req: any, res: any, next: any) => {
   }
 };
 
+const uploadCalls = upload.fields([
+  { name: 'recording', maxCount: 1 },
+  { name: 'remote_recording', maxCount: 1 },
+]);
+
 if (env.USE_AUTH_COOKIE) {
   router.post(
     '/calls',
@@ -266,7 +281,7 @@ if (env.USE_AUTH_COOKIE) {
     requireAuth,
     requireRoles(['agent', 'manager', 'superadmin']),
     csrfProtect,
-    upload.single('recording'),
+    uploadCalls,
     callsHandler
   );
 } else {
@@ -275,7 +290,7 @@ if (env.USE_AUTH_COOKIE) {
     callsLimiter,
     requireAuth,
     requireRoles(['agent', 'manager', 'superadmin']),
-    upload.single('recording'),
+    uploadCalls,
     callsHandler
   );
 }

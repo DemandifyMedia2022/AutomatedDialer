@@ -139,4 +139,48 @@ router.get('/reports/summary', requireAuth, requireRoles(['qa', 'manager', 'supe
   }
 })
 
+// GET /qa/leads - list calls that have QA reviews marked as leads
+router.get('/leads', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
+  try {
+    const from = req.query.from ? new Date(String(req.query.from)) : null
+    const to = req.query.to ? new Date(String(req.query.to)) : null
+    const username = (req.query.username || '').toString().trim()
+
+    const where: any = { is_lead: true }
+    if (from || to || username) {
+      where.calls = {} as any
+      if (from || to) {
+        ;(where.calls as any).start_time = { gte: from || undefined, lte: to || undefined }
+      }
+      if (username) {
+        ;(where.calls as any).username = username
+      }
+    }
+
+    const rows = await (db as any).qa_call_reviews.findMany({
+      where,
+      include: { calls: true },
+      orderBy: { created_at: 'desc' },
+      take: 200,
+    })
+
+    const items = (rows || []).map((r: any) => ({
+      call_id: typeof r.call_id === 'bigint' ? Number(r.call_id) : r.call_id,
+      username: r.calls?.username ?? null,
+      destination: r.calls?.destination ?? null,
+      start_time: r.calls?.start_time ?? null,
+      recording_url: r.calls?.recording_url ?? null,
+      overall_score: r.overall_score,
+      tone_score: r.tone_score,
+      compliance_score: r.compliance_score,
+      lead_quality: r.lead_quality,
+      lead_tags_csv: r.lead_tags_csv,
+    }))
+
+    return res.json({ success: true, items })
+  } catch (e) {
+    next(e)
+  }
+})
+
 export default router
