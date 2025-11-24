@@ -52,12 +52,6 @@ export default function QaCallReviewPage() {
   const [userFilter, setUserFilter] = React.useState("all")
   const [userComboOpen, setUserComboOpen] = React.useState(false)
   const [userNames, setUserNames] = React.useState<string[]>([])
-  const [overallScore, setOverallScore] = React.useState("")
-  const [toneScore, setToneScore] = React.useState("")
-  const [complianceScore, setComplianceScore] = React.useState("")
-  const [isLead, setIsLead] = React.useState(false)
-  const [leadQuality, setLeadQuality] = React.useState("none")
-  const [leadTags, setLeadTags] = React.useState("")
   const [comments, setComments] = React.useState("")
   const [saving, setSaving] = React.useState(false)
   const [loadingReview, setLoadingReview] = React.useState(false)
@@ -82,7 +76,6 @@ export default function QaCallReviewPage() {
   const [transcript, setTranscript] = React.useState<any | null>(null)
   const [transcriptLoading, setTranscriptLoading] = React.useState(false)
   const [transcriptError, setTranscriptError] = React.useState<string | null>(null)
-  const [reviewOpen, setReviewOpen] = React.useState(false)
 
   const fetchCalls = React.useCallback(async () => {
     setLoadingCalls(true)
@@ -397,12 +390,6 @@ export default function QaCallReviewPage() {
         const data = await res.json()
         const r = data?.review
         if (r) {
-          setOverallScore(r.overall_score != null ? String(r.overall_score) : "")
-          setToneScore(r.tone_score != null ? String(r.tone_score) : "")
-          setComplianceScore(r.compliance_score != null ? String(r.compliance_score) : "")
-          setIsLead(!!r.is_lead)
-          setLeadQuality(r.lead_quality || "none")
-          setLeadTags(r.lead_tags_csv || "")
           setComments(r.comments || "")
           setFQaStatus(r.f_qa_status || "")
           setFDqReason1(r.f_dq_reason1 || "")
@@ -424,7 +411,6 @@ export default function QaCallReviewPage() {
       setLoadingReview(false)
     }
     await loadTranscript(callId)
-    setReviewOpen(true)
   }
 
   const openReviewDialog = (callId: number | string) => {
@@ -674,121 +660,6 @@ export default function QaCallReviewPage() {
               <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
                 Click <strong>Review</strong> on any call to open the QA form in a dialog and capture detailed audit data.
               </div>
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-2 text-xs md:text-sm">
-                    <span>From:</span>
-                    <Input
-                      type="date"
-                      className="h-8 w-[140px]"
-                      value={fromDate}
-                      onChange={(e) => setFromDate(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex items-center gap-2 text-xs md:text-sm">
-                    <span>To:</span>
-                    <Input
-                      type="date"
-                      className="h-8 w-[140px]"
-                      value={toDate}
-                      onChange={(e) => setToDate(e.target.value)}
-                    />
-                  </div>
-                  <Popover open={userComboOpen} onOpenChange={setUserComboOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={userComboOpen}
-                        className="h-8 w-[200px] justify-between text-xs md:text-sm"
-                      >
-                        {userFilter === "all" ? "All users" : userFilter}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[220px] p-0" align="start">
-                      <Command>
-                        <CommandInput placeholder="Search user..." className="h-8" />
-                        <CommandList>
-                          <CommandEmpty>No users found.</CommandEmpty>
-                          <CommandGroup>
-                            <CommandItem
-                              value="all"
-                              onSelect={() => {
-                                setUserFilter("all")
-                                setUserComboOpen(false)
-                              }}
-                            >
-                              All users
-                              <Check className={`ml-auto h-4 w-4 ${userFilter === "all" ? "opacity-100" : "opacity-0"}`} />
-                            </CommandItem>
-                            {userNames.map((name) => (
-                              <CommandItem
-                                key={name}
-                                value={name}
-                                onSelect={() => {
-                                  setUserFilter(name)
-                                  setUserComboOpen(false)
-                                }}
-                              >
-                                {name}
-                                <Check className={`ml-auto h-4 w-4 ${userFilter === name ? "opacity-100" : "opacity-0"}`} />
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                  <Button size="sm" variant="outline" onClick={fetchCalls} disabled={loadingCalls}>
-                    {loadingCalls ? "Refreshing…" : "Apply"}
-                  </Button>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Showing calls that already have QA reviews marked as leads. Adjust date range and user as needed.
-                </div>
-              </div>
-
-              <div className="border rounded-md overflow-hidden">
-                  <table className="min-w-full text-xs md:text-sm">
-                    <thead className="bg-muted">
-                      <tr>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Call ID</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">User</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Destination</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Start (UTC)</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {calls.length === 0 && (
-                        <tr>
-                          <td className="px-3 py-6 text-center text-muted-foreground" colSpan={5}>
-                            {loadingCalls ? "Loading…" : "No calls found"}
-                          </td>
-                        </tr>
-                      )}
-                      {calls.map((c) => (
-                        <tr key={String(c.id)} className={selectedCallId === c.id ? "bg-muted/40" : undefined}>
-                          <td className="px-3 py-2">{c.id}</td>
-                          <td className="px-3 py-2 max-w-[140px] truncate">{c.username || "-"}</td>
-                          <td className="px-3 py-2 max-w-[140px] truncate">{c.destination || "-"}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{fmtDateTime(c.start_time)}</td>
-                          <td className="px-3 py-2 text-right">
-                            <Button
-                              size="sm"
-                              variant={selectedCallId === c.id ? "default" : "outline"}
-                              onClick={() => loadReview(c.id)}
-                              disabled={loadingReview && selectedCallId === c.id}
-                            >
-                              {loadingReview && selectedCallId === c.id ? "Loading…" : "Review"}
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-              </div>
             </CardContent>
           </Card>
         </div>
@@ -822,6 +693,72 @@ export default function QaCallReviewPage() {
             </div>
           ) : (
             <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground">Recording</div>
+                  {selectedCall?.recording_url ? (
+                    <div className="space-y-1">
+                      <audio controls src={selectedCall.recording_url} className="w-full">
+                        Your browser does not support the audio element.
+                      </audio>
+                      <Button variant="outline" size="sm" onClick={downloadSelectedRecording}>
+                        Download recording
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">No recording available for this call.</div>
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground">Transcript</div>
+                  <div className="min-h-[120px] max-h-[240px] overflow-y-auto rounded-md border border-input bg-background px-3 py-2 text-xs md:text-sm">
+                    {transcriptLoading && <div>Loading transcript…</div>}
+                    {!transcriptLoading && transcriptError && <div className="text-red-500">{transcriptError}</div>}
+                    {!transcriptLoading && !transcriptError && transcript && (
+                      <div className="space-y-1">
+                        {transcript.metadata?.full_transcript && (
+                          <p className="whitespace-pre-wrap break-words">{transcript.metadata.full_transcript}</p>
+                        )}
+                        {!transcript.metadata?.full_transcript &&
+                          Array.isArray(transcript.segments) &&
+                          transcript.segments.length > 0 && (
+                            <div className="space-y-1">
+                              {transcript.segments.map((s: any, idx: number) => {
+                                const rawSpeaker = typeof s.speaker === "string" ? s.speaker.toLowerCase() : ""
+                                let speaker: "agent" | "prospect"
+                                if (rawSpeaker === "agent" || rawSpeaker === "prospect") {
+                                  speaker = rawSpeaker as "agent" | "prospect"
+                                } else {
+                                  speaker = idx % 2 === 0 ? "agent" : "prospect"
+                                }
+                                const isAgent = speaker === "agent"
+                                return (
+                                  <div key={idx} className={isAgent ? "text-right" : "text-left"}>
+                                    <span className="font-semibold text-[11px] mr-1">{isAgent ? "Agent" : "Prospect"}:</span>
+                                    <span className="text-[11px] md:text-xs">{s.text}</span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        {!transcript.metadata?.full_transcript &&
+                          (!transcript.segments || transcript.segments.length === 0) && (
+                            <div className="text-muted-foreground">No transcript available yet.</div>
+                          )}
+                      </div>
+                    )}
+                    {!transcriptLoading && !transcriptError && !transcript && (
+                      <div className="text-muted-foreground">No transcript loaded.</div>
+                    )}
+                  </div>
+                  {!transcriptLoading && !transcriptError && transcript && (
+                    <Button variant="outline" size="sm" className="mt-1" onClick={downloadTranscriptText}>
+                      Download transcript
+                    </Button>
+                  )}
+                </div>
+              </div>
+
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
                   <label className="block text-xs mb-1">QA status</label>
@@ -911,194 +848,6 @@ export default function QaCallReviewPage() {
         </DialogContent>
       </Dialog>
     </SidebarProvider>
-
-      <Dialog
-        open={reviewOpen && selectedCallId !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setReviewOpen(false)
-            setSelectedCallId(null)
-            resetForm()
-          }
-        }}
-      >
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>QA Review</DialogTitle>
-            <DialogDescription>
-              Review the call recording and transcript, then answer the QA questions and mark lead details.
-            </DialogDescription>
-          </DialogHeader>
-
-          {!selectedCallId && (
-            <div className="text-xs text-muted-foreground">Select a call from the table to begin reviewing.</div>
-          )}
-          {selectedCallId && (
-            <div className="mt-2 rounded-lg border bg-card max-h-[70vh] overflow-y-auto p-4 space-y-4">
-              <div className="text-xs text-muted-foreground">Reviewing call ID {String(selectedCallId)}</div>
-
-              {selectedCall?.recording_url ? (
-                <div className="space-y-1">
-                  <div className="text-xs font-medium">Recording</div>
-                  <audio
-                    controls
-                    src={selectedCall.recording_url}
-                    className="w-full"
-                  >
-                    Your browser does not support the audio element.
-                  </audio>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-1"
-                    onClick={downloadSelectedRecording}
-                  >
-                    Download recording
-                  </Button>
-                </div>
-              ) : (
-                <div className="text-xs text-muted-foreground">No recording available for this call.</div>
-              )}
-
-              <div className="space-y-1">
-                <div className="text-xs font-medium">Transcript</div>
-                <div className="min-h-[120px] max-h-[260px] overflow-y-auto rounded-md border border-input bg-background px-3 py-2 text-xs md:text-sm">
-                  {transcriptLoading && <div>Loading transcript…</div>}
-                  {!transcriptLoading && transcriptError && (
-                    <div className="text-red-500">{transcriptError}</div>
-                  )}
-                  {!transcriptLoading && !transcriptError && transcript && (
-                    <div className="space-y-1">
-                      {transcript.metadata?.full_transcript && (
-                        <p className="whitespace-pre-wrap break-words">{transcript.metadata.full_transcript}</p>
-                      )}
-                      {!transcript.metadata?.full_transcript &&
-                        Array.isArray(transcript.segments) &&
-                        transcript.segments.length > 0 && (
-                          <div className="space-y-1">
-                            {transcript.segments.map((s: any, idx: number) => {
-                              const rawSpeaker = typeof s.speaker === "string" ? s.speaker.toLowerCase() : ""
-                              let speaker: "agent" | "prospect"
-                              if (rawSpeaker === "agent" || rawSpeaker === "prospect") {
-                                speaker = rawSpeaker as "agent" | "prospect"
-                              } else {
-                                speaker = idx % 2 === 0 ? "agent" : "prospect"
-                              }
-                              const isAgent = speaker === "agent"
-                              return (
-                                <div key={idx} className={isAgent ? "text-right" : "text-left"}>
-                                  <span className="font-semibold text-[11px] mr-1">
-                                    {isAgent ? "Agent" : "Prospect"}:
-                                  </span>
-                                  <span className="text-[11px] md:text-xs">{s.text}</span>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      {!transcript.metadata?.full_transcript &&
-                        (!transcript.segments || transcript.segments.length === 0) && (
-                          <div className="text-muted-foreground">No transcript available yet.</div>
-                        )}
-                    </div>
-                  )}
-                  {!transcriptLoading && !transcriptError && !transcript && (
-                    <div className="text-muted-foreground">No transcript loaded.</div>
-                  )}
-                </div>
-                {!transcriptLoading && !transcriptError && transcript && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-1"
-                    onClick={downloadTranscriptText}
-                  >
-                    Download transcript
-                  </Button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-xs mb-1">Overall score</label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={overallScore}
-                    onChange={(e) => setOverallScore(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs mb-1">Tone score</label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={toneScore}
-                    onChange={(e) => setToneScore(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs mb-1">Compliance score</label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={complianceScore}
-                    onChange={(e) => setComplianceScore(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <label className="flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    className="rounded border border-input"
-                    checked={isLead}
-                    onChange={(e) => setIsLead(e.target.checked)}
-                  />
-                  Mark as lead
-                </label>
-                <Input
-                  className="h-8 max-w-[160px]"
-                  placeholder="Quality (e.g. hot)"
-                  value={leadQuality}
-                  onChange={(e) => setLeadQuality(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs mb-1">Lead tags (comma separated)</label>
-                <Input
-                  placeholder="product-interest, follow-up"
-                  value={leadTags}
-                  onChange={(e) => setLeadTags(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs mb-1">Comments</label>
-                <textarea
-                  className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={comments}
-                  onChange={(e) => setComments(e.target.value)}
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-1">
-                <div className="text-xs text-muted-foreground min-h-[1.25rem]">
-                  {message}
-                </div>
-                <Button size="sm" onClick={saveReview} disabled={saving}>
-                  {saving ? "Saving…" : "Save review"}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </>
   )
 }

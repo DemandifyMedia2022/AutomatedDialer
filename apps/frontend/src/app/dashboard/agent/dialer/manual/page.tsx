@@ -56,6 +56,75 @@ declare global {
 
 const API_PREFIX = `${API_BASE}/api`
 
+const dmFieldKeys = [
+  'f_salutation',
+  'f_first_name',
+  'f_last_name',
+  'f_job_title',
+  'f_department',
+  'f_job_level',
+  'f_email_add',
+  'Secondary_Email',
+  'f_conatct_no',
+  'f_company_name',
+  'f_website',
+  'f_address1',
+  'f_city',
+  'f_state',
+  'f_zip_code',
+  'f_country',
+  'f_emp_size',
+  'f_industry',
+  'f_sub_industry',
+  'f_revenue',
+  'f_revenue_link',
+  'f_profile_link',
+  'f_company_link',
+  'f_address_link',
+  'f_cq1',
+  'f_cq2',
+  'f_cq3',
+  'f_cq4',
+  'f_cq5',
+  'f_cq6',
+  'f_cq7',
+  'f_cq8',
+  'f_cq9',
+  'f_cq10',
+  'f_asset_name1',
+  'f_asset_name2',
+] as const
+
+type DmFieldKey = (typeof dmFieldKeys)[number]
+type DmFormState = Record<DmFieldKey | 'f_campaign_name' | 'f_lead', string>
+const extendedDmKeys = ['f_campaign_name', 'f_lead', ...dmFieldKeys] as const
+type DmFormKey = typeof extendedDmKeys[number]
+
+const multilineDmFields = new Set<DmFieldKey>(['f_address1', 'f_profile_link', 'f_company_link', 'f_address_link'])
+
+const buildDefaultDmFormState = (campaign?: string, overrides?: Partial<DmFormState>): DmFormState => {
+  const base: Record<string, string> = {}
+  for (const key of dmFieldKeys) {
+    base[key] = ''
+  }
+  const merged = {
+    f_campaign_name: campaign ?? '',
+    f_lead: '',
+    ...base,
+    ...overrides,
+  }
+  return merged as DmFormState
+}
+
+const humanizeDmField = (key: string) => {
+  return key
+    .replace(/^f_/i, '')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
 export default function ManualDialerPage() {
   const [ext, setExt] = useState("")
   const [pwd, setPwd] = useState("")
@@ -136,6 +205,11 @@ export default function ManualDialerPage() {
   const [showDisposition, setShowDisposition] = useState(false)
   const [disposition, setDisposition] = useState("")
   const [pendingUploadExtra, setPendingUploadExtra] = useState<any>(null)
+  const [dmForm, setDmForm] = useState<DmFormState>(() => buildDefaultDmFormState(selectedCampaign))
+  const [dmSaving, setDmSaving] = useState(false)
+  const [dmMessage, setDmMessage] = useState<string | null>(null)
+  const [currentSection, setCurrentSection] = useState(0)
+  const canEditDmForm = status.startsWith("In Call") || status === "Call Ended" || showDisposition
 
   useEffect(() => {
     try {
@@ -151,6 +225,14 @@ export default function ManualDialerPage() {
     } catch {}
   }, [selectedCampaign])
 
+  useEffect(() => {
+    setDmForm((prev) => {
+      const next = selectedCampaign ?? ''
+      if (prev.f_campaign_name === next) return prev
+      return { ...prev, f_campaign_name: next }
+    })
+  }, [selectedCampaign])
+
   const selectedCampaignLabel = useMemo(() => {
     if (!selectedCampaign) return ""
     const found = campaigns.find((c: { key: string; label: string }) => c.key === selectedCampaign)
@@ -161,6 +243,11 @@ export default function ManualDialerPage() {
     const dialNum = number ? `${countryCode}${number}` : (lastDialedNumber || "")
     return dialNum || ""
   }, [countryCode, number, lastDialedNumber])
+
+  useEffect(() => {
+    if (!currentPhone) return
+    setDmForm((prev) => (prev.f_lead === currentPhone ? prev : { ...prev, f_lead: currentPhone }))
+  }, [currentPhone])
 
   function isBusyCause(cause: any, code?: number, reason?: string): boolean {
     const c = String(cause || '').toLowerCase()
@@ -815,6 +902,111 @@ export default function ManualDialerPage() {
     }
   }
 
+  const updateDmField = (key: DmFormKey, value: string) => {
+    setDmForm((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }))
+  }
+
+  const resetDmForm = () => {
+    setDmForm(buildDefaultDmFormState(selectedCampaign, { f_lead: currentPhone }))
+    setDmMessage(null)
+  }
+
+  const serializeDmPayload = () => {
+    const payload: Record<string, string | null> = {}
+    for (const key of extendedDmKeys) {
+      const raw = (dmForm[key] || '').trim()
+      payload[key] = raw.length ? raw : null
+    }
+    return payload
+  }
+
+  const submitDmForm = async () => {
+    if (!canEditDmForm) {
+      setDmMessage("Connect a call to unlock the form.")
+      return
+    }
+    setDmSaving(true)
+    setDmMessage(null)
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies()
+        if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const token = getToken()
+        if (token) headers['Authorization'] = `Bearer ${token}`
+      }
+      const payload = serializeDmPayload()
+      const res = await fetch(`${API_PREFIX}/dm-form`, {
+        method: 'POST',
+        headers,
+        credentials,
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(text || `Failed to save form (${res.status})`)
+      }
+      setDmMessage("Form saved successfully.")
+    } catch (e: any) {
+      setDmMessage(e?.message || "Failed to save form.")
+    } finally {
+      setDmSaving(false)
+    }
+  }
+
+  const saveAndNext = () => {
+    if (currentSection < formSections.length - 1) {
+      setCurrentSection(currentSection + 1)
+    }
+  }
+
+  const goToPrevious = () => {
+    if (currentSection > 0) {
+      setCurrentSection(currentSection - 1)
+    }
+  }
+
+  const formSections = [
+    {
+      title: "Personal Information",
+      fields: ['f_salutation', 'f_first_name', 'f_last_name', 'f_job_title', 'f_department', 'f_job_level'] as DmFieldKey[],
+      gridCols: 3
+    },
+    {
+      title: "Contact Information", 
+      fields: ['f_email_add', 'Secondary_Email', 'f_conatct_no', 'f_website'] as DmFieldKey[],
+      gridCols: 2
+    },
+    {
+      title: "Company Information",
+      fields: ['f_company_name', 'f_emp_size', 'f_industry', 'f_sub_industry', 'f_revenue'] as DmFieldKey[],
+      gridCols: 2
+    },
+    {
+      title: "Address Information",
+      fields: ['f_address1', 'f_city', 'f_state', 'f_zip_code', 'f_country'] as DmFieldKey[],
+      gridCols: 2
+    },
+    {
+      title: "Links & Resources",
+      fields: ['f_revenue_link', 'f_profile_link', 'f_company_link', 'f_address_link'] as DmFieldKey[],
+      gridCols: 2
+    },
+    {
+      title: "Custom Questions",
+      fields: ['f_cq1', 'f_cq2', 'f_cq3', 'f_cq4', 'f_cq5', 'f_cq6', 'f_cq7', 'f_cq8', 'f_cq9', 'f_cq10'] as DmFieldKey[],
+      gridCols: 2
+    },
+    {
+      title: "Assets",
+      fields: ['f_asset_name1', 'f_asset_name2'] as DmFieldKey[],
+      gridCols: 2
+    }
+  ]
+
   const hangup = async () => {
     try { sessionRef.current?.terminate() } catch {}
     stopRingback()
@@ -1289,6 +1481,113 @@ export default function ManualDialerPage() {
 
             {/* Right column: Notes + Documents */}
             <div className="lg:col-span-2 space-y-3">
+              {/* Decision Maker Form: only shown when a call is live or has just ended */}
+              {canEditDmForm && (
+                <Card className="p-0 mt-4">
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <div>
+                      <div className="font-semibold">Decision Maker Form</div>
+                      <p className="text-xs text-muted-foreground">Capture lead details while the call is active.</p>
+                    </div>
+                    <span className="text-xs text-emerald-600">Editing unlocked</span>
+                  </div>
+                  <Separator />
+                  <div className="p-4 space-y-4">
+                    {dmMessage ? (
+                      <Card className="border border-dashed bg-muted/40 p-2 text-xs text-foreground">
+                        {dmMessage}
+                      </Card>
+                    ) : null}
+                    
+                    {/* Campaign and Lead fields */}
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {(['f_campaign_name', 'f_lead'] as DmFormKey[]).map((key) => (
+                        <div key={key} className="space-y-1">
+                          <Label className="text-xs font-medium">{humanizeDmField(key)}</Label>
+                          <Input
+                            value={dmForm[key]}
+                            onChange={(e) => updateDmField(key, e.target.value)}
+                            placeholder={humanizeDmField(key)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {/* Progress indicator */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex gap-2">
+                        {formSections.map((_, index) => (
+                          <div
+                            key={index}
+                            className={`h-2 flex-1 rounded-full transition-colors ${
+                              index <= currentSection ? 'bg-emerald-500' : 'bg-muted'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {currentSection + 1} of {formSections.length}
+                      </span>
+                    </div>
+                    
+                    {/* Current section */}
+                    <div className="space-y-4">
+                      <div className="space-y-3">
+                        <h4 className="text-sm font-medium text-foreground">
+                          {formSections[currentSection].title}
+                        </h4>
+                        <div className={`grid gap-2 md:grid-cols-${formSections[currentSection].gridCols}`}>
+                          {formSections[currentSection].fields.map((key) => (
+                            <div key={key} className="space-y-1">
+                              <Label className="text-xs font-medium">{humanizeDmField(key)}</Label>
+                              {multilineDmFields.has(key) ? (
+                                <Textarea
+                                  rows={2}
+                                  value={dmForm[key]}
+                                  onChange={(e) => updateDmField(key, e.target.value)}
+                                  placeholder={humanizeDmField(key)}
+                                />
+                              ) : (
+                                <Input
+                                  value={dmForm[key]}
+                                  onChange={(e) => updateDmField(key, e.target.value)}
+                                  placeholder={humanizeDmField(key)}
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Navigation buttons */}
+                      <div className="flex items-center justify-between pt-2 border-t">
+                        <div className="flex gap-2">
+                          {currentSection > 0 && (
+                            <Button variant="outline" size="sm" onClick={goToPrevious}>
+                              Previous
+                            </Button>
+                          )}
+                          <Button variant="outline" size="sm" onClick={resetDmForm}>
+                            Reset
+                          </Button>
+                        </div>
+                        <div className="flex gap-2">
+                          {currentSection < formSections.length - 1 ? (
+                            <Button size="sm" onClick={saveAndNext}>
+                              Next
+                            </Button>
+                          ) : (
+                            <Button size="sm" onClick={submitDmForm} disabled={!canEditDmForm || dmSaving}>
+                              {dmSaving ? 'Saving...' : 'Save Complete Form'}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
               {/* Notes */}
               <Card className="p-0">
                 <div className="flex items-center justify-between px-4 py-3">
