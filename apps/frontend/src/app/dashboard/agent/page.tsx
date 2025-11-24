@@ -22,6 +22,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
 import { ArrowDownRight, ArrowUpRight, PhoneCall, PhoneIncoming, Voicemail, UsersRound } from "lucide-react"
+import { WorldMap } from "./components/WorldMap"
+import AIAssistant from "@/components/ai-assistant"
 
 type MetricResponse = {
   callsDialed: number
@@ -36,10 +38,10 @@ type MetricResponse = {
 }
 
 export default function Page() {
-  
+
   const [loading, setLoading] = useState<boolean>(false)
   const [data, setData] = useState<MetricResponse | null>(null)
-  
+
 
   const fetchMetrics = async () => {
     setLoading(true)
@@ -124,17 +126,17 @@ export default function Page() {
           const j = await res.json()
           apply(j)
         }
-      } catch {}
+      } catch { }
     }
     const start = async () => {
       await fetchOnce()
       if (USE_AUTH_COOKIE) {
         const es = new EventSource(`${API_BASE}/api/analytics/agent/stream`, { withCredentials: true })
         es.onmessage = (ev) => {
-          try { apply(JSON.parse(ev.data)) } catch {}
+          try { apply(JSON.parse(ev.data)) } catch { }
         }
-        es.onerror = () => {}
-        stop = () => { try { es.close() } catch {} }
+        es.onerror = () => { }
+        stop = () => { try { es.close() } catch { } }
       } else {
         const id = window.setInterval(fetchOnce, 3000)
         stop = () => { window.clearInterval(id) }
@@ -178,7 +180,7 @@ export default function Page() {
           const items = (j?.items || []) as { name: string; count: number }[]
           apply(items)
         }
-      } catch {}
+      } catch { }
     }
     const start = async () => {
       await fetchOnce()
@@ -189,10 +191,10 @@ export default function Page() {
             const j = JSON.parse(ev.data)
             const items = (j?.items || []) as { name: string; count: number }[]
             apply(items)
-          } catch {}
+          } catch { }
         }
-        es.onerror = () => {}
-        stop = () => { try { es.close() } catch {} }
+        es.onerror = () => { }
+        stop = () => { try { es.close() } catch { } }
       } else {
         const id = window.setInterval(fetchOnce, 3000)
         stop = () => { window.clearInterval(id) }
@@ -236,7 +238,7 @@ export default function Page() {
           const items = (j?.items || []) as { name: string; count: number }[]
           apply(items)
         }
-      } catch {}
+      } catch { }
     }
     const start = async () => {
       await fetchOnce()
@@ -247,10 +249,10 @@ export default function Page() {
             const j = JSON.parse(ev.data)
             const items = (j?.items || []) as { name: string; count: number }[]
             apply(items)
-          } catch {}
+          } catch { }
         }
-        es.onerror = () => {}
-        stop = () => { try { es.close() } catch {} }
+        es.onerror = () => { }
+        stop = () => { try { es.close() } catch { } }
       } else {
         const id = window.setInterval(fetchOnce, 3000)
         stop = () => { window.clearInterval(id) }
@@ -260,7 +262,7 @@ export default function Page() {
     return () => { if (stop) stop() }
   }, [])
 
-  
+
 
   return (
     <SidebarProvider>
@@ -281,6 +283,9 @@ export default function Page() {
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
+            <div className="ml-auto">
+              <AIAssistant />
+            </div>
           </div>
         </header>
         <div className="flex flex-1 flex-col gap-6 p-6 pt-0">
@@ -349,7 +354,7 @@ export default function Page() {
                       <div className="flex items-center gap-3 min-w-0">
                         <Avatar className="h-7 w-7">
                           <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(row.name)}`} alt={row.name} />
-                          <AvatarFallback>{row.name.split(" ").map(s=>s[0]).slice(0,2).join("")}</AvatarFallback>
+                          <AvatarFallback>{row.name.split(" ").map(s => s[0]).slice(0, 2).join("")}</AvatarFallback>
                         </Avatar>
                         <div className="truncate text-sm font-medium">{row.name}</div>
                         {idx < 3 && (
@@ -365,6 +370,7 @@ export default function Page() {
                 </div>
               </CardContent>
             </Card>
+            <WorldMap />
           </div>
         </div>
       </SidebarInset>
@@ -417,11 +423,11 @@ function DispositionRadar({ dispositions }: { dispositions: { name: string; coun
   const ring = (r: number) => (
     <circle key={r} cx={140} cy={140} r={r} className="fill-none stroke-muted" strokeDasharray={4} />
   )
-  const total = dispositions.reduce((a,b)=>a+b.count,0)
+  const total = dispositions.reduce((a, b) => a + b.count, 0)
   return (
     <div className="w-full flex items-center justify-center">
-      <svg viewBox="0 0 320 280" className="w-full max-w-sm">
-        { [30, 60, 90, 120].map(r => ring(r)) }
+      <svg viewBox="0 0 330 320" className="w-full max-w-sm h-full">
+        {[30, 60, 90, 120].map(r => ring(r))}
         <g className="fill-blue-500/30 stroke-blue-500/50">
           {points && <polygon points={points} />}
         </g>

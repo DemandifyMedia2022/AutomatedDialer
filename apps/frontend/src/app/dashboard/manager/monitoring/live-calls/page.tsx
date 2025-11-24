@@ -49,17 +49,39 @@ function formatTime(ms?: number | null) {
 
 function StatusBadge({ status }: { status: string }) {
   const cls = useMemo(() => {
-    const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-    if (status === 'ON_CALL' || status === 'on_call' || status === 'CONNECTED') return `${base} bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300`
-    if (status === 'AVAILABLE') return `${base} bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300`
-    if (status === 'IDLE') return `${base} bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300`
-    if (status === 'BREAK') return `${base} bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300`
-    if (status.toLowerCase() === 'dialing') return `${base} bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300`
-    if (status.toLowerCase() === 'ringing') return `${base} bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300`
-    if (status.toLowerCase() === 'connecting') return `${base} bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300`
-    return `${base} bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300`
+    const base = "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border"
+    const s = String(status || '').toUpperCase()
+    // Match Track Agent pills: mint for Active/Available, soft red for Offline
+    if (s === 'ON_CALL' || s === 'CONNECTED' || s === 'AVAILABLE') {
+      return `${base} bg-emerald-100 text-emerald-700 border-emerald-200`
+    }
+    if (s === 'OFFLINE') {
+      return `${base} bg-red-100 text-red-700 border-red-200`
+    }
+    if (s === 'BREAK') {
+      return `${base} bg-indigo-100 text-indigo-700 border-indigo-200`
+    }
+    if (s === 'IDLE') {
+      return `${base} bg-yellow-100 text-yellow-700 border-yellow-200`
+    }
+    if (s === 'DIALING') {
+      return `${base} bg-blue-100 text-blue-700 border-blue-200`
+    }
+    if (s === 'RINGING') {
+      return `${base} bg-indigo-100 text-indigo-700 border-indigo-200`
+    }
+    if (s === 'CONNECTING') {
+      return `${base} bg-purple-100 text-purple-700 border-purple-200`
+    }
+    return `${base} bg-gray-100 text-gray-700 border-gray-200`
   }, [status])
-  return <span className={cls}>{status.replaceAll('_', ' ')}</span>
+
+  const label = useMemo(() => {
+    const raw = String(status || '').replace(/_/g, ' ').toLowerCase()
+    return raw.replace(/\b\w/g, (c) => c.toUpperCase())
+  }, [status])
+
+  return <span className={cls}>{label}</span>
 }
 
 export default function LiveCallsPage() {
