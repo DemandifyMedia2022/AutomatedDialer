@@ -96,8 +96,8 @@ const dmFieldKeys = [
 ] as const
 
 type DmFieldKey = (typeof dmFieldKeys)[number]
-type DmFormState = Record<DmFieldKey | 'f_campaign_name' | 'f_lead', string>
-const extendedDmKeys = ['f_campaign_name', 'f_lead', ...dmFieldKeys] as const
+type DmFormState = Record<DmFieldKey | 'f_campaign_name', string>
+const extendedDmKeys = ['f_campaign_name', ...dmFieldKeys] as const
 type DmFormKey = typeof extendedDmKeys[number]
 
 const multilineDmFields = new Set<DmFieldKey>(['f_address1', 'f_profile_link', 'f_company_link', 'f_address_link'])
@@ -109,7 +109,6 @@ const buildDefaultDmFormState = (campaign?: string, overrides?: Partial<DmFormSt
   }
   const merged = {
     f_campaign_name: campaign ?? '',
-    f_lead: '',
     ...base,
     ...overrides,
   }
@@ -246,7 +245,7 @@ export default function ManualDialerPage() {
 
   useEffect(() => {
     if (!currentPhone) return
-    setDmForm((prev) => (prev.f_lead === currentPhone ? prev : { ...prev, f_lead: currentPhone }))
+    // f_lead removed from form, no need to sync
   }, [currentPhone])
 
   function isBusyCause(cause: any, code?: number, reason?: string): boolean {
@@ -907,7 +906,7 @@ export default function ManualDialerPage() {
   }
 
   const resetDmForm = () => {
-    setDmForm(buildDefaultDmFormState(selectedCampaign, { f_lead: currentPhone }))
+    setDmForm(buildDefaultDmFormState(selectedCampaign))
     setDmMessage(null)
   }
 
@@ -939,6 +938,24 @@ export default function ManualDialerPage() {
         if (token) headers['Authorization'] = `Bearer ${token}`
       }
       const payload = serializeDmPayload()
+      
+      // Get logged-in user name from API
+      try {
+        const userRes = await fetch(`${API_PREFIX}/auth/me`, {
+          method: 'GET',
+          headers,
+          credentials,
+        })
+        if (userRes.ok) {
+          const userData = await userRes.json().catch(() => null) as any
+          payload.f_resource_name = userData?.user?.username || 'Unknown'
+        } else {
+          payload.f_resource_name = 'Unknown'
+        }
+      } catch {
+        payload.f_resource_name = 'Unknown'
+      }
+      
       const res = await fetch(`${API_PREFIX}/dm-form`, {
         method: 'POST',
         headers,
@@ -954,6 +971,96 @@ export default function ManualDialerPage() {
       setDmMessage(e?.message || "Failed to save form.")
     } finally {
       setDmSaving(false)
+    }
+  }
+
+  const saveDispositionToDmForm = async (dispositionValue: string) => {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies()
+        if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const token = getToken()
+        if (token) headers['Authorization'] = `Bearer ${token}`
+      }
+      
+      // Get logged-in user name from API
+      let userName = 'Unknown'
+      try {
+        const userRes = await fetch(`${API_PREFIX}/auth/me`, {
+          method: 'GET',
+          headers,
+          credentials,
+        })
+        if (userRes.ok) {
+          const userData = await userRes.json().catch(() => null) as any
+          userName = userData?.user?.username || 'Unknown'
+        }
+      } catch {
+        userName = 'Unknown'
+      }
+      
+      // First, find the most recent entry for this campaign that doesn't have a disposition yet
+      const listRes = await fetch(`${API_PREFIX}/dm-form?campaign=${encodeURIComponent(selectedCampaign || '')}&limit=20`, {
+        method: 'GET',
+        headers,
+        credentials,
+      })
+      
+      if (listRes.ok) {
+        const listData = await listRes.json()
+        if (listData.success && listData.forms && listData.forms.length > 0) {
+          // Find the most recent entry that doesn't have a disposition in f_lead
+          const existingEntry = listData.forms.find((form: any) => 
+            form.f_campaign_name === selectedCampaign && 
+            (!form.f_lead || form.f_lead === '' || form.f_lead === null)
+          )
+          
+          if (existingEntry) {
+            // Update the existing entry with disposition
+            const updateRes = await fetch(`${API_PREFIX}/dm-form/${existingEntry.f_id}`, {
+              method: 'PATCH',
+              headers,
+              credentials,
+              body: JSON.stringify({ 
+                f_lead: dispositionValue,
+                f_resource_name: userName // Add logged-in user name
+              }),
+            })
+            
+            if (updateRes.ok) {
+              console.log('Disposition updated in existing DM form:', dispositionValue)
+              return
+            }
+          }
+        }
+      }
+      
+      // If no existing entry found, create new one with disposition
+      const payload = {
+        f_campaign_name: selectedCampaign || '',
+        f_lead: dispositionValue,
+        f_resource_name: userName, // Add logged-in user name
+      }
+      
+      const res = await fetch(`${API_PREFIX}/dm-form`, {
+        method: 'POST',
+        headers,
+        credentials,
+        body: JSON.stringify(payload),
+      })
+      
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(text || `Failed to save disposition (${res.status})`)
+      }
+      
+      console.log('Disposition saved to new DM form:', dispositionValue)
+    } catch (e: any) {
+      console.error('Failed to save disposition to DM form:', e?.message || 'Unknown error')
     }
   }
 
@@ -1499,18 +1606,16 @@ export default function ManualDialerPage() {
                       </Card>
                     ) : null}
                     
-                    {/* Campaign and Lead fields */}
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {(['f_campaign_name', 'f_lead'] as DmFormKey[]).map((key) => (
-                        <div key={key} className="space-y-1">
-                          <Label className="text-xs font-medium">{humanizeDmField(key)}</Label>
-                          <Input
-                            value={dmForm[key]}
-                            onChange={(e) => updateDmField(key, e.target.value)}
-                            placeholder={humanizeDmField(key)}
-                          />
-                        </div>
-                      ))}
+                    {/* Campaign field only */}
+                    <div className="grid gap-3 md:grid-cols-1">
+                      <div key="f_campaign_name" className="space-y-1">
+                        <Label className="text-xs font-medium">{humanizeDmField('f_campaign_name')}</Label>
+                        <Input
+                          value={dmForm.f_campaign_name}
+                          onChange={(e) => updateDmField('f_campaign_name', e.target.value)}
+                          placeholder={humanizeDmField('f_campaign_name')}
+                        />
+                      </div>
                     </div>
                     
                     {/* Progress indicator */}
@@ -1763,6 +1868,10 @@ export default function ManualDialerPage() {
                     <Button onClick={async () => {
                       if (!disposition) return
                       try {
+                        // Save disposition to DM form f_lead column
+                        await saveDispositionToDmForm(disposition)
+                        
+                        // Continue with existing logic
                         if (!uploadedOnceRef.current) uploadedOnceRef.current = true
                         await stopRecordingAndUpload(pendingUploadExtra || {})
                       } finally {

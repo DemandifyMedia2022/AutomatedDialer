@@ -70,6 +70,7 @@ const DmFormSchema = z
   .object({
     f_campaign_name: optionalField,
     f_lead: optionalField,
+    f_resource_name: optionalField,
     ...baseShape,
   })
   .strict()
@@ -80,7 +81,7 @@ const writeMiddlewares: any[] = [requireAuth, requireRoles(['agent', 'manager', 
 if (env.USE_AUTH_COOKIE) writeMiddlewares.push(csrfProtect)
 
 function sanitizePayload(input: Partial<DmFormInput>) {
-  const data: Partial<Record<LeadFieldKey | 'f_campaign_name' | 'f_lead', string | null>> = {}
+  const data: Partial<Record<LeadFieldKey | 'f_campaign_name' | 'f_lead' | 'f_resource_name', string | null>> = {}
   let touched = false
 
   for (const key of dmFieldKeys) {
@@ -98,9 +99,41 @@ function sanitizePayload(input: Partial<DmFormInput>) {
     data.f_lead = input.f_lead ?? null
     touched = true
   }
+  if ('f_resource_name' in input) {
+    data.f_resource_name = input.f_resource_name ?? null
+    touched = true
+  }
 
   return { data, touched }
 }
+
+router.get('/', requireAuth, async (req: any, res, next) => {
+  try {
+    const { campaign, limit = 10 } = req.query
+    
+    let whereClause: any = {}
+    if (campaign && typeof campaign === 'string') {
+      whereClause.f_campaign_name = campaign
+    }
+    
+    const forms = await (db as any).dm_form.findMany({
+      where: whereClause,
+      orderBy: { f_date: 'desc' },
+      take: Number(limit) || 10,
+      select: {
+        f_id: true,
+        f_campaign_name: true,
+        f_lead: true,
+        f_date: true,
+        form_status: true,
+      }
+    })
+    
+    res.json({ success: true, forms })
+  } catch (e) {
+    next(e)
+  }
+})
 
 router.post('/', ...writeMiddlewares, async (req: any, res, next) => {
   try {
