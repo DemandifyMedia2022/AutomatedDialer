@@ -15,6 +15,7 @@ import profile from './profile';
 import extensionDids from './extensionsDids';
 import transcription from './transcription';
 import qa from './qa';
+import dmForm from './dmForm';
 import { getLiveCalls, updateLiveCallPhase } from './livecalls';
 
 import { env } from '../config/env';
@@ -45,6 +46,7 @@ router.use('/profile', profile);
 router.use('/extension-dids', extensionDids);
 router.use('/transcription', transcription);
 router.use('/qa', qa);
+router.use('/dm-form', dmForm);
 
 router.get('/sip/config', (_req, res) => {
   res.json({
