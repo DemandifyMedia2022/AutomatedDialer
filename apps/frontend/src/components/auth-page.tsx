@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import {
 	InputGroup,
@@ -160,19 +159,49 @@ export function AuthPage() {
 			<main className="relative md:h-screen md:overflow-hidden lg:grid lg:grid-cols-2">
 				<div className="relative hidden h-full flex-col border-r bg-secondary p-10 lg:flex dark:bg-secondary/20">
 					<div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-background" />
-					<Logo className="mr-auto h-5" />
-
-					<div className="z-10 mt-auto">
-						<blockquote className="space-y-2">
-							<p className="text-xl">
-								&ldquo;This Platform has helped me to save time and serve my
-								clients faster than ever before.&rdquo;
-							</p>
-							<footer className="font-mono font-semibold text-sm">
-								~ Jane Doe, Sales Manager
-							</footer>
-						</blockquote>
+					<div className="mr-auto h-14">
+						<img
+							src="/dialerlogo-dark.svg"
+							alt="Automated Dialer logo"
+							className="block h-full dark:hidden"
+						/>
+						<img
+							src="/dialerlogo.svg"
+							alt="Automated Dialer logo"
+							className="hidden h-full dark:block"
+						/>
 					</div>
+
+					<div className="relative z-10 mt-22 ml-20 max-w-xl space-y-6">
+						<p className="text-sm md:text-base font-semibold tracking-[0.35em] text-sky-400 uppercase">
+							AUTOMATED DIALER PLATFORM
+						</p>
+						<h1 className="text-4xl md:text-5xl font-semibold leading-tight">
+							Manage your campaigns, agents and performance in one place.
+						</h1>
+						<p className="mt-2 text-base md:text-lg text-muted-foreground max-w-lg">
+							Streamline outbound calling, monitor agent productivity and keep every customer interaction on track.
+						</p>
+						<div className="mt-8 grid gap-4 sm:grid-cols-2">
+							<div className="rounded-xl bg-background/40 p-5 shadow-sm ring-1 ring-border/60">
+								<h2 className="text-base font-semibold">
+									Role-based dashboards
+								</h2>
+								<p className="mt-2 text-sm text-muted-foreground">
+									Tailored views for Managers, QA and Agents.
+								</p>
+							</div>
+							<div className="rounded-xl bg-background/40 p-5 shadow-sm ring-1 ring-border/60">
+								<h2 className="text-base font-semibold">
+									Secure access
+								</h2>
+								<p className="mt-2 text-sm text-muted-foreground">
+									Session-based authentication with protected campaigns.
+								</p>
+							</div>
+						</div>
+					</div>
+
 					<div className="absolute inset-0">
 						<FloatingPaths position={1} />
 						<FloatingPaths position={-1} />
@@ -189,7 +218,18 @@ export function AuthPage() {
 					</div>
 
 					<div className="mx-auto space-y-6 sm:w-sm">
-						<Logo className="h-5 lg:hidden" />
+						<div className="h-5 lg:hidden">
+							<img
+								src="/dialerlogo.svg"
+								alt="Automated Dialer logo"
+								className="block h-full dark:hidden mx-auto"
+							/>
+							<img
+								src="/dialerlogo-dark.svg"
+								alt="Automated Dialer logo"
+								className="hidden h-full dark:block mx-auto"
+							/>
+						</div>
 						<div className="flex flex-col space-y-3 text-center">
 							<h1 className="font-bold text-3xl tracking-wide">
 								Welcome Back
