@@ -53,12 +53,19 @@ export default function AutomatedAdminPage() {
   const fetchCampaigns = React.useCallback(async () => {
     try {
       const { headers, credentials } = buildAuth()
-      const res = await fetch(`${API_PREFIX}/api/campaigns`, { headers, credentials })
+      // Use the /active endpoint to only get active campaigns
+      const res = await fetch(`${API_PREFIX}/api/campaigns/active`, { headers, credentials })
       if (!res.ok) return setCampaigns([])
       const data = await res.json().catch(() => null as any)
       const items = Array.isArray(data?.items) ? data.items : []
-      setCampaigns(items.map((x: any) => ({ id: Number(x.id), campaign_name: String(x.campaign_name || '') })))
-    } catch { setCampaigns([]) }
+      setCampaigns(items.map((x: any) => ({
+        id: Number(x.id),
+        campaign_name: String(x.campaign_name || '')
+      })))
+    } catch (err) {
+      console.error('Error fetching campaigns:', err);
+      setCampaigns([])
+    }
   }, [buildAuth])
 
   const fetchSheets = React.useCallback(async () => {
