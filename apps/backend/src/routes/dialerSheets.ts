@@ -32,11 +32,21 @@ async function ensureTable() {
       mtime BIGINT NULL,
       path VARCHAR(512) NOT NULL,
       active TINYINT(1) DEFAULT 0,
+      campaign_id INT NULL,
+      campaign_name VARCHAR(255) NULL,
       assigned_user_ids TEXT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `)
+
+  // Add campaign_id column if it doesn't exist
+  try {
+    await pool.query('ALTER TABLE dialer_sheets ADD COLUMN IF NOT EXISTS campaign_id INT NULL AFTER active')
+    await pool.query('ALTER TABLE dialer_sheets ADD COLUMN IF NOT EXISTS campaign_name VARCHAR(255) NULL AFTER campaign_id')
+  } catch (e) {
+    console.warn('Error adding campaign columns:', e)
+  }
 }
 
 router.get('/', requireAuth, requireRoles(['manager','superadmin']), async (_req: any, res: any, next: any) => {
@@ -51,6 +61,8 @@ router.get('/', requireAuth, requireRoles(['manager','superadmin']), async (_req
         size: Number(r.size || 0),
         mtime: Number(r.mtime || 0),
         active: !!r.active,
+        campaign_id: r.campaign_id,
+        campaign_name: r.campaign_name || '',
         assignedUserIds: String(r.assigned_user_ids || '').split(',').filter(Boolean).map((s: string) => Number(s)).filter((n: number) => Number.isFinite(n)),
         created_at: r.created_at,
         updated_at: r.updated_at,
@@ -58,13 +70,15 @@ router.get('/', requireAuth, requireRoles(['manager','superadmin']), async (_req
     } catch (e) {
       try { console.warn('[dialer-sheets] Prisma list failed, falling back to SQL', (e as any)?.message) } catch {}
       const pool = getPool()
-      const [rows]: any = await pool.query('SELECT id, name, size, mtime, active, assigned_user_ids, created_at, updated_at FROM dialer_sheets ORDER BY updated_at DESC')
+      const [rows]: any = await pool.query('SELECT id, name, size, mtime, active, campaign_id, campaign_name, assigned_user_ids, created_at, updated_at FROM dialer_sheets ORDER BY updated_at DESC')
       items = (rows || []).map((r: any) => ({
         id: r.id,
         name: r.name,
         size: Number(r.size || 0),
         mtime: Number(r.mtime || 0),
         active: !!r.active,
+        campaign_id: r.campaign_id,
+        campaign_name: r.campaign_name || '',
         assignedUserIds: String(r.assigned_user_ids || '').split(',').filter(Boolean).map((s: string) => Number(s)).filter((n: number) => Number.isFinite(n)),
         created_at: r.created_at,
         updated_at: r.updated_at,
@@ -103,12 +117,40 @@ router.post('/upload', ...writeMiddlewares, upload.single('file'), async (req: a
     await ensureTable()
     const f = req.file
     if (!f) return res.status(400).json({ message: 'file is required' })
+    const campaignId = req.body.campaign_id ? parseInt(String(req.body.campaign_id), 10) : null
+    let campaignName = ''
+
+    // Fetch campaign name if campaignId is provided
+    if (campaignId) {
+      try {
+        const [campaign]: any = await (db as any).$queryRaw`SELECT campaign_name FROM campaigns WHERE id = ${campaignId} LIMIT 1`
+        if (campaign) campaignName = campaign.campaign_name || ''
+      } catch (e) {
+        console.warn('Error fetching campaign name:', e)
+      }
+    }
+
     const stat = fs.statSync(f.path)
     try {
       const upserted = await (db as any).dialer_sheets.upsert({
         where: { name: f.filename },
-        update: { size: BigInt(stat.size), mtime: BigInt(stat.mtimeMs), path: f.path, updated_at: new Date() },
-        create: { name: f.filename, size: BigInt(stat.size), mtime: BigInt(stat.mtimeMs), path: f.path, active: false },
+        update: {
+          size: BigInt(stat.size),
+          mtime: BigInt(stat.mtimeMs),
+          path: f.path,
+          campaign_id: campaignId,
+          campaign_name: campaignName,
+          updated_at: new Date()
+        },
+        create: {
+          name: f.filename,
+          size: BigInt(stat.size),
+          mtime: BigInt(stat.mtimeMs),
+          path: f.path,
+          active: false,
+          campaign_id: campaignId,
+          campaign_name: campaignName
+        },
       })
       res.status(200).json(upserted)
     } catch (e) {
@@ -116,11 +158,17 @@ router.post('/upload', ...writeMiddlewares, upload.single('file'), async (req: a
       const pool = getPool()
       const [existing]: any = await pool.query('SELECT id FROM dialer_sheets WHERE name = ?', [f.filename])
       if (existing?.length) {
-        await pool.query('UPDATE dialer_sheets SET size=?, mtime=?, path=?, updated_at=NOW() WHERE id=?', [stat.size, stat.mtimeMs, f.path, existing[0].id])
+        await pool.query(
+          'UPDATE dialer_sheets SET size=?, mtime=?, path=?, campaign_id=?, campaign_name=?, updated_at=NOW() WHERE id=?',
+          [stat.size, stat.mtimeMs, f.path, campaignId, campaignName, existing[0].id]
+        )
         const [row]: any = await pool.query('SELECT * FROM dialer_sheets WHERE id=?', [existing[0].id])
         res.status(200).json(row[0])
       } else {
-        const [result]: any = await pool.query('INSERT INTO dialer_sheets (name, size, mtime, path, active) VALUES (?,?,?,?,0)', [f.filename, stat.size, stat.mtimeMs, f.path])
+        const [result]: any = await pool.query(
+          'INSERT INTO dialer_sheets (name, size, mtime, path, active, campaign_id, campaign_name) VALUES (?,?,?,?,0,?,?)',
+          [f.filename, stat.size, stat.mtimeMs, f.path, campaignId, campaignName]
+        )
         const id = Number(result.insertId)
         const [row]: any = await pool.query('SELECT * FROM dialer_sheets WHERE id=?', [id])
         res.status(201).json(row[0])

@@ -28,7 +28,7 @@ import {
 import { API_BASE as API_PREFIX } from '@/lib/api'
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from '@/lib/auth'
 
-type Sheet = { id: number; name: string; size: number; mtime: number; active?: boolean; assignedUserIds?: number[] }
+type Sheet = { id: number; name: string; size: number; mtime: number; active?: boolean; assignedUserIds?: number[]; campaign_name?: string }
 
 export default function AutomatedAdminPage() {
   const [sheets, setSheets] = React.useState<Sheet[]>([])
@@ -39,6 +39,8 @@ export default function AutomatedAdminPage() {
   const [agents, setAgents] = React.useState<Array<{ id:number; username:string }>>([])
   const [assignIds, setAssignIds] = React.useState<number[]>([])
   const [assignComboOpen, setAssignComboOpen] = React.useState(false)
+  const [campaigns, setCampaigns] = React.useState<Array<{id: number; campaign_name: string}>>([])
+  const [selectedCampaign, setSelectedCampaign] = React.useState<number | null>(null)
 
   const buildAuth = React.useCallback(() => {
     const headers: Record<string, string> = {}
@@ -48,18 +50,53 @@ export default function AutomatedAdminPage() {
     return { headers, credentials }
   }, [])
 
+  const fetchCampaigns = React.useCallback(async () => {
+    try {
+      const { headers, credentials } = buildAuth()
+      const res = await fetch(`${API_PREFIX}/api/campaigns`, { headers, credentials })
+      if (!res.ok) return setCampaigns([])
+      const data = await res.json().catch(() => null as any)
+      const items = Array.isArray(data?.items) ? data.items : []
+      setCampaigns(items.map((x: any) => ({ id: Number(x.id), campaign_name: String(x.campaign_name || '') })))
+    } catch { setCampaigns([]) }
+  }, [buildAuth])
+
   const fetchSheets = React.useCallback(async () => {
     try {
       const { headers, credentials } = buildAuth()
       const res = await fetch(`${API_PREFIX}/api/dialer-sheets`, { headers, credentials })
       if (!res.ok) return setSheets([])
-      const data = await res.json().catch(()=>null as any)
+      const data = await res.json().catch(() => null as any)
       const items = Array.isArray(data?.items) ? data.items : []
-      setSheets(items.map((x:any)=>({ id:Number(x.id), name:String(x.name||''), size:Number(x.size||0), mtime:Number(x.mtime||0), active: !!x.active })))
+
+      const sheetsWithCampaigns = items.map((x: any) => {
+        // If campaign_name is not in the response, try to find it in the campaigns list
+        let campaignName = x.campaign_name || '';
+        if (!campaignName && x.campaign_id) {
+          const campaign = campaigns.find(c => c.id === x.campaign_id);
+          campaignName = campaign?.campaign_name || '';
+        }
+
+        return {
+          id: Number(x.id),
+          name: String(x.name || ''),
+          size: Number(x.size || 0),
+          mtime: Number(x.mtime || 0),
+          active: !!x.active,
+          campaign_id: x.campaign_id || null,
+          campaign_name: campaignName,
+          assignedUserIds: x.assignedUserIds || []
+        };
+      });
+
+      setSheets(sheetsWithCampaigns);
     } catch { setSheets([]) }
   }, [buildAuth])
 
-  React.useEffect(() => { fetchSheets() }, [fetchSheets])
+  React.useEffect(() => {
+    fetchSheets();
+    fetchCampaigns();
+  }, [fetchSheets, fetchCampaigns])
 
   React.useEffect(() => {
     ;(async () => {
@@ -75,13 +112,35 @@ export default function AutomatedAdminPage() {
   }, [buildAuth])
 
   const onUpload = async () => {
-    if (!file) return
-    const form = new FormData(); form.append('file', file)
+    if (!file || selectedCampaign === null) return
+    const form = new FormData();
+    form.append('file', file);
+    form.append('campaign_id', selectedCampaign.toString());
+
+    // Get the selected campaign name
+    const selectedCampaignData = campaigns.find(c => c.id === selectedCampaign);
+    const campaignName = selectedCampaignData?.campaign_name || '';
+
     const { headers, credentials } = buildAuth()
     setIsUploading(true)
     try {
       const res = await fetch(`${API_PREFIX}/api/dialer-sheets/upload`, { method: 'POST', headers, credentials, body: form })
-      if (res.ok) { setFile(null); (document.getElementById('sheet-file') as HTMLInputElement | null)?.value && ((document.getElementById('sheet-file') as HTMLInputElement).value = '') ; fetchSheets() }
+      if (res.ok) {
+        const data = await res.json();
+        // Update the sheets list with the new sheet including campaign name
+        setSheets(prev => [{
+          ...data,
+          campaign_name: campaignName,
+          campaign_id: selectedCampaign,
+          size: file.size,
+          mtime: Date.now(),
+          active: false
+        }, ...prev]);
+
+        setFile(null);
+        setSelectedCampaign(null);
+        (document.getElementById('sheet-file') as HTMLInputElement | null)?.value && ((document.getElementById('sheet-file') as HTMLInputElement).value = '');
+      }
     } finally { setIsUploading(false) }
   }
 
@@ -137,10 +196,41 @@ export default function AutomatedAdminPage() {
               <CardDescription>Manage lists for automated dialing. Assign sheets to agents and activate the current sheet.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap items-center gap-3">
-                <Input id="sheet-file" type="file" accept=".csv,.xlsx,.xls,.txt" onChange={(e)=>setFile(e.target.files?.[0] || null)} className="w-72" />
-                <Button onClick={onUpload} disabled={!file || isUploading}>{isUploading ? 'Uploading…' : 'Upload'}</Button>
-              </div>
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="w-64">
+                    <select
+                      id="campaign-select"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      value={selectedCampaign || ''}
+                      onChange={(e) => setSelectedCampaign(e.target.value ? Number(e.target.value) : null)}
+                    >
+                      <option value="">Select a campaign</option>
+                      {campaigns.map((campaign) => (
+                        <option key={campaign.id} value={campaign.id}>
+                          {campaign.campaign_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1 max-w-md">
+                    <Input
+                      id="sheet-file"
+                      type="file"
+                      accept=".csv,.xlsx,.xls,.txt"
+                      onChange={(e) => setFile(e.target.files?.[0] || null)}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <Button
+                      onClick={onUpload}
+                      disabled={!file || isUploading || selectedCampaign === null}
+                      className="whitespace-nowrap"
+                    >
+                      {isUploading ? 'Uploading…' : 'Upload File'}
+                    </Button>
+                  </div>
+                </div>
             </CardContent>
           </Card>
 
@@ -157,11 +247,18 @@ export default function AutomatedAdminPage() {
                   {sheets.map((s) => (
                     <div key={s.id} className="p-3 flex items-center gap-3">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="font-medium truncate">{s.name}</div>
-                          {s.active ? <Badge>Active</Badge> : null}
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2">
+                            {s.campaign_name && (
+                              <span className="font-medium text-foreground">{s.campaign_name} • </span>
+                            )}
+                            <div className="font-medium truncate">{s.name}</div>
+                            {s.active ? <Badge className="ml-2">Active</Badge> : null}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {fmtSize(s.size)} • {fmtTime(s.mtime)}
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground">{fmtSize(s.size)} • {fmtTime(s.mtime)}</div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Button size="sm" variant={s.active ? 'default' : 'outline'} onClick={()=>onActivate(s.id)}>{s.active ? 'Active' : 'Activate'}</Button>
