@@ -152,17 +152,81 @@ export default function AutomatedAdminPage() {
   }
 
   const onActivate = async (id: number) => {
-    const { headers, credentials } = buildAuth()
-    await fetch(`${API_PREFIX}/api/dialer-sheets/${id}/activate`, { method: 'POST', headers, credentials })
-    fetchSheets()
+    try {
+      const { headers, credentials } = buildAuth()
+      // Get the current sheet data before making any changes
+      const currentSheet = sheets.find(sheet => sheet.id === id);
+      const currentCampaignName = currentSheet?.campaign_name || '';
+
+      // Update the UI optimistically
+      setSheets(prevSheets =>
+        prevSheets.map(sheet => ({
+          ...sheet,
+          active: sheet.id === id ? true : false,
+          // Preserve the campaign name
+          campaign_name: sheet.campaign_name || (sheet.id === id ? currentCampaignName : sheet.campaign_name)
+        }))
+      );
+
+      // Make the API call to activate the sheet
+      const response = await fetch(`${API_PREFIX}/api/dialer-sheets/${id}/activate`, {
+        method: 'POST',
+        headers,
+        credentials
+      });
+
+      if (!response.ok) {
+        // If the API call fails, revert the optimistic update
+        fetchSheets();
+      }
+    } catch (error) {
+      console.error('Error activating sheet:', error);
+      // Revert to server state if there's an error
+      fetchSheets();
+    }
   }
 
   const onAssign = async () => {
     if (!assignOpen) return
     const ids = (assignIds.length ? assignIds : assignCsv.split(/[\s,]+/).map(s=>Number(s)).filter(n=>Number.isFinite(n)))
     const { headers, credentials } = buildAuth(); headers['Content-Type'] = 'application/json'
-    const res = await fetch(`${API_PREFIX}/api/dialer-sheets/${assignOpen.id}/assign`, { method: 'POST', headers, credentials, body: JSON.stringify({ agentIds: ids }) })
-    if (res.ok) { setAssignOpen(null); setAssignCsv(''); setAssignIds([]); setAssignComboOpen(false); fetchSheets() }
+
+    // Get current sheet data before making changes
+    const currentSheet = sheets.find(sheet => sheet.id === assignOpen.id);
+    const currentCampaignName = currentSheet?.campaign_name || '';
+
+    try {
+      // Update UI optimistically
+      setSheets(prevSheets =>
+        prevSheets.map(sheet => ({
+          ...sheet,
+          assignedUserIds: sheet.id === assignOpen.id ? [...ids] : sheet.assignedUserIds,
+          campaign_name: sheet.id === assignOpen.id ? currentCampaignName : sheet.campaign_name
+        }))
+      );
+
+      const res = await fetch(`${API_PREFIX}/api/dialer-sheets/${assignOpen.id}/assign`, {
+        method: 'POST',
+        headers,
+        credentials,
+        body: JSON.stringify({ agentIds: ids })
+      });
+
+      if (!res.ok) {
+        // If there's an error, revert to server state
+        fetchSheets();
+      } else {
+        // Only close the dialog and clear state on success
+        setAssignOpen(null);
+        setAssignCsv('');
+        setAssignIds([]);
+        setAssignComboOpen(false);
+      }
+    } catch (error) {
+      console.error('Error assigning agents:', error);
+      // Revert to server state on error
+      fetchSheets();
+    }
   }
 
   const onDelete = async (id: number) => {
@@ -252,7 +316,7 @@ export default function AutomatedAdminPage() {
               ) : (
                 <div className="divide-y rounded border">
                   {sheets.map((s) => (
-                    <div key={s.id} className="p-3 flex items-center gap-3">
+                    <div key={`sheet-${s.id}-${s.mtime}`} className="p-3 flex items-center gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-col">
                           <div className="flex items-center gap-2">
