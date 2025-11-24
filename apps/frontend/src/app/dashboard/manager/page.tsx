@@ -1,5 +1,6 @@
 "use client"
 import { ManagerSidebar } from "./components/ManagerSidebar"
+import AIAssistant from "@/components/ai-assistant"
 import { Separator } from "@/components/ui/separator"
 import {
   SidebarInset,
@@ -77,7 +78,7 @@ function AreaChart({ data, maxXTicks = 6 }: { data: { label: string; value: numb
         <path d={`${pathD} L ${paddingX + innerW} ${paddingY + innerH} L ${paddingX} ${paddingY + innerH} Z`} fill="url(#chart-area-default)" />
         {/* hover hit-area only (no visible dots) */}
         {pts.map((p, i) => (
-          <rect key={i} x={p.x - step/2} width={step} y={paddingY} height={innerH} fill="transparent"
+          <rect key={i} x={p.x - step / 2} width={step} y={paddingY} height={innerH} fill="transparent"
             onMouseEnter={() => setHover({ x: p.x, y: p.y, label: data[i].label, value: data[i].value })}
             onMouseLeave={() => setHover(null)}
           />
@@ -104,16 +105,16 @@ function AreaChart({ data, maxXTicks = 6 }: { data: { label: string; value: numb
 
 export default function Page() {
   const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000"
-  const [summary, setSummary] = useState<{ totalAgents:number; online:number; available:number; onCall:number; idle:number; onBreak:number; offline:number } | null>(null)
+  const [summary, setSummary] = useState<{ totalAgents: number; online: number; available: number; onCall: number; idle: number; onBreak: number; offline: number } | null>(null)
   const [leaders, setLeaders] = useState<{ name: string; count: number }[]>([])
   const [series, setSeries] = useState<{ label: string; value: number }[]>([])
-  const [range, setRange] = useState<'daily'|'monthly'>('daily')
+  const [range, setRange] = useState<'daily' | 'monthly'>('daily')
 
   const loadSummary = () => {
     return fetch(`${API_BASE}/api/presence/manager/summary`, { credentials: 'include' })
       .then(r => r.json())
       .then(d => { if (d?.success) setSummary(d) })
-      .catch(()=>{})
+      .catch(() => { })
   }
 
   useEffect(() => {
@@ -137,11 +138,11 @@ export default function Page() {
         const items = (d?.items || []) as { name: string; durationSeconds: number }[]
         const top = items
           .slice()
-          .sort((a,b) => b.durationSeconds - a.durationSeconds)
+          .sort((a, b) => b.durationSeconds - a.durationSeconds)
           .slice(0, 10)
-          .map((it) => ({ name: it.name, count: Math.floor(it.durationSeconds/60) }))
+          .map((it) => ({ name: it.name, count: Math.floor(it.durationSeconds / 60) }))
         setLeaders(top)
-      }).catch(()=>{})
+      }).catch(() => { })
   }
 
   useEffect(() => {
@@ -179,7 +180,7 @@ export default function Page() {
         const trimmed = raw.slice(start, end)
         setSeries(trimmed)
       })
-      .catch(()=>{})
+      .catch(() => { })
   }
   useEffect(() => { loadSeries() }, [range])
 
@@ -188,7 +189,7 @@ export default function Page() {
       <ManagerSidebar />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-          <div className="flex items-center gap-2 px-4">
+          <div className="flex items-center gap-2 px-4 w-full">
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
             <Breadcrumb>
@@ -202,6 +203,9 @@ export default function Page() {
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
+            <div className="ml-auto ">
+              <AIAssistant userRole="manager" />
+            </div>
           </div>
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
@@ -274,11 +278,11 @@ export default function Page() {
 
           <div className="grid gap-4 md:grid-cols-4">
             <Card className="md:col-span-3 transition-shadow hover:shadow-sm">
-             
+
               <CardContent>
                 <Tabs defaultValue="daily">
-                  <TabsList onClick={(e)=>{}}
-                    onChange={() => {}}
+                  <TabsList onClick={(e) => { }}
+                    onChange={() => { }}
                   >
                     <TabsTrigger value="daily" onClick={() => setRange('daily')}>Daily</TabsTrigger>
                     <TabsTrigger value="monthly" onClick={() => setRange('monthly')}>Monthly</TabsTrigger>
@@ -311,7 +315,7 @@ export default function Page() {
                       <div className="flex items-center gap-3 min-w-0">
                         <Avatar className="h-7 w-7">
                           <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(row.name)}`} alt={row.name} />
-                          <AvatarFallback>{row.name.split(" ").map(s=>s[0]).slice(0,2).join("")}</AvatarFallback>
+                          <AvatarFallback>{row.name.split(" ").map(s => s[0]).slice(0, 2).join("")}</AvatarFallback>
                         </Avatar>
                         <div className="truncate text-sm">{row.name}</div>
                         {idx < 3 && (
@@ -352,7 +356,7 @@ export default function Page() {
               <CardFooter>
                 <Button asChild>
                   <Link href="/dashboard/manager/administration/campaigns">Add Campaign <Plus className="ml-2 h-4 w-4" /></Link>
-                </Button> 
+                </Button>
               </CardFooter>
             </Card>
           </div>
