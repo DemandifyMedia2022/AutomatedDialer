@@ -11,6 +11,14 @@ import { updateLiveCallPhase } from '../routes/livecalls'
 
 const router = Router()
 
+console.log('[CALLS] Router loaded, registering routes')
+
+// Test route to verify router is working
+router.get('/test', (req, res) => {
+  console.log('[CALLS] Test route hit')
+  res.json({ message: 'Calls router is working' })
+})
+
 // Storage for recordings
 const recordingsPath = path.isAbsolute(env.RECORDINGS_DIR)
   ? env.RECORDINGS_DIR
@@ -303,6 +311,93 @@ router.post('/calls/phase', requireAuth, async (req: any, res: any, next: any) =
   } catch (e) {
     next(e)
   }
+}) // <--- Added missing closing brace
+
+console.log('[CALLS] About to register PATCH route')
+
+// Update a call (for scheduling follow-ups)
+router.patch('/:id', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
+  console.log('[CALLS PATCH] Route hit for ID:', req.params.id)
+  console.log('[CALLS PATCH] Method:', req.method)
+  console.log('[CALLS PATCH] Body:', req.body)
+  try {
+    const callId = req.params.id
+    const userId = req.user?.userId
+    
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
+    if (!callId) return res.status(400).json({ success: false, message: 'Call ID is required' })
+
+    // Check if user has permission to update this call
+    const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true, role: true } })
+    const username = me?.username || undefined
+    const usermail = me?.usermail || undefined
+    const extension = me?.extension || undefined
+    const userRole = me?.role || 'agent'
+
+    // Build where clause to find the call
+    const where: any = { id: BigInt(callId) }
+    
+    // If agent, only allow updating their own calls
+    if (userRole === 'agent') {
+      where.OR = []
+      if (username) where.OR.push({ username })
+      if (usermail) where.OR.push({ useremail: usermail })
+      if (extension) where.OR.push({ extension })
+      if (where.OR.length === 0) { where.OR.push({ id: -1 }) }
+    }
+
+    // Check if call exists and user has permission
+    const existingCall = await (db as any).calls.findFirst({ where })
+    if (!existingCall) {
+      return res.status(404).json({ success: false, message: 'Call not found or access denied' })
+    }
+
+    // Validate update data
+    const updateSchema = z.object({
+      remarks: z.string().optional(),
+      disposition: z.string().optional(),
+      follow_up: z.boolean().optional(),
+      schedule_call: z.coerce.date().optional()
+    })
+
+    const parsed = updateSchema.safeParse(req.body)
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, message: 'Invalid payload', issues: parsed.error.flatten() })
+    }
+
+    const updateData = parsed.data as any
+
+    // Update the call
+    const updated = await (db as any).calls.update({
+      where: { id: BigInt(callId) },
+      data: updateData
+    })
+
+    // Convert BigInt to Number if needed
+    const safeUpdated = {
+      ...updated,
+      id: typeof updated.id === 'bigint' ? Number(updated.id) : updated.id,
+    }
+
+    res.json({ success: true, data: safeUpdated })
+  } catch (e) {
+    console.error('[calls] update error', e)
+    next(e)
+  }
+})
+
+console.log('[CALLS] PATCH route registered successfully')
+
+// Catch-all route to debug incoming requests
+router.all('/*', (req, res, next) => {
+  console.log('[CALLS] Catch-all route hit:', {
+    method: req.method,
+    url: req.url,
+    originalUrl: req.originalUrl,
+    path: req.path,
+    params: req.params
+  })
+  next()
 })
 
 export default router

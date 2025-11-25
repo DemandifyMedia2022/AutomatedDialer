@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SparklesIcon, XIcon, SendIcon, Loader2 } from "lucide-react"
 import { usePathname } from "next/navigation"
+import { FollowUpNotification } from "@/components/agent/FollowUpNotification"
 
 interface Message {
     role: "user" | "assistant"
@@ -123,14 +124,17 @@ export default function AIAssistant({ apiKey, userRole }: AIAssistantProps) {
 
     if (!isOpen) {
         return (
-            <Button
-                onClick={() => setIsOpen(true)}
-                variant="outline"
-                className="gap-2"
-            >
-                <SparklesIcon size={16} />
-                <span>Assistant</span>
-            </Button>
+            <div className="flex items-center gap-2">
+                {detectedRole === 'agent' && <FollowUpNotification />}
+                <Button
+                    onClick={() => setIsOpen(true)}
+                    variant="outline"
+                    className="gap-2"
+                >
+                    <SparklesIcon size={16} />
+                    <span>Assistant</span>
+                </Button>
+            </div>
         )
     }
 

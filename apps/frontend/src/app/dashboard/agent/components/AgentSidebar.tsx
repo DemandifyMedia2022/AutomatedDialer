@@ -55,6 +55,7 @@ const data = {
       items: [
         { title: "Call History", url: "/dashboard/agent/my-calls/call-history" },
         { title: "Lead Details", url: "/dashboard/agent/my-calls/lead-details" },
+        { title: "Follow-up Calls", url: "/dashboard/agent/my-calls/follow-up-calls" },
       ],
     },
     {

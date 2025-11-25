@@ -9,6 +9,19 @@ import { env } from './config/env';
 export function createApp() {
   const app = express();
   app.set('trust proxy', 1);
+  
+  // Log all incoming requests
+  app.use((req, res, next) => {
+    console.log('[BACKEND] Incoming request:', {
+      method: req.method,
+      url: req.url,
+      path: req.path,
+      originalUrl: req.originalUrl,
+      headers: req.headers
+    });
+    next();
+  });
+  
   app.use(cors({
     origin: env.CORS_ORIGIN,
     credentials: env.USE_AUTH_COOKIE,

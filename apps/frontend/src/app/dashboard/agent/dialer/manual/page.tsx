@@ -133,7 +133,7 @@ export default function ManualDialerPage() {
   const [error, setError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
-  const [showPopup, setShowPopup] = useState(false)
+    const [showPopup, setShowPopup] = useState(false)
   const [callHistory, setCallHistory] = useState<any[]>([])
   const [liveSegments, setLiveSegments] = useState<Array<{ speaker?: string; text: string }>>([])
   const lastDialedNumber = useMemo(() => {
@@ -153,7 +153,7 @@ export default function ManualDialerPage() {
   const [docsLoading, setDocsLoading] = useState(false)
   const [docQuery, setDocQuery] = useState("")
   const [previewDoc, setPreviewDoc] = useState<any | null>(null)
-  const [selectedCampaign, setSelectedCampaign] = useState<string | undefined>(undefined)
+  const [selectedCampaign, setSelectedCampaign] = useState<string>("")
   const { campaigns, loading: campaignsLoading } = useCampaigns()
 
   // Draggable in-call popup position
@@ -200,6 +200,7 @@ export default function ManualDialerPage() {
 
   const appliedLastDialOnce = useRef(false)
 
+  
   // Post-call disposition modal state
   const [showDisposition, setShowDisposition] = useState(false)
   const [disposition, setDisposition] = useState("")
@@ -219,14 +220,17 @@ export default function ManualDialerPage() {
 
   useEffect(() => {
     try {
-      if (!selectedCampaign) localStorage.removeItem("manual_dialer_campaign")
-      else localStorage.setItem("manual_dialer_campaign", selectedCampaign)
+      if (selectedCampaign === "") {
+        localStorage.removeItem("manual_dialer_campaign")
+      } else {
+        localStorage.setItem("manual_dialer_campaign", selectedCampaign)
+      }
     } catch {}
   }, [selectedCampaign])
 
   useEffect(() => {
     setDmForm((prev) => {
-      const next = selectedCampaign ?? ''
+      const next = selectedCampaign
       if (prev.f_campaign_name === next) return prev
       return { ...prev, f_campaign_name: next }
     })
@@ -644,6 +648,7 @@ export default function ManualDialerPage() {
 
       session.on("peerconnection", (e: any) => {
         const pc: RTCPeerConnection = e.peerconnection
+        
         attachRemoteAudio(pc)
       })
 
@@ -696,7 +701,9 @@ export default function ManualDialerPage() {
           reasonL.includes('no answer') || reasonL.includes('timeout') || reasonL.includes('temporarily unavailable') || reasonL.includes('unavailable')
         )
         setStatus(isBusy ? "Busy" : isNoAnswer ? "No Answer" : "Call Failed")
+        
         setError(e?.cause || "Call failed")
+        
         clearTimer()
         // Keep the popup visible to show final status to the agent
         setShowPopup(true)
@@ -704,7 +711,11 @@ export default function ManualDialerPage() {
           if (isBusy) {
             try { await startBusyTone(); setTimeout(() => stopBusyTone(), 3000) } catch {}
           }
-          setPendingUploadExtra({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : undefined })
+          setPendingUploadExtra({ 
+            sip_status: code || undefined, 
+            sip_reason: reason || undefined, 
+            hangup_cause: isBusy ? 'busy' : undefined 
+          })
           setShowDisposition(true)
         }
         try { await sendPhase('ended') } catch {}
@@ -865,8 +876,9 @@ export default function ManualDialerPage() {
     const options = {
       eventHandlers,
       mediaConstraints: { audio: true, video: false },
-      pcConfig: { rtcpMuxPolicy: "require" },
-      rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
+      extraSessionHeaders: {
+        'User-Agent': 'AutomatedDialer-WebRTC/1.0'
+      }
     }
 
     try {
@@ -1470,25 +1482,17 @@ export default function ManualDialerPage() {
               <div className="mb-3">
                 <Label className="text-xs text-muted-foreground">Campaign</Label>
                 <Select
-                  value={selectedCampaign ?? undefined}
+                  value={selectedCampaign}
                   onValueChange={(value) => setSelectedCampaign(value)}
                   disabled={campaignsLoading || campaigns.length === 0}
                 >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={campaignsLoading ? "Loading campaigns..." : "Select campaign"} />
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select campaign" />
                   </SelectTrigger>
                   <SelectContent>
-                    {campaigns.length === 0 ? (
-                      <SelectItem value="no-campaign" disabled>
-                        {campaignsLoading ? "Loading..." : "No campaigns available"}
-                      </SelectItem>
-                    ) : (
-                      campaigns.map((campaign: { key: string; label: string }) => (
-                        <SelectItem key={campaign.key} value={campaign.key}>
-                          {campaign.label || campaign.key}
-                        </SelectItem>
-                      ))
-                    )}
+                    {campaigns.map((c: { key: string; label: string }) => (
+                      <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <p className="mt-1 text-[11px] text-muted-foreground">
@@ -1496,6 +1500,7 @@ export default function ManualDialerPage() {
                 </p>
               </div>
 
+              
               <div className="mb-3">
                 <Label className="text-xs text-muted-foreground">Phone Number</Label>
                 <div className="mt-1 flex gap-2">
