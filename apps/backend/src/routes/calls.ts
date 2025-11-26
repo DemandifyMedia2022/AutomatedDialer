@@ -357,7 +357,8 @@ router.patch('/:id', requireAuth, requireRoles(['agent', 'manager', 'superadmin'
       remarks: z.string().optional(),
       disposition: z.string().optional(),
       follow_up: z.boolean().optional(),
-      schedule_call: z.coerce.date().optional()
+      schedule_call: z.coerce.date().optional(),
+      Followup_notes: z.string().optional()
     })
 
     const parsed = updateSchema.safeParse(req.body)

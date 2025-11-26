@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useMemo, Fragment } from "react"
+import { useState, useEffect, useMemo, Fragment, useRef } from "react"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
-import { Phone, Clock, User, MessageSquare, CheckCircle, XCircle, AlertCircle, Calendar as CalendarIcon, ArrowUpDown, Filter, RefreshCw } from "lucide-react"
+import { Phone, Clock, User, MessageSquare, CheckCircle, XCircle, AlertCircle, Calendar as CalendarIcon, ArrowUpDown, Filter, RefreshCw, Bell } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -34,6 +34,7 @@ interface FollowUpCall {
   disposition: string | null
   status?: string | null
   remarks?: string | null
+  Followup_notes?: string | null
   recording_url?: string | null
   sip_status?: number | null
   sip_reason?: string | null
@@ -53,14 +54,97 @@ export default function FollowUpCalls() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [selectedFollowUp, setSelectedFollowUp] = useState<FollowUpCall | null>(null)
   const [notes, setNotes] = useState("")
+  const [disposition, setDisposition] = useState("")
   const [scheduleCall, setScheduleCall] = useState<FollowUpCall | null>(null)
   const [scheduleDateTime, setScheduleDateTime] = useState("")
   const [showScheduleDialog, setShowScheduleDialog] = useState(false)
+  const notificationIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     testApiConnection()
     fetchFollowUps()
   }, [dateRange])
+
+  // Notification system for scheduled calls
+  useEffect(() => {
+    // Check for scheduled calls every 10 minutes (600,000 milliseconds)
+    const checkScheduledCalls = () => {
+      const now = new Date()
+      const scheduledCalls = followUps.filter(call => 
+        call.schedule_call && 
+        new Date(call.schedule_call) > now
+      )
+
+      if (scheduledCalls.length > 0) {
+        scheduledCalls.forEach(call => {
+          const scheduledTime = new Date(call.schedule_call!)
+          const timeUntilCall = scheduledTime.getTime() - now.getTime()
+          const minutesUntilCall = Math.floor(timeUntilCall / (1000 * 60))
+
+          // Show notification for calls scheduled in the next 30 minutes
+          if (minutesUntilCall <= 30 && minutesUntilCall > 0) {
+            toast({
+              title: "Upcoming Scheduled Call",
+              description: `Call with ${call.destination || 'Unknown'} scheduled in ${minutesUntilCall} minutes`,
+              action: (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    setSelectedFollowUp(call)
+                    setShowScheduleDialog(true)
+                  }}
+                >
+                  View
+                </Button>
+              ),
+            })
+          }
+        })
+
+        // Also show a summary notification if there are multiple scheduled calls
+        if (scheduledCalls.length > 1) {
+          toast({
+            title: "Scheduled Calls Reminder",
+            description: `You have ${scheduledCalls.length} scheduled calls upcoming`,
+          })
+        }
+      }
+    }
+
+    // Initial check
+    checkScheduledCalls()
+
+    // Set up interval to check every 10 minutes
+    notificationIntervalRef.current = setInterval(checkScheduledCalls, 10 * 60 * 1000)
+
+    // Cleanup interval on unmount
+    return () => {
+      if (notificationIntervalRef.current) {
+        clearInterval(notificationIntervalRef.current)
+      }
+    }
+  }, [followUps, toast])
+
+  const checkScheduledCallsManually = () => {
+    const now = new Date()
+    const scheduledCalls = followUps.filter(call => 
+      call.schedule_call && 
+      new Date(call.schedule_call) > now
+    )
+
+    if (scheduledCalls.length > 0) {
+      toast({
+        title: "Scheduled Calls Status",
+        description: `You have ${scheduledCalls.length} scheduled calls`,
+      })
+    } else {
+      toast({
+        title: "No Scheduled Calls",
+        description: "You don't have any scheduled calls at the moment.",
+      })
+    }
+  }
 
   const fetchFollowUps = async () => {
     setLoading(true)
@@ -234,7 +318,7 @@ export default function FollowUpCalls() {
     }
   }
 
-  const updateFollowUpStatus = async (id: number | string, status: string, notes?: string) => {
+  const updateFollowUpStatus = async (id: number | string, disposition: string, notes?: string) => {
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       let credentials: RequestCredentials = 'omit'
@@ -246,21 +330,33 @@ export default function FollowUpCalls() {
         if (token) headers['Authorization'] = `Bearer ${token}`
       }
 
-      // Here you would update the call disposition or create a follow-up record
-      // For now, we'll just log it and refresh the data
-      console.log('Updating follow-up status:', { id, status, notes })
-      
-      // You might want to update the call disposition to something like "Completed" 
-      // or create a separate follow-up tracking record
+      // Update the call with follow-up notes and completed status
+      const response = await fetch(`${API_BASE}/api/calls/${id}`, {
+        method: 'PATCH',
+        headers,
+        credentials,
+        body: JSON.stringify({ 
+          remarks: disposition,
+          Followup_notes: notes,
+          follow_up: false
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to update follow-up: ${response.statusText}`)
+      }
+
+      console.log('Follow-up updated successfully:', { id, disposition, notes })
       
       fetchFollowUps()
       setSelectedFollowUp(null)
       setNotes("")
+      setDisposition("")
       
       // Show success notification
       toast({
-        title: "Follow-up Updated",
-        description: `The follow-up status has been updated to ${status}.`,
+        title: "Follow-up Completed",
+        description: "The follow-up call has been marked as completed with notes.",
       })
     } catch (error) {
       console.error('Failed to update follow-up:', error)
@@ -386,6 +482,7 @@ export default function FollowUpCalls() {
 
       setSelectedFollowUp(null)
       setNotes("")
+      setDisposition("")
       
       // Show success notification
       toast({
@@ -404,7 +501,7 @@ export default function FollowUpCalls() {
 
   const getStatusBadge = (call: FollowUpCall) => {
     // Determine status based on call data
-    const isCompleted = false // You might track this separately
+    const isCompleted = call.remarks === 'COMPLETED'
     const isMissed = call.sip_status === 486 || call.sip_status === 603 || call.hangup_cause?.includes('busy')
     const isFollowedUp = call.follow_up === true
     const isScheduled = call.schedule_call != null && new Date(call.schedule_call) > new Date()
@@ -502,10 +599,11 @@ export default function FollowUpCalls() {
       
       const isFollowedUp = call.follow_up === true
       const isScheduled = call.schedule_call != null && new Date(call.schedule_call) > new Date()
+      const isCompleted = call.remarks === 'COMPLETED'
       const matchesStatus = statusFilter === "all" || 
-        (statusFilter === "pending" && !isFollowedUp && !isScheduled) || 
+        (statusFilter === "pending" && !isFollowedUp && !isScheduled && !isCompleted) || 
         (statusFilter === "scheduled" && isScheduled) ||
-        (statusFilter === "completed" && false) || // No completed yet
+        (statusFilter === "completed" && isCompleted) ||
         (statusFilter === "missed" && (call.sip_status === 486 || call.sip_status === 603))
       
       return matchesSearch && matchesStatus
@@ -574,6 +672,21 @@ export default function FollowUpCalls() {
               <div>
                 <h1 className="text-2xl font-bold">Pending Follow-up Calls</h1>
                 <p className="text-muted-foreground">View Busy, Not Answered, Disconnected, and Follow-up calls (excluding Lead calls)</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Bell className="w-4 h-4 text-green-500 animate-pulse" />
+                  <span>Notifications Active (10 min)</span>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={checkScheduledCallsManually}
+                  className="ml-2"
+                >
+                  <Bell className="w-4 h-4 mr-2" />
+                  Check Now
+                </Button>
               </div>
             </div>
 
@@ -765,6 +878,32 @@ export default function FollowUpCalls() {
                                 </DialogHeader>
                                 <div className="space-y-4">
                                   <div>
+                                    <Label htmlFor="disposition">Disposition</Label>
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-2 max-h-[200px] overflow-y-auto p-2 border rounded-md bg-gray-50 dark:bg-gray-800">
+                                      {[
+                                        'Call Failed','Lead','Lost','DNC','VM-RPC','VM-Operator','Not an RPC','Invalid Number','Invalid Job Title','Invalid Country','Invalid Industry','Invalid EMP-Size','Follow-Ups','Busy','Wrong Number','Not Answered','Disconnected','Contact Discovery'
+                                      ].map((opt) => (
+                                        <button
+                                          key={opt}
+                                          type="button"
+                                          onClick={() => setDisposition(opt)}
+                                          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                            disposition === opt 
+                                              ? 'bg-blue-600 text-white' 
+                                              : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'
+                                          }`}
+                                        >
+                                          {opt}
+                                        </button>
+                                      ))}
+                                    </div>
+                                    {disposition && (
+                                      <div className="mt-2 text-sm text-muted-foreground">
+                                        Selected: <span className="font-medium">{disposition}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div>
                                     <Label htmlFor="notes">Call Notes</Label>
                                     <Textarea
                                       id="notes"
@@ -780,6 +919,7 @@ export default function FollowUpCalls() {
                                       onClick={() => {
                                         setSelectedFollowUp(null)
                                         setNotes('')
+                                        setDisposition('')
                                       }}
                                     >
                                       Cancel
@@ -787,9 +927,10 @@ export default function FollowUpCalls() {
                                     <Button 
                                       onClick={() => {
                                         if (selectedFollowUp) {
-                                          updateFollowUpStatus(selectedFollowUp.id, 'completed', notes)
+                                          updateFollowUpStatus(selectedFollowUp.id, disposition, notes)
                                           setSelectedFollowUp(null)
                                           setNotes('')
+                                          setDisposition('')
                                         }
                                       }}
                                     >
@@ -829,7 +970,7 @@ export default function FollowUpCalls() {
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-xs font-medium">
-                              {call.disposition || 'Unknown'}
+                              {call.remarks || 'Unknown'}
                             </span>
                             {call.call_duration && (
                               <span className="text-xs">
@@ -838,6 +979,11 @@ export default function FollowUpCalls() {
                             )}
                           </div>
                         </div>
+                        {call.Followup_notes && (
+                          <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs">
+                            <span className="font-medium">Notes:</span> {call.Followup_notes}
+                          </div>
+                        )}
                         </CardContent>
                       </Card>
                   ))}
