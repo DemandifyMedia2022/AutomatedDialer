@@ -591,9 +591,20 @@ router.get('/analytics/leaderboard/stream', requireAuth, requireRoles(['agent', 
     const qRemarks = (req.query.remarks || '').toString().trim()
     if (qRemarks) where.AND.push({ remarks: qRemarks })
     const qStatus = (req.query.status || '').toString().trim()
-    if (qStatus) where.AND.push({ disposition: { equals: qStatus } })
+
     const qDir = (req.query.direction || '').toString().trim()
     if (qDir) where.AND.push({ direction: qDir })
+
+    // Filter calls based on remarks containing specific values
+    where.AND.push({
+      OR: [
+        { remarks: { contains: 'Not Answered' } },
+        { remarks: { contains: 'Busy' } },
+        { remarks: { contains: 'Follow-Ups' } },
+        { remarks: { contains: 'Follow Ups' } },
+        { remarks: { contains: 'FollowUps' } },
+      ]
+    })
 
     const [total, items] = await Promise.all([
       (db as any).calls.count({ where }),
@@ -644,10 +655,12 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     if (qDest) where.AND.push({ destination: { contains: qDest } })
     const qExt = (req.query.extension || '').toString().trim()
     if (qExt) where.AND.push({ extension: qExt })
-    const qStatus = (req.query.status || '').toString().trim()
-    if (qStatus) where.AND.push({ disposition: { equals: qStatus } })
+
+
     const qDir = (req.query.direction || '').toString().trim()
     if (qDir) where.AND.push({ direction: qDir })
+
+    // Removed disposition filtering to show all calls
 
     const [total, items] = await Promise.all([
       (db as any).calls.count({ where }),

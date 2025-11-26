@@ -48,10 +48,7 @@ export default function FollowUpCalls() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("pending")
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
-    const today = new Date()
-    return { from: today, to: today }
-  })
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
   const [sortBy, setSortBy] = useState<'date' | 'priority' | 'number'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [selectedFollowUp, setSelectedFollowUp] = useState<FollowUpCall | null>(null)
@@ -118,21 +115,12 @@ export default function FollowUpCalls() {
         const uniqueRemarks = [...new Set(allCalls.map((call: FollowUpCall) => call.remarks).filter(Boolean))]
         console.log('Unique remarks found:', uniqueRemarks)
         
-        // Filter calls on client side to include calls with NO ANSWER, BUSY, CALL FAILED, or Follow-up in remarks
-        // Explicitly exclude ANSWERED calls
+        // Filter calls to show only Busy, Not Answered, Disconnected, and Follow-Ups
         const filteredCalls = allCalls.filter((call: FollowUpCall) => {
           const remarks = (call.remarks || '').toLowerCase().trim()
           const disposition = (call.disposition || '').toUpperCase().trim()
           
-          // First, exclude any ANSWERED calls
-          const isAnswered = remarks.includes('answered') || 
-                            disposition.includes('ANSWERED')
-          
-          if (isAnswered) {
-            return false
-          }
-          
-          // Check for NO ANSWER in remarks or disposition (disposition is in CAPS)
+          // Check for NO ANSWER in remarks or disposition
           const hasNoAnswer = remarks.includes('no answer') || 
                             remarks.includes('no-answer') ||
                             remarks.includes('noanswer') ||
@@ -140,19 +128,17 @@ export default function FollowUpCalls() {
                             disposition.includes('NO-ANSWER') ||
                             disposition.includes('NOANSWER')
           
-          // Check for BUSY in remarks or disposition (disposition is in CAPS)
+          // Check for BUSY in remarks or disposition
           const hasBusy = remarks.includes('busy') || 
                         disposition.includes('BUSY')
           
-          // Check for CALL FAILED in remarks or disposition
-          const hasCallFailed = remarks.includes('call failed') ||
-                               remarks.includes('call-failed') ||
-                               remarks.includes('callfailed') ||
-                               disposition.includes('CALL FAILED') ||
-                               disposition.includes('CALL-FAILED') ||
-                               disposition.includes('CALLFAILED')
+          // Check for DISCONNECTED in remarks or disposition
+          const hasDisconnected = remarks.includes('disconnected') ||
+                                remarks.includes('disconnect') ||
+                                disposition.includes('DISCONNECTED') ||
+                                disposition.includes('DISCONNECT')
           
-          // Check for Follow-up in remarks or disposition (disposition is in CAPS)
+          // Check for Follow-up in remarks or disposition
           const hasFollowUp = remarks.includes('follow-up') || 
                             remarks.includes('follow up') ||
                             remarks.includes('followup') ||
@@ -160,39 +146,18 @@ export default function FollowUpCalls() {
                             disposition.includes('FOLLOW UP') ||
                             disposition.includes('FOLLOWUP')
           
-          const shouldInclude = hasNoAnswer || hasBusy || hasCallFailed || hasFollowUp
+          // Exclude Lead calls
+          const isLeadCall = remarks.includes('lead') || 
+                           disposition.includes('LEAD') ||
+                           disposition.includes('LEAD CALL')
           
-          if (isAnswered) {
-            console.log('Excluding ANSWERED call:', {
-              id: call.id,
-              remarks: call.remarks,
-              disposition: call.disposition,
-              reason: 'ANSWERED - excluded'
-            })
-            return false
-          }
-          
-          if (shouldInclude) {
-            console.log('Including call:', {
-              id: call.id,
-              remarks: call.remarks,
-              disposition: call.disposition,
-              reason: hasNoAnswer ? 'NO ANSWER' : hasBusy ? 'BUSY' : hasCallFailed ? 'CALL FAILED' : 'FOLLOW-UP'
-            })
-          }
+          const shouldInclude = (hasNoAnswer || hasBusy || hasDisconnected || hasFollowUp) && !isLeadCall
           
           return shouldInclude
         })
         
         console.log('Filtered calls count:', filteredCalls.length)
-        
-        // If no specific matches found, show first 10 calls for debugging
-        if (filteredCalls.length === 0 && allCalls.length > 0) {
-          console.log('No matches found, showing first 10 calls for debugging')
-          setFollowUps(allCalls.slice(0, 10))
-        } else {
-          setFollowUps(filteredCalls)
-        }
+        setFollowUps(filteredCalls)
         
         // TODO: Uncomment the filtering logic once we confirm data is flowing
         /*
@@ -607,8 +572,8 @@ export default function FollowUpCalls() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold">Pending Failed Calls</h1>
-                <p className="text-muted-foreground">View today's pending NO ANSWER, BUSY, and CALL FAILED calls</p>
+                <h1 className="text-2xl font-bold">Pending Follow-up Calls</h1>
+                <p className="text-muted-foreground">View Busy, Not Answered, Disconnected, and Follow-up calls (excluding Lead calls)</p>
               </div>
             </div>
 
@@ -628,42 +593,22 @@ export default function FollowUpCalls() {
                     </div>
                     
                     <div className="w-full lg:w-auto">
-                      <label className="text-sm font-medium mb-2 block">Date Range</label>
+                      <label className="text-sm font-medium mb-2 block">Date Range (Disabled)</label>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
+                            disabled
                             className={cn(
-                              "w-full lg:w-[280px] justify-start text-left font-normal",
+                              "w-full lg:w-[280px] justify-start text-left font-normal opacity-50 cursor-not-allowed",
                               !dateRange && "text-muted-foreground"
                             )}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
-                            {dateRange?.from ? (
-                              dateRange.to ? (
-                                <>
-                                  {format(dateRange.from, "LLL dd, y")} -{" "}
-                                  {format(dateRange.to, "LLL dd, y")}
-                                </>
-                              ) : (
-                                format(dateRange.from, "LLL dd, y")
-                              )
-                            ) : (
-                              <span>Pick a date range</span>
-                            )}
+                            <span>Date filter temporarily disabled</span>
                           </Button>
                         </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        initialFocus
-                        mode="range"
-                        defaultMonth={dateRange?.from}
-                        selected={dateRange}
-                        onSelect={setDateRange}
-                        numberOfMonths={2}
-                      />
-                    </PopoverContent>
-                  </Popover>
+                      </Popover>
                     </div>
 
                   <div className="w-full lg:w-auto">
@@ -761,7 +706,7 @@ export default function FollowUpCalls() {
                     <p className="text-muted-foreground max-w-md mx-auto">
                       {searchTerm || statusFilter !== "all"
                         ? "No follow-up calls match your current filters. Try adjusting your search or filter criteria."
-                        : "Great! You don't have any NO ANSWER, BUSY, CALL FAILED, or Follow-up calls in the selected date range."}
+                        : "Great! You don't have any Busy, Not Answered, Disconnected, or Follow-up calls (excluding Lead calls)."}
                     </p>
                   </CardContent>
                 </Card>
@@ -856,7 +801,18 @@ export default function FollowUpCalls() {
                             </Dialog>
                           </div>
                         </div>
-                        <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+                        {call.remarks && (
+                          <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                            <div className="flex items-center gap-2 mb-1">
+                              <MessageSquare className="w-4 h-4 text-gray-500" />
+                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Remarks:</span>
+                            </div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 break-words">
+                              {call.remarks}
+                            </p>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400 mt-3">
                           <div className="flex items-center gap-4">
                             <div className="flex items-center gap-1">
                               <CalendarIcon className="w-4 h-4" />
