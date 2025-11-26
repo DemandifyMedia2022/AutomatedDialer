@@ -11,14 +11,6 @@ import { updateLiveCallPhase } from '../routes/livecalls'
 
 const router = Router()
 
-console.log('[CALLS] Router loaded, registering routes')
-
-// Test route to verify router is working
-router.get('/test', (req, res) => {
-  console.log('[CALLS] Test route hit')
-  res.json({ message: 'Calls router is working' })
-})
-
 // Storage for recordings
 const recordingsPath = path.isAbsolute(env.RECORDINGS_DIR)
   ? env.RECORDINGS_DIR

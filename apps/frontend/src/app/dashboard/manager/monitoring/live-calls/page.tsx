@@ -98,6 +98,9 @@ export default function LiveCallsPage() {
   const [sipConfig, setSipConfig] = useState<{ wssUrl: string; domain: string; stunServer?: string } | null>(null)
   const [sipReady, setSipReady] = useState(false)
   const [sipError, setSipError] = useState<string | null>(null)
+  const [monitorMsg, setMonitorMsg] = useState<string | null>(null)
+  const [monitorErr, setMonitorErr] = useState<string | null>(null)
+  const [monitoring, setMonitoring] = useState<boolean>(false)
 
   useEffect(() => {
     let mounted = true
@@ -136,7 +139,11 @@ export default function LiveCallsPage() {
 
     // Subscribe to socket updates
     try {
-      const s = io(BACKEND, { withCredentials: true, transports: ['websocket'] })
+      const s = io(BACKEND, {
+        withCredentials: USE_AUTH_COOKIE,
+        transports: ['websocket'],
+        auth: USE_AUTH_COOKIE ? undefined : { token: getToken() || undefined },
+      })
       sref.current = s
       s.on('live:calls:update', (arr: LiveCall[]) => { if (Array.isArray(arr)) setItems(arr) })
       s.on('presence:update', () => {
@@ -202,6 +209,22 @@ export default function LiveCallsPage() {
           }
         }
       })
+      session.on("accepted", () => {
+        setMonitoring(true)
+        setMonitorErr(null)
+        setMonitorMsg("Monitoring active")
+        setTimeout(() => setMonitorMsg(null), 2500)
+      })
+      session.on("failed", () => {
+        setMonitoring(false)
+        setMonitorErr("Monitor call failed")
+        setTimeout(() => setMonitorErr(null), 3000)
+      })
+      session.on("ended", () => {
+        setMonitoring(false)
+        setMonitorMsg("Monitoring ended")
+        setTimeout(() => setMonitorMsg(null), 2500)
+      })
       session.on("confirmed", () => {
         try {
           const pc: RTCPeerConnection = (session as any).connection
@@ -261,11 +284,21 @@ export default function LiveCallsPage() {
       }
       // Avoid overlapping sessions
       try { sessionRef.current?.terminate() } catch {}
+      setMonitoring(true)
+      setMonitorErr(null)
+      setMonitorMsg(`Dialing ${targetUser}…`)
       uaRef.current.call(`sip:${targetUser}@${cfg.domain}`, options)
     } catch (e) {
       setSipError('Monitor call failed')
     }
   }, [fetchSipConfig, sipConfig])
+
+  const stopMonitor = useCallback(() => {
+    try { sessionRef.current?.terminate() } catch {}
+    setMonitoring(false)
+    setMonitorMsg("Monitoring ended")
+    setTimeout(() => setMonitorMsg(null), 2000)
+  }, [])
 
   return (
     <SidebarProvider>
@@ -311,7 +344,23 @@ export default function LiveCallsPage() {
                   {sipError}
                 </div>
               )}
+              {monitorMsg && (
+                <div className="rounded-md border bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200 px-4 py-3 text-sm">
+                  {monitorMsg}
+                </div>
+              )}
+              {monitorErr && (
+                <div className="rounded-md border bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-200 px-4 py-3 text-sm">
+                  {monitorErr}
+                </div>
+              )}
               <audio ref={remoteAudioRef} autoPlay className="hidden" />
+
+              {monitoring && (
+                <div className="flex items-center justify-end">
+                  <Button variant="destructive" onClick={stopMonitor}>Stop Monitor</Button>
+                </div>
+              )}
 
               <div className="rounded-md border overflow-hidden">
                 <Table>

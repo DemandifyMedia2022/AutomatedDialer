@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { useAuth } from '@/hooks/useAuth'
+import { USE_AUTH_COOKIE, getToken } from '@/lib/auth'
 
 type Status = 'OFFLINE'|'AVAILABLE'|'ON_CALL'|'IDLE'|'BREAK'
 
@@ -12,9 +12,8 @@ function getCookie(name: string) {
 }
 
 export function useAgentPresence() {
-  const { user, loading: authLoading } = useAuth()
   const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'
-  const [status, setStatusState] = useState<Status>('OFFLINE')
+  const [status, setStatusState] = useState<Status>('AVAILABLE')
   const [breakReasons, setBreakReasons] = useState<Array<{id:number; code:string; label:string}>>([])
   const [totalTodaySeconds, setTotalTodaySeconds] = useState<number>(0)
   const [loading, setLoading] = useState(false)
@@ -22,21 +21,6 @@ export function useAgentPresence() {
   const lastChangeRef = useRef<number>(Date.now())
   const socketRef = useRef<Socket | null>(null)
   const pollRef = useRef<any>(null)
-
-  // Don't make API calls if user is not authenticated
-  if (!user && !authLoading) {
-    return { 
-      status: 'OFFLINE', 
-      setStatus: async () => {}, 
-      startBreak: async () => {}, 
-      endBreak: async () => {}, 
-      breakReasons: [], 
-      loading: false, 
-      secondsSinceChange: 0, 
-      totalTodaySeconds: 0, 
-      reloadBreaks: async () => {} 
-    }
-  }
 
   const credentials: RequestCredentials = 'include'
 
@@ -112,52 +96,48 @@ export function useAgentPresence() {
   
 
   useEffect(() => {
-    if (user) {
-      loadBreaks(); loadMe(); loadSummary()
-    }
-  }, [user, loadBreaks, loadMe, loadSummary])
+    loadBreaks(); loadMe(); loadSummary()
+  }, [loadBreaks, loadMe, loadSummary])
 
   useEffect(() => {
-    if (user) {
-      heartbeat()
-      hbRef.current = setInterval(heartbeat, 30000)
-      const onVis = () => { if (document.visibilityState === 'visible') heartbeat() }
-      document.addEventListener('visibilitychange', onVis)
-      return () => { if (hbRef.current) clearInterval(hbRef.current); document.removeEventListener('visibilitychange', onVis) }
-    }
-  }, [heartbeat, user])
+    heartbeat()
+    hbRef.current = setInterval(heartbeat, 30000)
+    const onVis = () => { if (document.visibilityState === 'visible') heartbeat() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { if (hbRef.current) clearInterval(hbRef.current); document.removeEventListener('visibilitychange', onVis) }
+  }, [heartbeat])
 
   useEffect(() => {
-    if (user) {
-      try {
-        const s = io(API_BASE, { withCredentials: true, transports: ['websocket'] })
-        socketRef.current = s
-        s.on('connect', () => {})
-        s.on('presence:update', (p: any) => {
-          if (p?.status) setStatusState(p.status as Status)
-          if (p?.since) {
-            const t = new Date(p.since).getTime(); if (!isNaN(t)) lastChangeRef.current = t
-          } else {
-            lastChangeRef.current = Date.now()
-          }
-        })
-        s.on('break:started', () => { setStatusState('BREAK'); lastChangeRef.current = Date.now() })
-        s.on('break:ended', () => { setStatusState('AVAILABLE'); lastChangeRef.current = Date.now() })
-        s.on('session:closed', () => { setStatusState('OFFLINE'); lastChangeRef.current = Date.now() })
-        return () => { try { s.disconnect() } catch {} }
-      } catch { return }
-    }
-  }, [API_BASE, user])
+    try {
+      const s = io(API_BASE, {
+        withCredentials: USE_AUTH_COOKIE,
+        transports: ['websocket'],
+        auth: USE_AUTH_COOKIE ? undefined : { token: getToken() || undefined },
+      })
+      socketRef.current = s
+      s.on('connect', () => {})
+      s.on('presence:update', (p: any) => {
+        if (p?.status) setStatusState(p.status as Status)
+        if (p?.since) {
+          const t = new Date(p.since).getTime(); if (!isNaN(t)) lastChangeRef.current = t
+        } else {
+          lastChangeRef.current = Date.now()
+        }
+      })
+      s.on('break:started', () => { setStatusState('BREAK'); lastChangeRef.current = Date.now() })
+      s.on('break:ended', () => { setStatusState('AVAILABLE'); lastChangeRef.current = Date.now() })
+      s.on('session:closed', () => { setStatusState('OFFLINE'); lastChangeRef.current = Date.now() })
+      return () => { try { s.disconnect() } catch {} }
+    } catch { return }
+  }, [API_BASE])
 
   // Fallback: periodic polling to auto-refresh UI even if WS is unavailable
   useEffect(() => {
-    if (user) {
-      const doPoll = async () => { try { await loadMe(); await loadSummary() } catch {} }
-      doPoll()
-      pollRef.current = setInterval(doPoll, 5000)
-      return () => { if (pollRef.current) clearInterval(pollRef.current) }
-    }
-  }, [loadMe, loadSummary, user])
+    const doPoll = async () => { try { await loadMe(); await loadSummary() } catch {} }
+    doPoll()
+    pollRef.current = setInterval(doPoll, 5000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [loadMe, loadSummary])
 
   const secondsSinceChange = Math.max(0, Math.floor((Date.now() - lastChangeRef.current) / 1000))
 

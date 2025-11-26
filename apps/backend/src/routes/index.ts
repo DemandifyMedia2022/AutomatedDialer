@@ -17,7 +17,6 @@ import transcription from './transcription';
 import qa from './qa';
 import dmForm from './dmForm';
 import { getLiveCalls, updateLiveCallPhase } from './livecalls';
-import calls from './calls';
 
 import { env } from '../config/env';
 import multer from 'multer';
@@ -48,7 +47,6 @@ router.use('/extension-dids', extensionDids);
 router.use('/transcription', transcription);
 router.use('/qa', qa);
 router.use('/dm-form', dmForm);
-router.use('/calls', calls);
 
 router.get('/sip/config', (_req, res) => {
   res.json({
@@ -544,15 +542,15 @@ router.get('/analytics/leaderboard/stream', requireAuth, requireRoles(['agent', 
     res.setHeader('Connection', 'keep-alive')
     res.flushHeaders?.()
 
-    const fromDate = req.query.from ? new Date(String(req.query.from)) : null
-    const toDate = req.query.to ? new Date(String(req.query.to)) : null
+    const from = req.query.from ? new Date(String(req.query.from)) : null
+    const to = req.query.to ? new Date(String(req.query.to)) : null
     const pool = getPool()
 
     const build = () => {
       const params: any[] = []
       const timeParts: string[] = []
-      if (fromDate) { timeParts.push('start_time >= ?'); params.push(fromDate) }
-      if (toDate) { timeParts.push('start_time <= ?'); params.push(toDate) }
+      if (from) { timeParts.push('start_time >= ?'); params.push(from) }
+      if (to) { timeParts.push('start_time <= ?'); params.push(to) }
       const where = timeParts.length ? `WHERE ${timeParts.join(' AND ')}` : ''
       const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
                    FROM calls ${where}
@@ -576,12 +574,23 @@ router.get('/analytics/leaderboard/stream', requireAuth, requireRoles(['agent', 
     await tick()
     const timer = setInterval(tick, 3000)
     req.on('close', () => { try { clearInterval(timer) } catch { } })
-    // Pagination
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'qa', 'superadmin']), async (req: any, res: any, next: any) => {
+  try {
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1)
     const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize || '20'), 10) || 20))
     const skip = (page - 1) * pageSize
-    
+
     const where: any = { AND: [] as any[] }
+    const from = req.query.from ? new Date(String(req.query.from)) : null
+    const to = req.query.to ? new Date(String(req.query.to)) : null
+    if (from || to) where.AND.push({ start_time: { gte: from || undefined, lte: to || undefined } })
+    const qDest = (req.query.destination || req.query.phone || '').toString().trim()
+    if (qDest) where.AND.push({ destination: { contains: qDest } })
     const qUser = (req.query.username || '').toString().trim()
     if (qUser) where.AND.push({ username: qUser })
     const qUsermail = (req.query.useremail || req.query.usermail || '').toString().trim()
@@ -591,20 +600,9 @@ router.get('/analytics/leaderboard/stream', requireAuth, requireRoles(['agent', 
     const qRemarks = (req.query.remarks || '').toString().trim()
     if (qRemarks) where.AND.push({ remarks: qRemarks })
     const qStatus = (req.query.status || '').toString().trim()
-
+    if (qStatus) where.AND.push({ disposition: { equals: qStatus } })
     const qDir = (req.query.direction || '').toString().trim()
     if (qDir) where.AND.push({ direction: qDir })
-
-    // Filter calls based on remarks containing specific values
-    where.AND.push({
-      OR: [
-        { remarks: { contains: 'Not Answered' } },
-        { remarks: { contains: 'Busy' } },
-        { remarks: { contains: 'Follow-Ups' } },
-        { remarks: { contains: 'Follow Ups' } },
-        { remarks: { contains: 'FollowUps' } },
-      ]
-    })
 
     const [total, items] = await Promise.all([
       (db as any).calls.count({ where }),
@@ -655,12 +653,10 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     if (qDest) where.AND.push({ destination: { contains: qDest } })
     const qExt = (req.query.extension || '').toString().trim()
     if (qExt) where.AND.push({ extension: qExt })
-
-
+    const qStatus = (req.query.status || '').toString().trim()
+    if (qStatus) where.AND.push({ disposition: { equals: qStatus } })
     const qDir = (req.query.direction || '').toString().trim()
     if (qDir) where.AND.push({ direction: qDir })
-
-    // Removed disposition filtering to show all calls
 
     const [total, items] = await Promise.all([
       (db as any).calls.count({ where }),

@@ -123,8 +123,37 @@ export async function transcribeAudioChunk(
             return;
         }
 
-        // Convert buffer to file-like object for OpenAI API using toFile helper
-        // This properly handles Node.js Buffer types
+        // Skip if buffer is too small (likely incomplete or corrupt audio data)
+        if (audioBuffer.length < 100) {
+            console.warn(`[TranscriptionService] Audio chunk too small (${audioBuffer.length} bytes), skipping`);
+            return;
+        }
+
+        console.log(`[TranscriptionService] Processing audio chunk: ${audioBuffer.length} bytes, first 4 bytes: ${audioBuffer.slice(0, 4).toString('hex')}`);
+
+        // Verify this is a valid WebM file by checking the header
+        // WebM files start with 0x1A 0x45 0xDF 0xA3 (EBML header)
+        const isValidWebM = audioBuffer.length >= 4 && 
+            audioBuffer[0] === 0x1A && 
+            audioBuffer[1] === 0x45 && 
+            audioBuffer[2] === 0xDF && 
+            audioBuffer[3] === 0xA3;
+
+        if (!isValidWebM) {
+            console.warn(`[TranscriptionService] Invalid WebM format detected. Header: ${audioBuffer.slice(0, Math.min(20, audioBuffer.length)).toString('hex')}`);
+            
+            // Try to save the problematic chunk for debugging
+            try {
+                const debugPath = path.join(recordingsPath, `debug_chunk_${Date.now()}.bin`);
+                await fs.promises.writeFile(debugPath, audioBuffer);
+                console.log(`[TranscriptionService] Saved problematic chunk to ${debugPath}`);
+            } catch (err) {
+                console.error('[TranscriptionService] Failed to save debug chunk:', err);
+            }
+            return;
+        }
+
+        // Convert buffer to file-like object for OpenAI API
         const audioFile = await toFile(audioBuffer, 'audio.webm', { type: 'audio/webm' });
 
         // Call OpenAI Whisper API

@@ -125,6 +125,7 @@ const humanizeDmField = (key: string) => {
 }
 
 export default function ManualDialerPage() {
+  const TRANSFER_MODE: 'dtmf' | 'refer-then-dtmf' = 'dtmf'
   const [ext, setExt] = useState("")
   const [pwd, setPwd] = useState("")
   const [number, setNumber] = useState("")
@@ -133,7 +134,7 @@ export default function ManualDialerPage() {
   const [error, setError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
-    const [showPopup, setShowPopup] = useState(false)
+  const [showPopup, setShowPopup] = useState(false)
   const [callHistory, setCallHistory] = useState<any[]>([])
   const [liveSegments, setLiveSegments] = useState<Array<{ speaker?: string; text: string }>>([])
   const lastDialedNumber = useMemo(() => {
@@ -153,7 +154,7 @@ export default function ManualDialerPage() {
   const [docsLoading, setDocsLoading] = useState(false)
   const [docQuery, setDocQuery] = useState("")
   const [previewDoc, setPreviewDoc] = useState<any | null>(null)
-  const [selectedCampaign, setSelectedCampaign] = useState<string>("")
+  const [selectedCampaign, setSelectedCampaign] = useState<string | undefined>(undefined)
   const { campaigns, loading: campaignsLoading } = useCampaigns()
 
   // Draggable in-call popup position
@@ -172,6 +173,7 @@ export default function ManualDialerPage() {
   const hasAnsweredRef = useRef<boolean>(false)
   const uploadedOnceRef = useRef<boolean>(false)
   const dialStartRef = useRef<number | null>(null)
+  const sipDomainRef = useRef<string | null>(null)
 
   // Recording refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -200,7 +202,6 @@ export default function ManualDialerPage() {
 
   const appliedLastDialOnce = useRef(false)
 
-  
   // Post-call disposition modal state
   const [showDisposition, setShowDisposition] = useState(false)
   const [disposition, setDisposition] = useState("")
@@ -220,17 +221,14 @@ export default function ManualDialerPage() {
 
   useEffect(() => {
     try {
-      if (selectedCampaign === "") {
-        localStorage.removeItem("manual_dialer_campaign")
-      } else {
-        localStorage.setItem("manual_dialer_campaign", selectedCampaign)
-      }
+      if (!selectedCampaign) localStorage.removeItem("manual_dialer_campaign")
+      else localStorage.setItem("manual_dialer_campaign", selectedCampaign)
     } catch {}
   }, [selectedCampaign])
 
   useEffect(() => {
     setDmForm((prev) => {
-      const next = selectedCampaign
+      const next = selectedCampaign ?? ''
       if (prev.f_campaign_name === next) return prev
       return { ...prev, f_campaign_name: next }
     })
@@ -618,6 +616,7 @@ export default function ManualDialerPage() {
     if (!window.JsSIP) throw new Error("JsSIP not loaded")
 
     const { wssUrl, domain, stunServer } = await fetchSipConfig()
+    sipDomainRef.current = domain
 
     const socket = new window.JsSIP.WebSocketInterface(wssUrl)
 
@@ -648,7 +647,6 @@ export default function ManualDialerPage() {
 
       session.on("peerconnection", (e: any) => {
         const pc: RTCPeerConnection = e.peerconnection
-        
         attachRemoteAudio(pc)
       })
 
@@ -701,9 +699,7 @@ export default function ManualDialerPage() {
           reasonL.includes('no answer') || reasonL.includes('timeout') || reasonL.includes('temporarily unavailable') || reasonL.includes('unavailable')
         )
         setStatus(isBusy ? "Busy" : isNoAnswer ? "No Answer" : "Call Failed")
-        
         setError(e?.cause || "Call failed")
-        
         clearTimer()
         // Keep the popup visible to show final status to the agent
         setShowPopup(true)
@@ -711,11 +707,7 @@ export default function ManualDialerPage() {
           if (isBusy) {
             try { await startBusyTone(); setTimeout(() => stopBusyTone(), 3000) } catch {}
           }
-          setPendingUploadExtra({ 
-            sip_status: code || undefined, 
-            sip_reason: reason || undefined, 
-            hangup_cause: isBusy ? 'busy' : undefined 
-          })
+          setPendingUploadExtra({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : undefined })
           setShowDisposition(true)
         }
         try { await sendPhase('ended') } catch {}
@@ -731,11 +723,104 @@ export default function ManualDialerPage() {
         }
         try { await sendPhase('ended') } catch {}
       })
+
+      // Incoming call handling
+      try {
+        if (session.direction === "incoming") {
+          const remoteUser = (() => {
+            try { return String(session.remote_identity?.uri?.user || session.remote_identity?.display_name || 'Unknown') } catch { return 'Unknown' }
+          })()
+          setStatus(`Incoming from ${remoteUser}`)
+          setShowPopup(true)
+          setShowIncomingPrompt(true)
+        }
+      } catch {}
     })
 
     ua.start()
     uaRef.current = ua
   }, [attachRemoteAudio, fetchSipConfig, ensureSocket, createLiveSession])
+
+  // --- Staff list for transfer ---
+  const [staff, setStaff] = useState<Array<{ id: number; username: string | null; extension: string | null }>>([])
+  const [transferTarget, setTransferTarget] = useState<string>("")
+  const [showTransfer, setShowTransfer] = useState(false)
+  const [showIncomingPrompt, setShowIncomingPrompt] = useState(false)
+  const [isTransferring, setIsTransferring] = useState(false)
+  useEffect(() => {
+    const loadStaff = async () => {
+      try {
+        const headers: Record<string, string> = {}
+        let credentials: RequestCredentials = 'omit'
+        if (USE_AUTH_COOKIE) {
+          credentials = 'include'
+        } else {
+          const t = getToken(); if (t) headers['Authorization'] = `Bearer ${t}`
+        }
+        const res = await fetch(`${API_PREFIX}/agents/peers`, { credentials, headers })
+        const j = await res.json().catch(() => null as any)
+        const arr = Array.isArray(j?.users) ? j.users : []
+        setStaff(arr.map((u: any) => ({ id: Number(u.id), username: u.username || null, extension: u.extension || null })))
+      } catch {}
+    }
+    loadStaff()
+  }, [])
+
+  const transferCall = async () => {
+    if (!sessionRef.current) { setError('No active call to transfer'); return }
+    const targetExt = String(transferTarget || '').trim()
+    if (!targetExt) { setError('Select an extension to transfer'); return }
+    if (isTransferring) return
+    setIsTransferring(true)
+    // Prefer SIP REFER when supported (only if mode allows)
+    const domain = sipDomainRef.current || ''
+    try {
+      if (TRANSFER_MODE === 'dtmf') {
+        // Skip REFER entirely and use PBX feature codes
+        throw new Error('DTMF-only mode')
+      }
+      if (typeof sessionRef.current.refer === 'function' && domain) {
+        // Attach handlers so a failed REFER does not end the original call
+        const sub = sessionRef.current.refer(`sip:${targetExt}@${domain}`)
+        setStatus(`Transferring to ${targetExt}…`)
+        try {
+          sub.on('requestSucceeded', () => {
+            // REFER accepted by PBX; further NOTIFY may indicate outcome
+          })
+          sub.on('requestFailed', (req: any, cause: any) => {
+            const code = cause?.status_code || req?.status_code || 0
+            const reason = cause?.reason_phrase || req?.reason_phrase || 'failed'
+            setError(`Transfer failed (REFER): ${code} ${reason}. Falling back to DTMF transfer…`)
+            setStatus('In Call')
+            // Fallback to DTMF: #1 then *<ext># per PBX guide
+            sendTransferDTMF(targetExt)
+          })
+          sub.on('notify', (n: any) => {
+            // Optionally parse NOTIFY body for transfer progress/success
+          })
+        } catch {}
+        return
+      }
+    } catch {}
+    // No REFER support; use PBX DTMF transfer
+    sendTransferDTMF(targetExt)
+    // Auto-clear transferring flag after a short period
+    setTimeout(() => setIsTransferring(false), 6000)
+  }
+
+  const sendTransferDTMF = (ext: string) => {
+    try {
+      setStatus(`Transferring (DTMF) to ${ext}…`)
+      sendDTMFSeq('#1')
+      // Wait ~3s for PBX to play the transfer prompt
+      setTimeout(() => {
+        try { sendDTMFSeq(`*${ext}#`) } catch {}
+      }, 3000)
+    } catch {
+      setError('DTMF transfer failed')
+      setStatus('In Call')
+    }
+  }
 
   const clearTimer = () => {
     if (timerRef.current) window.clearInterval(timerRef.current)
@@ -876,9 +961,8 @@ export default function ManualDialerPage() {
     const options = {
       eventHandlers,
       mediaConstraints: { audio: true, video: false },
-      extraSessionHeaders: {
-        'User-Agent': 'AutomatedDialer-WebRTC/1.0'
-      }
+      pcConfig: { rtcpMuxPolicy: "require" },
+      rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
     }
 
     try {
@@ -1353,8 +1437,36 @@ export default function ManualDialerPage() {
     try { return (crypto as any).randomUUID?.() || String(Math.random()).slice(2) } catch { return String(Math.random()).slice(2) }
   }
 
-  const sendDTMF = (digit: string) => {
-    try { sessionRef.current?.sendDTMF(digit) } catch {}
+  const sendDTMF = (digit: string, opts?: { duration?: number; interToneGap?: number }) => {
+    try { sessionRef.current?.sendDTMF(digit, { duration: opts?.duration ?? 250, interToneGap: opts?.interToneGap ?? 250 }) } catch {}
+  }
+
+  const sendDTMFSeq = (digits: string, gapMs = 250, toneMs = 250) => {
+    const seq = String(digits || '')
+    if (!seq) return
+    let delay = 0
+    for (const ch of seq) {
+      setTimeout(() => {
+        try { sendDTMF(ch, { duration: toneMs, interToneGap: gapMs }) } catch {}
+      }, delay)
+      delay += gapMs
+    }
+  }
+
+  const acceptIncoming = async () => {
+    try {
+      sessionRef.current?.answer({ mediaConstraints: { audio: true, video: false } })
+      hasAnsweredRef.current = true
+      setShowIncomingPrompt(false)
+    } catch (e: any) {
+      setError(e?.message || 'Failed to answer')
+    }
+  }
+
+  const declineIncoming = () => {
+    try { sessionRef.current?.terminate() } catch {}
+    setShowIncomingPrompt(false)
+    setStatus('Call Rejected')
   }
 
   const onDigit = (digit: string) => {
@@ -1482,17 +1594,25 @@ export default function ManualDialerPage() {
               <div className="mb-3">
                 <Label className="text-xs text-muted-foreground">Campaign</Label>
                 <Select
-                  value={selectedCampaign}
+                  value={selectedCampaign ?? undefined}
                   onValueChange={(value) => setSelectedCampaign(value)}
                   disabled={campaignsLoading || campaigns.length === 0}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select campaign" />
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={campaignsLoading ? "Loading campaigns..." : "Select campaign"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {campaigns.map((c: { key: string; label: string }) => (
-                      <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>
-                    ))}
+                    {campaigns.length === 0 ? (
+                      <SelectItem value="no-campaign" disabled>
+                        {campaignsLoading ? "Loading..." : "No campaigns available"}
+                      </SelectItem>
+                    ) : (
+                      campaigns.map((campaign: { key: string; label: string }) => (
+                        <SelectItem key={campaign.key} value={campaign.key}>
+                          {campaign.label || campaign.key}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
                 <p className="mt-1 text-[11px] text-muted-foreground">
@@ -1500,7 +1620,6 @@ export default function ManualDialerPage() {
                 </p>
               </div>
 
-              
               <div className="mb-3">
                 <Label className="text-xs text-muted-foreground">Phone Number</Label>
                 <div className="mt-1 flex gap-2">
@@ -1829,7 +1948,7 @@ export default function ManualDialerPage() {
                   <Button size="icon" variant="outline" className="rounded-full h-10 w-10" onClick={toggleMute}>
                     {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                   </Button>
-                  <Button size="icon" variant="outline" className="rounded-full h-10 w-10" onClick={() => sendDTMF("5")}>{/* keypad demo */}
+                  <Button size="icon" variant="outline" className="rounded-full h-10 w-10" onClick={() => sendDTMF("5")}>
                     <Grid2X2 className="h-4 w-4" />
                   </Button>
                   <Button size="icon" variant="destructive" className="rounded-full h-12 w-12" onClick={hangup}>
@@ -1838,10 +1957,36 @@ export default function ManualDialerPage() {
                   <Button size="icon" variant="outline" className="rounded-full h-10 w-10">
                     <Pause className="h-4 w-4" />
                   </Button>
-                  <Button size="icon" variant="outline" className="rounded-full h-10 w-10">
+                  <Button size="icon" variant="outline" className="rounded-full h-10 w-10" onClick={() => setShowTransfer((v) => !v)}>
                     <UserPlus className="h-4 w-4" />
                   </Button>
                 </div>
+                {showIncomingPrompt && (
+                  <div className="mt-4 flex items-center justify-center gap-3">
+                    <Button variant="default" onClick={acceptIncoming}>Accept</Button>
+                    <Button variant="destructive" onClick={declineIncoming}>Decline</Button>
+                  </div>
+                )}
+                {showTransfer && (
+                  <div className="mt-4 space-y-2">
+                    <div className="text-xs text-muted-foreground">Transfer to user</div>
+                    <Select value={transferTarget} onValueChange={setTransferTarget}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select agent/extension" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[240px] overflow-auto">
+                        {staff.filter((u) => !!u.extension).map((u) => (
+                          <SelectItem key={u.id} value={u.extension || ''}>
+                            {(u.username || 'User')} ({u.extension})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex justify-end">
+                      <Button onClick={transferCall} disabled={!transferTarget || isTransferring}>{isTransferring ? 'Transferring…' : 'Transfer'}</Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

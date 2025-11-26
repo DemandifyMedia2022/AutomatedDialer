@@ -24,4 +24,18 @@ router.get('/me/credentials', requireRoles(['agent', 'manager', 'superadmin']), 
   }
 })
  
+// List peers (agents) with assigned extensions for transfer targeting
+router.get('/peers', requireRoles(['agent', 'manager', 'superadmin']), async (_req, res, next) => {
+  try {
+    const users = await db.users.findMany({
+      where: { role: 'agent', NOT: { extension: null } },
+      orderBy: { username: 'asc' },
+      select: { id: true, username: true, extension: true },
+    })
+    res.json({ success: true, users })
+  } catch (e) {
+    next(e)
+  }
+})
+ 
 export default router
