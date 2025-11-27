@@ -455,6 +455,7 @@ model dm_form {
   f_lead            String?  @db.VarChar(255)
   f_resource_name   String?  @db.VarChar(255)
   f_data_source     String?  @db.VarChar(255)
+  unique_id         String?  @db.VarChar(255)
   f_salutation      String?  @db.VarChar(255)
   f_first_name      String?  @db.Text
   f_last_name       String?  @db.Text
