@@ -205,12 +205,32 @@ function handleClientMessage(ws: AuthenticatedWebSocket, message: any) {
   }
 }
 
+// Rate limiting for broadcasts
+let lastBroadcastTime = 0;
+let broadcastCount = 0;
+const BROADCAST_RATE_LIMIT = 10; // Max 10 broadcasts per second
+const BROADCAST_WINDOW = 1000; // 1 second window
+
 /**
  * Broadcast activity event to all connected superadmin clients
  */
 export function broadcastActivityEvent(event: ActivityEvent) {
   if (!wss) {
     return;
+  }
+
+  // Rate limiting to prevent spam
+  const now = Date.now();
+  if (now - lastBroadcastTime < BROADCAST_WINDOW) {
+    broadcastCount++;
+    if (broadcastCount > BROADCAST_RATE_LIMIT) {
+      // Silently drop excessive broadcasts
+      return;
+    }
+  } else {
+    // Reset counter for new window
+    lastBroadcastTime = now;
+    broadcastCount = 1;
   }
 
   const eventData = JSON.stringify({
@@ -235,7 +255,8 @@ export function broadcastActivityEvent(event: ActivityEvent) {
     }
   });
 
-  if (sentCount > 0) {
+  // Only log occasionally to reduce console spam
+  if (broadcastCount % 5 === 0 || event.severity === 'error' || event.severity === 'critical') {
     console.log(`[ActivityFeed WS] Broadcasted ${event.type} event to ${sentCount} clients`);
   }
 }

@@ -96,7 +96,11 @@ async function logApiMetrics(data: {
 
       // Broadcast activity event for significant API calls (slow or errors)
       // Only broadcast for superadmin endpoints or errors to avoid spam
-      if (data.endpoint.includes('/superadmin') || data.statusCode >= 400) {
+      // Exclude activity feed endpoints to prevent feedback loop
+      const isActivityFeedEndpoint = data.endpoint.includes('/activity-feed') || 
+                                      data.endpoint.includes('/activity/recent');
+      
+      if (!isActivityFeedEndpoint && (data.endpoint.includes('/superadmin') || data.statusCode >= 400)) {
         logApiActivity(
           data.endpoint,
           data.method,

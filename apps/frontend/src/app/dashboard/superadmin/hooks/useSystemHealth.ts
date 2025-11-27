@@ -79,6 +79,12 @@ export function useSystemHealth(refetchInterval: number = 30000, enableWebSocket
         }, {} as Record<string, string>)
         
         const token = cookies['auth_token'] || cookies['token']
+        
+        if (!token) {
+          console.warn('[SystemHealth] No auth token found, skipping WebSocket connection')
+          return
+        }
+        
         const wsUrl = `${wsBase}/ws/activity-feed${token ? `?token=${encodeURIComponent(token)}` : ''}`
         
         const ws = new WebSocket(wsUrl)
@@ -106,7 +112,8 @@ export function useSystemHealth(refetchInterval: number = 30000, enableWebSocket
         }
         
         ws.onerror = (error) => {
-          console.error('[SystemHealth] WebSocket error:', error)
+          const errorMsg = error instanceof ErrorEvent ? error.message : 'WebSocket connection error'
+          console.error('[SystemHealth] WebSocket error:', errorMsg)
         }
         
         ws.onclose = () => {

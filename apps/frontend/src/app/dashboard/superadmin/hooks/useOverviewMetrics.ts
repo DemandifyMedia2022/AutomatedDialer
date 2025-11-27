@@ -116,6 +116,12 @@ export function useOverviewMetrics(refetchInterval: number = 30000, enableWebSoc
         }, {} as Record<string, string>)
         
         const token = cookies['auth_token'] || cookies['token']
+        
+        if (!token) {
+          console.warn('[OverviewMetrics] No auth token found, skipping WebSocket connection')
+          return
+        }
+        
         const wsUrl = `${wsBase}/ws/activity-feed${token ? `?token=${encodeURIComponent(token)}` : ''}`
         
         const ws = new WebSocket(wsUrl)
@@ -149,7 +155,8 @@ export function useOverviewMetrics(refetchInterval: number = 30000, enableWebSoc
         }
         
         ws.onerror = (error) => {
-          console.error('[OverviewMetrics] WebSocket error:', error)
+          const errorMsg = error instanceof ErrorEvent ? error.message : 'WebSocket connection error'
+          console.error('[OverviewMetrics] WebSocket error:', errorMsg)
         }
         
         ws.onclose = () => {

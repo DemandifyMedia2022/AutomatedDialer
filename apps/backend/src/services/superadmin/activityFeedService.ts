@@ -31,24 +31,32 @@ export async function logActivity(
   // Broadcast to connected WebSocket clients
   broadcastActivityEvent(event);
 
-  // Optionally store in database for history (using audit_logs table)
-  try {
-    await db.audit_logs.create({
-      data: {
-        user_id: metadata?.userId || null,
-        username: metadata?.username || 'system',
-        action: `ACTIVITY_${type.toUpperCase()}`,
-        resource: metadata?.resource || type,
-        resource_id: metadata?.resourceId || null,
-        changes: metadata ? JSON.stringify(metadata) : null,
-        ip: metadata?.ip || null,
-        user_agent: metadata?.userAgent || null,
-        outcome: severity === 'error' || severity === 'critical' ? 'failure' : 'success',
-        timestamp: event.timestamp
-      }
-    });
-  } catch (error) {
-    console.error('[ActivityFeed] Error storing activity in database:', error);
+  // Only store important events in database (errors, warnings, and auth events)
+  // Skip storing routine API calls to prevent database bloat
+  const shouldStore = severity === 'error' || 
+                      severity === 'critical' || 
+                      severity === 'warning' ||
+                      type === 'auth';
+
+  if (shouldStore) {
+    try {
+      await db.audit_logs.create({
+        data: {
+          user_id: metadata?.userId || null,
+          username: metadata?.username || 'system',
+          action: `ACTIVITY_${type.toUpperCase()}`,
+          resource: metadata?.resource || type,
+          resource_id: metadata?.resourceId || null,
+          changes: metadata ? JSON.stringify(metadata) : null,
+          ip: metadata?.ip || null,
+          user_agent: metadata?.userAgent || null,
+          outcome: severity === 'error' || severity === 'critical' ? 'failure' : 'success',
+          timestamp: event.timestamp
+        }
+      });
+    } catch (error) {
+      console.error('[ActivityFeed] Error storing activity in database:', error);
+    }
   }
 }
 

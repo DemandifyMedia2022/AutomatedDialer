@@ -120,8 +120,9 @@ export function useActivityFeed(options: UseActivityFeedOptions = {}): UseActivi
       }
 
       ws.onerror = (event) => {
-        console.error('[ActivityFeed] WebSocket error:', event)
-        setError('WebSocket connection error')
+        const errorMsg = event instanceof ErrorEvent ? event.message : 'WebSocket connection error'
+        console.error('[ActivityFeed] WebSocket error:', errorMsg)
+        setError(errorMsg)
         setIsConnecting(false)
       }
 
@@ -197,8 +198,22 @@ export function useActivityFeed(options: UseActivityFeedOptions = {}): UseActivi
   // Auto-connect on mount if enabled
   useEffect(() => {
     if (autoConnect) {
-      shouldReconnectRef.current = true
-      connect()
+      // Check if we have an auth token before attempting connection
+      const cookies = document.cookie.split(';').reduce((acc, cookie) => {
+        const [key, value] = cookie.trim().split('=')
+        acc[key] = decodeURIComponent(value)
+        return acc
+      }, {} as Record<string, string>)
+      
+      const token = cookies['auth_token'] || cookies['token']
+      
+      if (token) {
+        shouldReconnectRef.current = true
+        connect()
+      } else {
+        console.warn('[ActivityFeed] No auth token found, skipping WebSocket connection')
+        setError('No authentication token available')
+      }
     }
 
     // Cleanup on unmount
