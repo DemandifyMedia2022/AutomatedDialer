@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import routes from './routes';
 import { errorHandler } from './middlewares/errorHandler';
+import { apiMetrics } from './middlewares/apiMetrics';
 import path from 'path';
 import fs from 'fs';
 import { env } from './config/env';
@@ -23,6 +24,8 @@ export function createApp() {
   fs.mkdirSync(recordingsPath, { recursive: true });
   app.use('/uploads', express.static(recordingsPath));
  
+  // API metrics collection middleware (tracks performance for superadmin dashboard)
+  app.use('/api', apiMetrics);
   app.use('/api', routes);
  
   app.use(errorHandler);

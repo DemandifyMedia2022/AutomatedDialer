@@ -13,3 +13,4 @@ export function getPrisma() {
 }
 
 export const db = getPrisma();
+export const prisma = db; // Alias for consistency

@@ -38,8 +38,8 @@ type CallRow = {
   username: string | null
   destination: string | null
   start_time: string
-  disposition: string | null
   recording_url?: string | null
+  remarks?: string | null
 }
 
 export default function QaCallReviewPage() {
@@ -76,6 +76,10 @@ export default function QaCallReviewPage() {
   const [transcript, setTranscript] = React.useState<any | null>(null)
   const [transcriptLoading, setTranscriptLoading] = React.useState(false)
   const [transcriptError, setTranscriptError] = React.useState<string | null>(null)
+  
+  // DM Form fields
+  const [dmFormData, setDmFormData] = React.useState<any | null>(null)
+  const [dmFormLoading, setDmFormLoading] = React.useState(false)
 
   const fetchCalls = React.useCallback(async () => {
     setLoadingCalls(true)
@@ -108,9 +112,9 @@ export default function QaCallReviewPage() {
               username: r.username ?? null,
               destination: r.destination ?? null,
               start_time: r.start_time,
-              disposition: r.disposition ?? null,
               recording_url: r.recording_url ?? null,
-            }))
+              remarks: r.remarks ?? null,
+            })).filter(call => call.remarks === "Lead")
           )
           return
         }
@@ -134,9 +138,9 @@ export default function QaCallReviewPage() {
           username: r.username ?? null,
           destination: r.destination ?? null,
           start_time: r.start_time,
-          disposition: (r.disposition || "") as string,
           recording_url: r.recording_url ?? null,
-        }))
+          remarks: r.remarks ?? null,
+        })).filter(call => call.remarks === "Lead")
       )
     } catch {
       setCalls([])
@@ -334,8 +338,53 @@ export default function QaCallReviewPage() {
     setFAuditDate("")
     setTranscript(null)
     setTranscriptError(null)
+    setDmFormData(null)
   }
 
+  const loadDmFormData = async (callId: number | string) => {
+    setDmFormLoading(true)
+    setDmFormData(null)
+    console.log('Loading DM Form Data for callId:', callId)
+    console.log('API URL:', `${API_BASE}/api/dm-form/lead/${callId}`)
+    try {
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = "omit"
+      if (USE_AUTH_COOKIE) {
+        credentials = "include"
+      } else {
+        const t = getToken()
+        if (t) headers["Authorization"] = `Bearer ${t}`
+      }
+      
+      const res = await fetch(`${API_BASE}/api/dm-form/lead/${callId}`, { headers, credentials })
+      console.log('API Response status:', res.status)
+      
+      if (!res.ok) {
+        if (res.status === 404) {
+          console.log('No DM form data found for this call')
+          setDmFormData(null)
+        } else {
+          const errorText = await res.text().catch(() => 'Unknown error')
+          console.error('API Error:', errorText)
+          throw new Error(`HTTP ${res.status}: ${errorText}`)
+        }
+      } else {
+        const data = (await res.json().catch(() => null)) as any;
+        console.log('DM Form found:', data?.success)
+        if (data?.success && data?.data) {
+          console.log('Form data keys:', Object.keys(data.data))
+          setDmFormData(data.data);
+        } else {
+          setDmFormData(null)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading DM form data:', error)
+      setDmFormData(null)
+    } finally {
+      setDmFormLoading(false)
+    }
+  }
   const loadTranscript = async (callId: number | string) => {
     setTranscriptLoading(true)
     setTranscriptError(null)
@@ -411,6 +460,7 @@ export default function QaCallReviewPage() {
       setLoadingReview(false)
     }
     await loadTranscript(callId)
+    await loadDmFormData(callId)
   }
 
   const openReviewDialog = (callId: number | string) => {
@@ -615,7 +665,7 @@ export default function QaCallReviewPage() {
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Call ID</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Destination</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Start (UTC)</th>
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">Disposition</th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">Remarks</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Recording</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground" />
                     </tr>
@@ -633,7 +683,7 @@ export default function QaCallReviewPage() {
                         <td className="px-3 py-2">{c.id}</td>
                         <td className="px-3 py-2 max-w-[140px] truncate">{c.destination || "-"}</td>
                         <td className="px-3 py-2 whitespace-nowrap">{fmtDateTime(c.start_time)}</td>
-                        <td className="px-3 py-2 whitespace-nowrap">{c.disposition || "-"}</td>
+                        <td className="px-3 py-2 max-w-[150px] truncate">{c.remarks || "-"}</td>
                         <td className="px-3 py-2 min-w-[220px]">
                           {c.recording_url ? (
                             <CompactAudio src={c.recording_url} name={c.id} />
@@ -794,6 +844,171 @@ export default function QaCallReviewPage() {
                 </div>
               </div>
 
+              {/* DM Form Fields - Disabled */}
+              {dmFormLoading ? (
+                <div className="text-sm text-muted-foreground p-4 border rounded-md bg-muted/20">
+                  Loading DM form data...
+                </div>
+              ) : dmFormData ? (
+                <div className="space-y-4">
+                  <div className="text-sm font-medium text-muted-foreground border-b pb-2">DM Form Data (Read-only)</div>
+                  
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div>
+                      <label className="block text-xs mb-1">Salutation</label>
+                      <Input value={dmFormData.f_salutation || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">First Name</label>
+                      <Input value={dmFormData.f_first_name || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Last Name</label>
+                      <Input value={dmFormData.f_last_name || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Job Title</label>
+                      <Input value={dmFormData.f_job_title || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Department</label>
+                      <Input value={dmFormData.f_department || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Job Level</label>
+                      <Input value={dmFormData.f_job_level || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Email</label>
+                      <Input value={dmFormData.f_email_add || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Secondary Email</label>
+                      <Input value={dmFormData.Secondary_Email || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Contact No</label>
+                      <Input value={dmFormData.f_conatct_no || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Company Name</label>
+                      <Input value={dmFormData.f_company_name || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Website</label>
+                      <Input value={dmFormData.f_website || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Address 1</label>
+                      <Input value={dmFormData.f_address1 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">City</label>
+                      <Input value={dmFormData.f_city || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">State</label>
+                      <Input value={dmFormData.f_state || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Zip Code</label>
+                      <Input value={dmFormData.f_zip_code || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Country</label>
+                      <Input value={dmFormData.f_country || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Employee Size</label>
+                      <Input value={dmFormData.f_emp_size || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Industry</label>
+                      <Input value={dmFormData.f_industry || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Sub Industry</label>
+                      <Input value={dmFormData.f_sub_industry || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Revenue</label>
+                      <Input value={dmFormData.f_revenue || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Revenue Link</label>
+                      <Input value={dmFormData.f_revenue_link || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Profile Link</label>
+                      <Input value={dmFormData.f_profile_link || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Company Link</label>
+                      <Input value={dmFormData.f_company_link || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Address Link</label>
+                      <Input value={dmFormData.f_address_link || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Asset Name 1</label>
+                      <Input value={dmFormData.f_asset_name1 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Asset Name 2</label>
+                      <Input value={dmFormData.f_asset_name2 || ""} disabled className="bg-muted" />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div>
+                      <label className="block text-xs mb-1">CQ1</label>
+                      <Input value={dmFormData.f_cq1 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ2</label>
+                      <Input value={dmFormData.f_cq2 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ3</label>
+                      <Input value={dmFormData.f_cq3 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ4</label>
+                      <Input value={dmFormData.f_cq4 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ5</label>
+                      <Input value={dmFormData.f_cq5 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ6</label>
+                      <Input value={dmFormData.f_cq6 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ7</label>
+                      <Input value={dmFormData.f_cq7 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ8</label>
+                      <Input value={dmFormData.f_cq8 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ9</label>
+                      <Input value={dmFormData.f_cq9 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ10</label>
+                      <Input value={dmFormData.f_cq10 || ""} disabled className="bg-muted" />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground p-4 border rounded-md bg-muted/20">
+                  No DM form data available for this call.
+                </div>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="sm:col-span-2 lg:col-span-3">
                   <label className="block text-xs mb-1">QA comments</label>
@@ -801,14 +1016,6 @@ export default function QaCallReviewPage() {
                     className="w-full min-h-[64px] rounded-md border border-input bg-background px-3 py-2 text-sm"
                     value={fQaComments}
                     onChange={(e) => setFQaComments(e.target.value)}
-                  />
-                </div>
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <label className="block text-xs mb-1">General comments</label>
-                  <textarea
-                    className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={comments}
-                    onChange={(e) => setComments(e.target.value)}
                   />
                 </div>
                 <div className="sm:col-span-2 lg:col-span-3">

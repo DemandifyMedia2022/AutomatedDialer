@@ -2,6 +2,8 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { SuperAdminSidebar } from './components/SuperAdminSidebar'
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 
 export default function SuperadminLayout({ children }: { children: React.ReactNode }) {
   const { loading, role } = useAuth()
@@ -25,5 +27,13 @@ export default function SuperadminLayout({ children }: { children: React.ReactNo
   }
 
   if (role !== 'superadmin') return null
-  return <>{children}</>
+  
+  return (
+    <SidebarProvider>
+      <SuperAdminSidebar />
+      <SidebarInset>
+        {children}
+      </SidebarInset>
+    </SidebarProvider>
+  )
 }
