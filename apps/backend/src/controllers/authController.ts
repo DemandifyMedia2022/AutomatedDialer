@@ -7,6 +7,7 @@ import { env } from '../config/env';
 import { signJwt } from '../utils/jwt';
 import { LoginSchema } from '../validators/authSchemas';
 import { ensureSession, closeActiveSession } from '../services/presenceService';
+import { logAuthActivity } from '../services/superadmin/activityFeedService';
 
 const setupSchema = z.object({
   username: z.string().min(1),
@@ -90,10 +91,30 @@ export async function login(req: Request, res: Response) {
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) {
       console.warn('[auth] failed login (bad password)', { email });
+      // Log failed login attempt
+      logAuthActivity(
+        'failed_login',
+        null,
+        email,
+        req.ip || req.socket.remoteAddress || 'unknown',
+        req.get('user-agent') || 'unknown'
+      ).catch(err => console.error('Failed to log auth activity:', err));
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
     const token = signJwt({ userId: user.id, role: (user.role || '').toLowerCase(), email: user.usermail || email });
+
+    // Ensure agent session is opened on successful login
+    try { await ensureSession(user.id, { ip: (req as any).ip, userAgent: req.headers['user-agent'] as any }) } catch {}
+    
+    // Log successful login (only once)
+    logAuthActivity(
+      'login',
+      user.id,
+      user.username || user.usermail || email,
+      req.ip || req.socket.remoteAddress || 'unknown',
+      req.get('user-agent') || 'unknown'
+    ).catch(err => console.error('Failed to log auth activity:', err));
 
     if (env.USE_AUTH_COOKIE) {
       // Set HttpOnly JWT cookie and CSRF token cookie (double-submit pattern)
@@ -112,17 +133,14 @@ export async function login(req: Request, res: Response) {
         maxAge: 1000 * 60 * 30,
         path: '/',
       });
-      // Ensure agent session is opened on successful login
-      try { await ensureSession(user.id, { ip: (req as any).ip, userAgent: req.headers['user-agent'] as any }) } catch {}
+      
       return res.json({
         success: true,
         user: { id: user.id, role: user.role, username: user.username, email: user.usermail },
         csrfToken,
       });
     }
-
-    // Ensure agent session is opened on successful login
-    try { await ensureSession(user.id, { ip: (req as any).ip, userAgent: req.headers['user-agent'] as any }) } catch {}
+    
     return res.json({ success: true, token, user: { id: user.id, role: user.role, username: user.username, email: user.usermail } });
   } catch (e: any) {
     return res.status(500).json({ success: false, message: e?.message || 'Login failed' });
@@ -142,6 +160,18 @@ export async function me(req: Request, res: Response) {
 
 export async function logout(req: Request, res: Response) {
   try { if (req.user?.userId) await closeActiveSession(req.user.userId, 'user_logout') } catch {}
+  
+  // Log logout activity
+  if (req.user?.userId) {
+    logAuthActivity(
+      'logout',
+      req.user.userId,
+      req.user.email || 'unknown',
+      req.ip || req.socket.remoteAddress || 'unknown',
+      req.get('user-agent') || 'unknown'
+    ).catch(err => console.error('Failed to log auth activity:', err));
+  }
+  
   if (env.USE_AUTH_COOKIE) {
     res.clearCookie(env.AUTH_COOKIE_NAME, { path: '/' });
     res.clearCookie('csrf_token', { path: '/' });

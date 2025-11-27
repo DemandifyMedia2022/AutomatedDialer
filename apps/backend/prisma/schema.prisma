@@ -26,6 +26,7 @@ model agent_stats {
 
 model calls {
   id                          BigInt                       @id @default(autoincrement())
+  call_id                     Int?
   campaign_name               String?                      @db.VarChar(255)
   useremail                   String?                      @db.VarChar(255)
   username                    String?                      @db.VarChar(255)
@@ -53,11 +54,11 @@ model calls {
   job_title                   String?                      @db.VarChar(55)
   job_level                   String?                      @db.VarChar(255)
   data_source_type            String?                      @db.VarChar(255)
-  follow_up                   Boolean?                     @default(false)
-  schedule_call               DateTime?                    @db.Timestamp(0)
-  Followup_notes              String?                       @db.Text
   created_at                  DateTime                     @default(now()) @db.Timestamp(0)
   updated_at                  DateTime                     @default(now()) @db.Timestamp(0)
+  follow_up                   Boolean?                     @default(false)
+  schedule_call               DateTime?                    @db.Timestamp(0)
+  Followup_notes              String?                      @db.Text
   call_transcription_metadata call_transcription_metadata?
   notes                       notes[]
   qa_call_reviews             qa_call_reviews[]
@@ -455,6 +456,7 @@ model dm_form {
   f_lead            String?  @db.VarChar(255)
   f_resource_name   String?  @db.VarChar(255)
   f_data_source     String?  @db.VarChar(255)
+  unique_id         String?  @db.VarChar(255)
   f_salutation      String?  @db.VarChar(255)
   f_first_name      String?  @db.Text
   f_last_name       String?  @db.Text
@@ -514,12 +516,106 @@ model dm_form {
   f_date            DateTime @default(now()) @db.Timestamp(0)
   form_status       Int
   f_script_url      String?  @db.VarChar(512)
+
+  @@index([unique_id], map: "idx_dm_form_unique_id")
 }
 
 model extension_dids {
   extension_id String   @id @db.VarChar(64)
   did          String?  @db.VarChar(64)
   updated_at   DateTime @default(now()) @db.DateTime(0)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model api_metrics {
+  id            BigInt   @id @default(autoincrement())
+  endpoint      String   @db.VarChar(500)
+  method        String   @db.VarChar(10)
+  status_code   Int
+  response_time Int
+  user_id       Int?
+  ip            String?  @db.VarChar(45)
+  user_agent    String?  @db.VarChar(500)
+  error_message String?  @db.Text
+  timestamp     DateTime @default(now()) @db.Timestamp(0)
+
+  @@index([endpoint(length: 255), timestamp], map: "idx_api_metrics_endpoint_time")
+  @@index([status_code, timestamp], map: "idx_api_metrics_status_time")
+  @@index([timestamp], map: "idx_api_metrics_time")
+}
+
+model audit_logs {
+  id          BigInt   @id @default(autoincrement())
+  user_id     Int?
+  username    String?  @db.VarChar(255)
+  action      String   @db.VarChar(255)
+  resource    String   @db.VarChar(255)
+  resource_id String?  @db.VarChar(255)
+  changes     String?  @db.LongText
+  ip          String?  @db.VarChar(45)
+  user_agent  String?  @db.VarChar(500)
+  outcome     String   @db.VarChar(50)
+  timestamp   DateTime @default(now()) @db.Timestamp(0)
+
+  @@index([action, timestamp], map: "idx_audit_logs_action_time")
+  @@index([resource, timestamp], map: "idx_audit_logs_resource_time")
+  @@index([user_id, timestamp], map: "idx_audit_logs_user_time")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model feature_flags {
+  id                 Int      @id @default(autoincrement())
+  name               String   @unique(map: "name") @db.VarChar(255)
+  description        String?  @db.Text
+  enabled            Boolean  @default(false)
+  rollout_percentage Int      @default(0)
+  target_roles       String?  @db.LongText
+  target_users       String?  @db.LongText
+  created_at         DateTime @default(now()) @db.Timestamp(0)
+  modified_at        DateTime @default(now()) @db.Timestamp(0)
+  modified_by        Int?
+}
+
+model resource_metrics {
+  id                 BigInt   @id @default(autoincrement())
+  cpu_usage          Float    @db.Float
+  memory_used        BigInt
+  memory_total       BigInt
+  disk_used          BigInt
+  disk_total         BigInt
+  active_connections Int?
+  timestamp          DateTime @default(now()) @db.Timestamp(0)
+
+  @@index([timestamp], map: "idx_resource_metrics_time")
+}
+
+model system_config {
+  id          Int      @id @default(autoincrement())
+  category    String   @db.VarChar(100)
+  key         String   @unique(map: "key") @db.VarChar(255)
+  value       String   @db.LongText
+  type        String   @db.VarChar(50)
+  description String?  @db.Text
+  modified_by Int?
+  modified_at DateTime @default(now()) @db.Timestamp(0)
+  created_at  DateTime @default(now()) @db.Timestamp(0)
+
+  @@index([category], map: "idx_system_config_category")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model system_health_snapshots {
+  id                BigInt   @id @default(autoincrement())
+  frontend_status   String   @db.VarChar(50)
+  backend_status    String   @db.VarChar(50)
+  database_status   String   @db.VarChar(50)
+  agentic_status    String   @db.VarChar(50)
+  backend_response  Int?
+  database_response Int?
+  error_rate        Float?   @db.Float
+  timestamp         DateTime @default(now()) @db.Timestamp(0)
+
+  @@index([timestamp], map: "idx_system_health_time")
 }
 
 enum documents_type {
