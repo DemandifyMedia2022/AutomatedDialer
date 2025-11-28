@@ -76,10 +76,12 @@ const data = {
     },
     {
       title: "Settings",
-      url: "#",
+      url: "/dashboard/manager/settings",
       icon: Settings,
       items: [
+        { title: "General", url: "/dashboard/manager/settings" },
         { title: "Profile", url: "/dashboard/manager/settings/profile" },
+        { title: "Preferences", url: "/dashboard/manager/settings/preferences" },
       ],
     },
   ],

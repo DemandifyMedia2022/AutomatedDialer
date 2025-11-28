@@ -1584,21 +1584,29 @@ export default function ManualDialerPage() {
           <Script src="/js/jssip.min.js" strategy="afterInteractive" onLoad={() => setIsLoaded(true)} />
 
           {error && (
-            <Card className="border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error}</Card>
+            <Card className="border-2 border-red-300 bg-red-50 dark:bg-red-950/20 text-red-800 dark:text-red-400 p-4 text-sm font-medium shadow-sm">
+              <div className="flex items-start gap-2">
+                <span className="text-red-600 dark:text-red-500">⚠</span>
+                <span>{error}</span>
+              </div>
+            </Card>
           )}
 
-          <div className="grid gap-2 lg:grid-cols-3">
+          <div className="grid gap-3 lg:grid-cols-3">
             {/* Dialer */}
-            <Card className="p-4 lg:col-span-1">
-              <div className="mb-2 text-base font-semibold">Dialer</div>
-              <div className="mb-3">
-                <Label className="text-xs text-muted-foreground">Campaign</Label>
+            <Card className="p-5 lg:col-span-1 transition-shadow hover:shadow-md">
+              <div className="mb-3 text-lg font-semibold flex items-center gap-2">
+                <PhoneCall className="h-5 w-5 text-primary" />
+                Dialer
+              </div>
+              <div className="mb-4">
+                <Label className="text-xs font-medium text-muted-foreground">Campaign</Label>
                 <Select
                   value={selectedCampaign ?? undefined}
                   onValueChange={(value) => setSelectedCampaign(value)}
                   disabled={campaignsLoading || campaigns.length === 0}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="w-full mt-1.5">
                     <SelectValue placeholder={campaignsLoading ? "Loading campaigns..." : "Select campaign"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -1615,14 +1623,14 @@ export default function ManualDialerPage() {
                     )}
                   </SelectContent>
                 </Select>
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
                   {selectedCampaign ? `Calling under ${selectedCampaignLabel}` : "Select a campaign to enable dialing."}
                 </p>
               </div>
 
-              <div className="mb-3">
-                <Label className="text-xs text-muted-foreground">Phone Number</Label>
-                <div className="mt-1 flex gap-2">
+              <div className="mb-4">
+                <Label className="text-xs font-medium text-muted-foreground">Phone Number</Label>
+                <div className="mt-1.5 flex gap-2">
                   <Select value={countryCode} onValueChange={(v) => { setCountryCode(v); try { localStorage.setItem('dial_cc', v) } catch {} }}>
                     <SelectTrigger className="w-[110px]">
                       <SelectValue placeholder="+91" />
@@ -1635,7 +1643,7 @@ export default function ManualDialerPage() {
                       <SelectItem value="+91">+91 IN</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Input className="flex-1 text-lg tracking-widest" inputMode="numeric" value={number} onChange={(e) => {
+                  <Input className="flex-1 text-lg tracking-widest font-medium" inputMode="numeric" value={number} onChange={(e) => {
                     const v = e.target.value.replace(/\D+/g, "")
                     setNumber(v)
                     try { localStorage.setItem('dial_num', v) } catch {}
@@ -1643,7 +1651,7 @@ export default function ManualDialerPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2 mb-4">
                 {[
                   {d:"1", s:""},
                   {d:"2", s:"ABC"},
@@ -1658,7 +1666,12 @@ export default function ManualDialerPage() {
                   {d:"0", s:"+"},
                   {d:"#", s:""},
                 ].map(({d,s}) => (
-                  <Button key={d} variant="outline" className="h-14 flex flex-col items-center justify-center" onClick={() => onDigit(d)}>
+                  <Button 
+                    key={d} 
+                    variant="outline" 
+                    className="h-14 flex flex-col items-center justify-center transition-all hover:bg-primary/10 hover:border-primary/50 active:scale-95" 
+                    onClick={() => onDigit(d)}
+                  >
                     <span className="text-lg font-semibold leading-none">{d}</span>
                     {s ? <span className="mt-0.5 text-[10px] tracking-widest text-muted-foreground">{s}</span> : null}
                   </Button>
@@ -1667,42 +1680,94 @@ export default function ManualDialerPage() {
 
               {/* Removed A-D DTMF keys per request */}
 
-              <div className="mt-2 flex items-center gap-2">
+              <div className="flex items-center gap-2 mb-3">
                 {status.startsWith("In Call") ? (
-                  <Button onClick={hangup} variant="destructive" className="gap-2 flex-1">
+                  <Button 
+                    onClick={hangup} 
+                    variant="destructive" 
+                    className="gap-2 flex-1 h-11 transition-all hover:shadow-md active:scale-95"
+                  >
                     <PhoneOff className="h-4 w-4" /> End Call
                   </Button>
                 ) : (
                   <Button
                     onClick={placeCall}
-                    className="gap-2 flex-1"
+                    className="gap-2 flex-1 h-11 bg-emerald-600 hover:bg-emerald-700 transition-all hover:shadow-md active:scale-95"
                     disabled={!number || !uaRef.current || !status.includes("Registered") || !selectedCampaign}
                   >
-                    <PhoneCall className="h-4 w-4" /> Call
+                    <Phone className="h-4 w-4" /> Call
                   </Button>
                 )}
-                <Button variant="outline" onClick={() => setNumber("")}>Clear</Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setNumber("")}
+                  className="transition-all hover:bg-muted active:scale-95"
+                >
+                  Clear
+                </Button>
               </div>
 
-              <div className="mt-2">
-                {status.startsWith("In Call") ? (<WaveBars active={true} />) : null}
+              {/* Call Status Indicator */}
+              <div className="mb-3 p-3 rounded-lg border bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const s = status
+                      const dot = s.includes('Ringing') ? 'bg-amber-500 animate-pulse' :
+                                 s.startsWith('In Call') ? 'bg-emerald-500 animate-pulse' :
+                                 s.includes('Busy') ? 'bg-orange-500' :
+                                 s.includes('No Answer') ? 'bg-slate-500' :
+                                 s.includes('Failed') ? 'bg-red-500' :
+                                 s.includes('Disconnected') ? 'bg-gray-400' :
+                                 (s.includes('Connected') || s.includes('Registered')) ? 'bg-sky-500' :
+                                 'bg-muted-foreground'
+                      return (
+                        <>
+                          <span className={`inline-block h-2.5 w-2.5 rounded-full ${dot}`} />
+                          <span className="text-sm font-medium">{s}</span>
+                        </>
+                      )
+                    })()}
+                  </div>
+                  {status.startsWith("In Call") && (
+                    <span className="text-sm font-mono text-muted-foreground">{elapsed() || "00:00"}</span>
+                  )}
+                </div>
               </div>
+
+              {status.startsWith("In Call") && (
+                <div className="mb-3">
+                  <WaveBars active={true} />
+                </div>
+              )}
 
               <audio ref={remoteAudioRef} autoPlay playsInline className="sr-only" />
 
-              <Separator className="my-1" />
-              <div className="text-sm text-muted-foreground">History</div>
-              <div className="mt-1 space-y-1 text-sm">
+              <Separator className="my-3" />
+              <div className="text-sm font-medium mb-2">Recent Calls</div>
+              <div className="space-y-2 text-sm">
                 {historyToShow.length === 0 ? (
-                  <div className="text-xs text-muted-foreground">No recent calls</div>
+                  <div className="text-xs text-muted-foreground p-2 text-center">No recent calls</div>
                 ) : historyToShow.map((h: any, i: number) => (
-                  <div key={i} className="flex items-center justify-between py-1">
+                  <div 
+                    key={i} 
+                    className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 transition-colors cursor-pointer"
+                  >
                     <div className="flex items-center gap-2 min-w-0">
-                      <PhoneCall className="h-4 w-4 text-pink-600 shrink-0" />
-                      <div className="truncate">{h.destination || h.phone || h.number || "Unknown"}</div>
+                      <PhoneCall className="h-4 w-4 text-primary shrink-0" />
+                      <div className="truncate font-medium">{h.destination || h.phone || h.number || "Unknown"}</div>
                     </div>
                     <div className="flex items-center gap-2 ml-2 shrink-0">
-                      {h.disposition ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground/80">{h.disposition}</span> : null}
+                      {h.disposition ? (
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                          h.disposition === 'Answered' ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/20' :
+                          h.disposition === 'Busy' ? 'bg-orange-500/10 text-orange-700 border border-orange-500/20' :
+                          h.disposition === 'No Answer' ? 'bg-slate-500/10 text-slate-700 border border-slate-500/20' :
+                          'bg-muted text-foreground/80 border border-border'
+                        }`}>
+                          {h.disposition}
+                        </span>
+                      ) : null}
                       <div className="text-xs text-muted-foreground">{timeAgo(h.end_time || h.start_time || null)}</div>
                     </div>
                   </div>
@@ -1714,18 +1779,20 @@ export default function ManualDialerPage() {
             <div className="lg:col-span-2 space-y-3">
               {/* Decision Maker Form: only shown when a call is live or has just ended */}
               {canEditDmForm && (
-                <Card className="p-0 mt-4">
-                  <div className="flex items-center justify-between px-4 py-3">
+                <Card className="p-0 transition-shadow hover:shadow-md">
+                  <div className="flex items-center justify-between px-5 py-4 bg-emerald-50/50 dark:bg-emerald-900/10">
                     <div>
-                      <div className="font-semibold">Decision Maker Form</div>
-                      <p className="text-xs text-muted-foreground">Capture lead details while the call is active.</p>
+                      <div className="font-semibold text-base">Decision Maker Form</div>
+                      <p className="text-xs text-muted-foreground mt-0.5">Capture lead details while the call is active.</p>
                     </div>
-                    <span className="text-xs text-emerald-600">Editing unlocked</span>
+                    <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
+                      Editing unlocked
+                    </span>
                   </div>
                   <Separator />
-                  <div className="p-4 space-y-4">
+                  <div className="p-5 space-y-4">
                     {dmMessage ? (
-                      <Card className="border border-dashed bg-muted/40 p-2 text-xs text-foreground">
+                      <Card className="border border-dashed bg-muted/40 p-3 text-xs text-foreground">
                         {dmMessage}
                       </Card>
                     ) : null}
@@ -1818,27 +1885,36 @@ export default function ManualDialerPage() {
               )}
 
               {/* Notes */}
-              <Card className="p-0">
-                <div className="flex items-center justify-between px-4 py-3">
-                  <div className="font-semibold">Notes</div>
-                  <div className="text-xs text-muted-foreground">{notes.length} notes</div>
+              <Card className="p-0 transition-shadow hover:shadow-md">
+                <div className="flex items-center justify-between px-5 py-4 bg-muted/30">
+                  <div className="font-semibold text-base">Notes</div>
+                  <div className="text-xs font-medium px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-700 border border-blue-500/20">
+                    {notes.length} notes
+                  </div>
                 </div>
                 <Separator />
-                <Tabs defaultValue="all" className="px-4 py-3">
-                  <TabsList>
+                <Tabs defaultValue="all" className="px-5 py-4">
+                  <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="all">All Notes</TabsTrigger>
                     <TabsTrigger value="new">+ New Note</TabsTrigger>
                   </TabsList>
-                  <TabsContent value="all" className="mt-3">
+                  <TabsContent value="all" className="mt-4">
                     <ScrollArea className="h-[220px] pr-3">
-                      <div className="space-y-3">
-                        {notes.map((n) => (
-                          <Card key={n.id} className="p-3 flex items-start justify-between">
-                            <div>
+                      <div className="space-y-2">
+                        {notes.length === 0 ? (
+                          <div className="text-sm text-muted-foreground text-center py-8">No notes yet</div>
+                        ) : notes.map((n) => (
+                          <Card key={n.id} className="p-3 flex items-start justify-between transition-all hover:shadow-sm hover:border-primary/30">
+                            <div className="flex-1 min-w-0">
                               <div className="text-sm">{n.text}</div>
-                              <div className="mt-1 text-xs text-muted-foreground">{n.phone ? `${n.phone} · ` : ""}{n.at}</div>
+                              <div className="mt-1.5 text-xs text-muted-foreground">{n.phone ? `${n.phone} · ` : ""}{n.at}</div>
                             </div>
-                            <Button size="icon" variant="ghost" onClick={() => removeNote(n.id)}>
+                            <Button 
+                              size="icon" 
+                              variant="ghost" 
+                              onClick={() => removeNote(n.id)}
+                              className="ml-2 shrink-0 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </Card>
@@ -1846,11 +1922,22 @@ export default function ManualDialerPage() {
                       </div>
                     </ScrollArea>
                   </TabsContent>
-                  <TabsContent value="new" className="mt-3">
+                  <TabsContent value="new" className="mt-4">
                     <div className="space-y-3">
-                      <Textarea value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="Write a quick note..." className="min-h-[120px]" />
+                      <Textarea 
+                        value={newNote} 
+                        onChange={(e) => setNewNote(e.target.value)} 
+                        placeholder="Write a quick note..." 
+                        className="min-h-[120px]" 
+                      />
                       <div className="text-right">
-                        <Button onClick={addNote}>Save Note</Button>
+                        <Button 
+                          onClick={addNote}
+                          className="transition-all hover:shadow-md active:scale-95"
+                          disabled={!newNote.trim()}
+                        >
+                          Save Note
+                        </Button>
                       </div>
                     </div>
                   </TabsContent>
@@ -1858,33 +1945,58 @@ export default function ManualDialerPage() {
               </Card>
 
               {/* Documents */}
-              <Card className="p-0">
-                <div className="flex items-center justify-between px-4 py-3">
-                  <div className="font-semibold">Shared Documents from Playbook</div>
+              <Card className="p-0 transition-shadow hover:shadow-md">
+                <div className="flex items-center justify-between px-5 py-4 bg-muted/30">
+                  <div className="font-semibold text-base">Shared Documents from Playbook</div>
                   <div className="flex items-center gap-2">
                     <div className="relative">
-                      <Input placeholder="Search documents..." value={docQuery} onChange={(e) => setDocQuery(e.target.value)} className="pl-8 w-64" />
+                      <Input 
+                        placeholder="Search documents..." 
+                        value={docQuery} 
+                        onChange={(e) => setDocQuery(e.target.value)} 
+                        className="pl-8 w-64" 
+                      />
                       <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     </div>
-                    <Button variant="outline" onClick={() => fetchDocs()} disabled={docsLoading}>Search</Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => fetchDocs()} 
+                      disabled={docsLoading}
+                      className="transition-all hover:bg-primary/10 hover:border-primary/50"
+                    >
+                      Search
+                    </Button>
                   </div>
                 </div>
                 <Separator />
-                <div className="p-4 space-y-2">
+                <div className="p-5 space-y-2">
                   {docsLoading ? (
-                    <Card className="p-3 text-sm text-muted-foreground">Loading…</Card>
+                    <Card className="p-4 text-sm text-muted-foreground text-center">Loading…</Card>
                   ) : docs.length === 0 ? (
-                    <Card className="p-3 text-sm text-muted-foreground">No documents</Card>
+                    <Card className="p-4 text-sm text-muted-foreground text-center">No documents found</Card>
                   ) : (
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {docs.map((d: any) => (
-                        <Card key={d.id} className="p-3">
-                          <div className="font-medium truncate">{d.title}</div>
-                          <div className="text-xs text-muted-foreground">{String(d.type || '').toUpperCase()} • {String(d.visibility || '').toUpperCase()}</div>
-                          <Separator className="my-1" />
-                          <div className="text-sm text-muted-foreground line-clamp-2">{d.description || d.content_richtext || '-'}</div>
-                          <div className="mt-2 text-right">
-                            <Button size="sm" variant="outline" onClick={() => setPreviewDoc(d)}>View</Button>
+                        <Card key={d.id} className="p-4 transition-all hover:shadow-md hover:border-primary/30">
+                          <div className="font-medium truncate text-base">{d.title}</div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            <span className="px-1.5 py-0.5 rounded bg-muted">{String(d.type || '').toUpperCase()}</span>
+                            {' • '}
+                            <span className="px-1.5 py-0.5 rounded bg-muted">{String(d.visibility || '').toUpperCase()}</span>
+                          </div>
+                          <Separator className="my-2" />
+                          <div className="text-sm text-muted-foreground line-clamp-2 min-h-[2.5rem]">
+                            {d.description || d.content_richtext || '-'}
+                          </div>
+                          <div className="mt-3 text-right">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => setPreviewDoc(d)}
+                              className="transition-all hover:bg-primary/10 hover:border-primary/50 active:scale-95"
+                            >
+                              View
+                            </Button>
                           </div>
                         </Card>
                       ))}
@@ -1898,18 +2010,18 @@ export default function ManualDialerPage() {
           {/* Draggable In-Call Popup */}
           {showPopup && (
             <div
-              className="fixed z-50 w-[360px] rounded-lg border bg-card text-card-foreground shadow-xl dark:shadow-2xl"
+              className="fixed z-50 w-[380px] rounded-xl border-2 bg-card text-card-foreground shadow-2xl backdrop-blur-sm"
               style={{ left: popupPos.x, top: popupPos.y }}
             >
               <div
-                className="flex items-center justify-between px-4 py-2 rounded-t-lg bg-emerald-50 dark:bg-emerald-900/30 border-b border-border cursor-move"
+                className="flex items-center justify-between px-5 py-3 rounded-t-xl bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-800/20 border-b-2 border-emerald-200 dark:border-emerald-800 cursor-move"
                 onMouseDown={onPopupMouseDown}
               >
-                <div className="flex items-center gap-2 text-sm font-medium">
+                <div className="flex items-center gap-2.5 text-sm font-semibold">
                   {(() => {
                     const s = status
-                    const dot = s.includes('Ringing') ? 'bg-amber-500' :
-                               s.startsWith('In Call') ? 'bg-emerald-500' :
+                    const dot = s.includes('Ringing') ? 'bg-amber-500 animate-pulse' :
+                               s.startsWith('In Call') ? 'bg-emerald-500 animate-pulse' :
                                s.includes('Busy') ? 'bg-orange-500' :
                                s.includes('No Answer') ? 'bg-slate-500' :
                                s.includes('Failed') ? 'bg-red-500' :
@@ -1918,58 +2030,94 @@ export default function ManualDialerPage() {
                                'bg-muted'
                     return (
                       <>
-                        <span className={`inline-block h-2 w-2 rounded-full ${dot}`} />
-                        <span className="text-foreground/90">{s}</span>
+                        <span className={`inline-block h-2.5 w-2.5 rounded-full ${dot} shadow-sm`} />
+                        <span className="text-foreground">{s}</span>
                       </>
                     )
                   })()}
                 </div>
-                <div className="text-xs text-muted-foreground">Drag to move</div>
+                <div className="text-xs text-muted-foreground font-medium">Drag to move</div>
               </div>
-              <div className="px-4 pt-3 pb-4">
-                <div className="text-center font-semibold tracking-wide text-foreground">{number || lastDialedNumber || "Unknown"}</div>
-                <div className="mt-1 text-center text-xs text-muted-foreground">{elapsed() || "00:00"}</div>
+              <div className="px-5 pt-4 pb-5">
+                <div className="text-center text-xl font-bold tracking-wide text-foreground">{number || lastDialedNumber || "Unknown"}</div>
+                <div className="mt-1.5 text-center text-sm font-mono text-muted-foreground">{elapsed() || "00:00"}</div>
 
-                {/* Live client subtitles */}
-                <div className="mt-3 border rounded-md bg-background/70 px-3 py-2 max-h-28 overflow-y-auto">
-                  <div className="text-[11px] font-semibold text-muted-foreground mb-1">Live Transcript</div>
+                {/* Live client subtitles - Commented out for now */}
+                {/* <div className="mt-4 border-2 rounded-lg bg-muted/30 px-4 py-3 max-h-32 overflow-y-auto">
+                  <div className="text-xs font-semibold text-muted-foreground mb-2">Live Transcript</div>
                   {liveSegments.length === 0 ? (
-                    <div className="text-[11px] text-muted-foreground">Waiting for speech…</div>
+                    <div className="text-xs text-muted-foreground italic">Waiting for speech…</div>
                   ) : (
                     liveSegments.slice(-6).map((seg, idx) => (
-                      <div key={idx} className="text-xs whitespace-pre-wrap break-words">
-                        <span className="font-semibold mr-1">Prospect:</span>
-                        {seg.text}
+                      <div key={idx} className="text-xs whitespace-pre-wrap break-words mb-1.5">
+                        <span className="font-semibold text-primary mr-1">Prospect:</span>
+                        <span className="text-foreground">{seg.text}</span>
                       </div>
                     ))
                   )}
-                </div>
-                <div className="mt-4 grid grid-cols-5 gap-3 place-items-center">
-                  <Button size="icon" variant="outline" className="rounded-full h-10 w-10" onClick={toggleMute}>
+                </div> */}
+                <div className="mt-5 grid grid-cols-5 gap-3 place-items-center">
+                  <Button 
+                    size="icon" 
+                    variant={isMuted ? "default" : "outline"} 
+                    className={`rounded-full h-11 w-11 transition-all hover:scale-110 active:scale-95 ${isMuted ? 'bg-red-500 hover:bg-red-600' : ''}`}
+                    onClick={toggleMute}
+                  >
                     {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                   </Button>
-                  <Button size="icon" variant="outline" className="rounded-full h-10 w-10" onClick={() => sendDTMF("5")}>
+                  <Button 
+                    size="icon" 
+                    variant="outline" 
+                    className="rounded-full h-11 w-11 transition-all hover:scale-110 active:scale-95 hover:bg-primary/10 hover:border-primary/50" 
+                    onClick={() => sendDTMF("5")}
+                  >
                     <Grid2X2 className="h-4 w-4" />
                   </Button>
-                  <Button size="icon" variant="destructive" className="rounded-full h-12 w-12" onClick={hangup}>
+                  <Button 
+                    size="icon" 
+                    variant="destructive" 
+                    className="rounded-full h-14 w-14 transition-all hover:scale-110 active:scale-95 shadow-lg hover:shadow-xl" 
+                    onClick={hangup}
+                  >
                     <PhoneOff className="h-5 w-5" />
                   </Button>
-                  <Button size="icon" variant="outline" className="rounded-full h-10 w-10">
+                  <Button 
+                    size="icon" 
+                    variant="outline" 
+                    className="rounded-full h-11 w-11 transition-all hover:scale-110 active:scale-95 hover:bg-primary/10 hover:border-primary/50"
+                  >
                     <Pause className="h-4 w-4" />
                   </Button>
-                  <Button size="icon" variant="outline" className="rounded-full h-10 w-10" onClick={() => setShowTransfer((v) => !v)}>
+                  <Button 
+                    size="icon" 
+                    variant="outline" 
+                    className="rounded-full h-11 w-11 transition-all hover:scale-110 active:scale-95 hover:bg-primary/10 hover:border-primary/50" 
+                    onClick={() => setShowTransfer((v) => !v)}
+                  >
                     <UserPlus className="h-4 w-4" />
                   </Button>
                 </div>
                 {showIncomingPrompt && (
-                  <div className="mt-4 flex items-center justify-center gap-3">
-                    <Button variant="default" onClick={acceptIncoming}>Accept</Button>
-                    <Button variant="destructive" onClick={declineIncoming}>Decline</Button>
+                  <div className="mt-5 flex items-center justify-center gap-3">
+                    <Button 
+                      variant="default" 
+                      onClick={acceptIncoming}
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 transition-all hover:shadow-md active:scale-95"
+                    >
+                      Accept
+                    </Button>
+                    <Button 
+                      variant="destructive" 
+                      onClick={declineIncoming}
+                      className="flex-1 transition-all hover:shadow-md active:scale-95"
+                    >
+                      Decline
+                    </Button>
                   </div>
                 )}
                 {showTransfer && (
-                  <div className="mt-4 space-y-2">
-                    <div className="text-xs text-muted-foreground">Transfer to user</div>
+                  <div className="mt-5 p-4 space-y-3 border-2 rounded-lg bg-muted/30">
+                    <div className="text-xs font-semibold text-muted-foreground">Transfer to user</div>
                     <Select value={transferTarget} onValueChange={setTransferTarget}>
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select agent/extension" />
@@ -1983,7 +2131,13 @@ export default function ManualDialerPage() {
                       </SelectContent>
                     </Select>
                     <div className="flex justify-end">
-                      <Button onClick={transferCall} disabled={!transferTarget || isTransferring}>{isTransferring ? 'Transferring…' : 'Transfer'}</Button>
+                      <Button 
+                        onClick={transferCall} 
+                        disabled={!transferTarget || isTransferring}
+                        className="transition-all hover:shadow-md active:scale-95"
+                      >
+                        {isTransferring ? 'Transferring…' : 'Transfer'}
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -1993,15 +2147,17 @@ export default function ManualDialerPage() {
 
           {/* Mandatory Feedback Modal */}
           {showDisposition && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center">
-              <div className="absolute inset-0 bg-background/70" />
-              <Card className="relative z-50 w-[560px] max-w-[95vw] border shadow-2xl">
-                <div className="px-4 py-3 border-b font-medium">Select Feedback</div>
-                <div className="p-4 space-y-3">
-                  <div className="text-sm text-muted-foreground">This is required before saving the call.</div>
+            <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
+              <div className="absolute inset-0 bg-background/80" />
+              <Card className="relative z-50 w-[560px] max-w-[95vw] border-2 shadow-2xl">
+                <div className="px-5 py-4 border-b-2 bg-muted/30">
+                  <div className="font-semibold text-lg">Select Call Feedback</div>
+                  <p className="text-xs text-muted-foreground mt-1">This is required before saving the call.</p>
+                </div>
+                <div className="p-5 space-y-4">
                   <Select value={disposition} onValueChange={setDisposition}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Choose feedback" />
+                    <SelectTrigger className="w-full h-11">
+                      <SelectValue placeholder="Choose feedback option" />
                     </SelectTrigger>
                     <SelectContent className="max-h-[300px] overflow-auto">
                       {[
@@ -2011,26 +2167,35 @@ export default function ManualDialerPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <div className="flex justify-end gap-2 pt-1">
-                    <Button variant="outline" onClick={() => { /* mandatory - no close without selection */ }} disabled>
+                  <div className="flex justify-end gap-3 pt-2">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => { /* mandatory - no close without selection */ }} 
+                      disabled
+                      className="opacity-50"
+                    >
                       Close
                     </Button>
-                    <Button onClick={async () => {
-                      if (!disposition) return
-                      try {
-                        // Save disposition to DM form f_lead column
-                        await saveDispositionToDmForm(disposition)
-                        
-                        // Continue with existing logic
-                        if (!uploadedOnceRef.current) uploadedOnceRef.current = true
-                        await stopRecordingAndUpload(pendingUploadExtra || {})
-                      } finally {
-                        setShowDisposition(false)
-                        setPendingUploadExtra(null)
-                        setDisposition("")
-                      }
-                    }} disabled={!disposition}>
-                      Save
+                    <Button 
+                      onClick={async () => {
+                        if (!disposition) return
+                        try {
+                          // Save disposition to DM form f_lead column
+                          await saveDispositionToDmForm(disposition)
+                          
+                          // Continue with existing logic
+                          if (!uploadedOnceRef.current) uploadedOnceRef.current = true
+                          await stopRecordingAndUpload(pendingUploadExtra || {})
+                        } finally {
+                          setShowDisposition(false)
+                          setPendingUploadExtra(null)
+                          setDisposition("")
+                        }
+                      }} 
+                      disabled={!disposition}
+                      className="transition-all hover:shadow-md active:scale-95"
+                    >
+                      Save Feedback
                     </Button>
                   </div>
                 </div>
@@ -2040,35 +2205,49 @@ export default function ManualDialerPage() {
 
           {/* Document Preview Popup */}
           {previewDoc && (
-            <div className="fixed inset-0 z-40 flex items-center justify-center">
-              <div className="absolute inset-0 bg-background/60" onClick={() => setPreviewDoc(null)} />
-              <Card className="relative z-50 w-[720px] max-w-[95vw] max-h-[85vh] overflow-hidden border shadow-2xl">
-                <div className="flex items-center justify-between px-4 py-2 border-b">
-                  <div className="font-medium truncate mr-4">{previewDoc.title || 'Document'}</div>
-                  <div className="flex items-center gap-2">
+            <div className="fixed inset-0 z-40 flex items-center justify-center backdrop-blur-sm">
+              <div className="absolute inset-0 bg-background/70" onClick={() => setPreviewDoc(null)} />
+              <Card className="relative z-50 w-[720px] max-w-[95vw] max-h-[85vh] overflow-hidden border-2 shadow-2xl">
+                <div className="flex items-center justify-between px-5 py-4 border-b-2 bg-muted/30">
+                  <div className="font-semibold text-base truncate mr-4">{previewDoc.title || 'Document'}</div>
+                  <div className="flex items-center gap-3">
                     {previewDoc.file_url ? (
-                      <a className="text-xs text-primary underline" href={previewDoc.file_url} target="_blank" rel="noreferrer">Open in new tab</a>
+                      <a 
+                        className="text-xs text-primary underline hover:text-primary/80 transition-colors" 
+                        href={previewDoc.file_url} 
+                        target="_blank" 
+                        rel="noreferrer"
+                      >
+                        Open in new tab
+                      </a>
                     ) : null}
-                    <Button size="sm" variant="ghost" onClick={() => setPreviewDoc(null)}>Close</Button>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      onClick={() => setPreviewDoc(null)}
+                      className="transition-all hover:bg-muted active:scale-95"
+                    >
+                      Close
+                    </Button>
                   </div>
                 </div>
-                <div className="p-3 overflow-auto max-h-[78vh] bg-card">
+                <div className="p-4 overflow-auto max-h-[78vh] bg-card">
                   {(() => {
                     const url = String(previewDoc.file_url || '')
                     const mime = String(previewDoc.file_mime || '')
                     const lower = url.toLowerCase()
                     if (!url && previewDoc.content_richtext) {
-                      return <div className="whitespace-pre-wrap text-sm">{previewDoc.content_richtext}</div>
+                      return <div className="whitespace-pre-wrap text-sm p-2">{previewDoc.content_richtext}</div>
                     }
                     if (lower.endsWith('.pdf') || mime.includes('pdf')) {
-                      return <iframe src={url} className="w-full h-[70vh]" />
+                      return <iframe src={url} className="w-full h-[70vh] rounded-lg" />
                     }
                     if (/(png|jpg|jpeg|gif|webp)$/i.test(lower) || /^image\//.test(mime)) {
-                      return <img src={url} alt="preview" className="max-w-full max-h-[70vh] object-contain" />
+                      return <img src={url} alt="preview" className="max-w-full max-h-[70vh] object-contain mx-auto rounded-lg" />
                     }
                     // Fallback: show filename and a link
                     return (
-                      <div className="text-sm text-muted-foreground">
+                      <div className="text-sm text-muted-foreground text-center py-8">
                         Preview not available. Use "Open in new tab" to view/download.
                       </div>
                     )

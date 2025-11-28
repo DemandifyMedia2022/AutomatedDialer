@@ -64,24 +64,24 @@ export function WorldMap() {
     if (!mounted) return null
 
     return (
-        <Card className="col-span-full lg:col-span-3 overflow-hidden">
+        <Card className="col-span-full lg:col-span-3 overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200">
             <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                     <span>Global Dialing Zones</span>
                     <div className="flex items-center gap-4 text-sm font-normal">
                         <div className="flex items-center gap-2">
-                            <span className="block w-3 h-3 rounded-full bg-emerald-500" />
+                            <span className="block w-3 h-3 rounded-full bg-emerald-500 shadow-sm" />
                             <span className="text-muted-foreground">Active (9AM - 5PM)</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="block w-3 h-3 rounded-full bg-slate-300 dark:bg-slate-700" />
+                            <span className="block w-3 h-3 rounded-full bg-muted shadow-sm" />
                             <span className="text-muted-foreground">Inactive</span>
                         </div>
                     </div>
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-                <div className="h-[500px] w-full bg-slate-50/50 dark:bg-slate-900/50 relative">
+                <div className="h-[500px] w-full bg-accent/30 dark:bg-accent/20 relative">
                     <ComposableMap projection="geoMercator" projectionConfig={{ scale: 150 }}>
                         <ZoomableGroup center={[0, 20]} minZoom={1} maxZoom={4}>
                             <Sphere stroke="none" fill="transparent" id="sphere" strokeWidth={0} />
@@ -103,17 +103,17 @@ export function WorldMap() {
                                                                 default: {
                                                                     fill: status === "active"
                                                                         ? "rgb(16 185 129)" // emerald-500
-                                                                        : theme === "dark" ? "#334155" : "#cbd5e1", // slate-700 : slate-300
-                                                                    stroke: theme === "dark" ? "#1e293b" : "#f8fafc",
+                                                                        : theme === "dark" ? "hsl(var(--muted))" : "hsl(var(--muted))",
+                                                                    stroke: theme === "dark" ? "hsl(var(--border))" : "hsl(var(--border))",
                                                                     strokeWidth: 0.5,
                                                                     outline: "none",
-                                                                    transition: "all 250ms"
+                                                                    transition: "all 250ms ease-in-out"
                                                                 },
                                                                 hover: {
                                                                     fill: status === "active"
                                                                         ? "rgb(5 150 105)" // emerald-600
-                                                                        : theme === "dark" ? "#475569" : "#94a3b8",
-                                                                    stroke: theme === "dark" ? "#1e293b" : "#f8fafc",
+                                                                        : theme === "dark" ? "hsl(var(--accent))" : "hsl(var(--accent))",
+                                                                    stroke: theme === "dark" ? "hsl(var(--border))" : "hsl(var(--border))",
                                                                     strokeWidth: 0.5,
                                                                     outline: "none",
                                                                     cursor: "pointer"
@@ -124,14 +124,14 @@ export function WorldMap() {
                                                             }}
                                                         />
                                                     </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        <div className="text-xs">
-                                                            <div className="font-bold">{geo.properties.name}</div>
+                                                    <TooltipContent className="bg-background border shadow-lg">
+                                                        <div className="text-xs space-y-1">
+                                                            <div className="font-semibold">{geo.properties.name}</div>
                                                             {offset !== undefined ? (
                                                                 <>
-                                                                    <div>Local Time: {getLocalTime(offset)}</div>
-                                                                    <div className={status === "active" ? "text-emerald-500" : "text-muted-foreground"}>
-                                                                        {status === "active" ? "Active Hours" : "Off Hours"}
+                                                                    <div className="text-muted-foreground">Local Time: {getLocalTime(offset)}</div>
+                                                                    <div className={status === "active" ? "text-emerald-500 font-medium" : "text-muted-foreground"}>
+                                                                        {status === "active" ? "✓ Active Hours" : "○ Off Hours"}
                                                                     </div>
                                                                 </>
                                                             ) : (
@@ -148,8 +148,8 @@ export function WorldMap() {
                         </ZoomableGroup>
                     </ComposableMap>
 
-                    <div className="absolute bottom-4 left-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm p-2 rounded border">
-                        UTC: {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}
+                    <div className="absolute bottom-4 left-4 text-xs text-muted-foreground bg-background/90 backdrop-blur-sm px-3 py-2 rounded-md border shadow-sm">
+                        <span className="font-medium">UTC:</span> {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}
                     </div>
                 </div>
             </CardContent>
