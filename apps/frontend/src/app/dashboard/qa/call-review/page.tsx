@@ -20,7 +20,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Download, Pause, Play, RefreshCcw, ChevronDownIcon } from "lucide-react"
 import { type DateRange } from "react-day-picker"
 import { API_BASE } from "@/lib/api"
-import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
+import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Command,
@@ -35,11 +35,16 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 type CallRow = {
   id: number | string
+  unique_id?: string | null
   username: string | null
   destination: string | null
   start_time: string
-  disposition: string | null
   recording_url?: string | null
+  remarks?: string | null
+  reviewed?: boolean
+  reviewer_user_id?: number | null
+  created_at?: string | null
+  has_dm_qa_fields?: boolean
 }
 
 export default function QaCallReviewPage() {
@@ -57,6 +62,7 @@ export default function QaCallReviewPage() {
   const [loadingReview, setLoadingReview] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
   const [reviewDialogOpen, setReviewDialogOpen] = React.useState(false)
+  const [isEditMode, setIsEditMode] = React.useState(false)
   const [fQaStatus, setFQaStatus] = React.useState("")
   const [fDqReason1, setFDqReason1] = React.useState("")
   const [fDqReason2, setFDqReason2] = React.useState("")
@@ -65,10 +71,10 @@ export default function QaCallReviewPage() {
   const [fQaComments, setFQaComments] = React.useState("")
   const [fCallRating, setFCallRating] = React.useState("")
   const [fCallNotes, setFCallNotes] = React.useState("")
-  const [feedback, setFeedback] = React.useState("")
   const [fCallLinks, setFCallLinks] = React.useState("")
   const [fQaName, setFQaName] = React.useState("")
   const [fAuditDate, setFAuditDate] = React.useState("")
+  const [fEmailStatus, setFEmailStatus] = React.useState("")
   const [range, setRange] = React.useState<DateRange | undefined>(() => {
     const today = new Date()
     return { from: today, to: today }
@@ -76,6 +82,10 @@ export default function QaCallReviewPage() {
   const [transcript, setTranscript] = React.useState<any | null>(null)
   const [transcriptLoading, setTranscriptLoading] = React.useState(false)
   const [transcriptError, setTranscriptError] = React.useState<string | null>(null)
+  
+  // DM Form fields
+  const [dmFormData, setDmFormData] = React.useState<any | null>(null)
+  const [dmFormLoading, setDmFormLoading] = React.useState(false)
 
   const fetchCalls = React.useCallback(async () => {
     setLoadingCalls(true)
@@ -105,12 +115,17 @@ export default function QaCallReviewPage() {
           setCalls(
             rows.map((r) => ({
               id: r.call_id,
+              unique_id: r.unique_id ?? null,
               username: r.username ?? null,
               destination: r.destination ?? null,
               start_time: r.start_time,
-              disposition: r.disposition ?? null,
               recording_url: r.recording_url ?? null,
-            }))
+              remarks: r.remarks ?? null,
+              reviewed: r.reviewed ?? false,
+              reviewer_user_id: r.reviewer_user_id ?? null,
+              created_at: r.created_at ?? null,
+              has_dm_qa_fields: r.has_dm_qa_fields ?? false,
+            })).filter(call => call.remarks === "Lead")
           )
           return
         }
@@ -131,12 +146,17 @@ export default function QaCallReviewPage() {
       setCalls(
         rowsCalls.map((r) => ({
           id: r.id,
+          unique_id: r.unique_id ?? null,
           username: r.username ?? null,
           destination: r.destination ?? null,
           start_time: r.start_time,
-          disposition: (r.disposition || "") as string,
           recording_url: r.recording_url ?? null,
-        }))
+          remarks: r.remarks ?? null,
+          reviewed: false, // Fallback calls are not yet reviewed
+          reviewer_user_id: null,
+          created_at: null,
+          has_dm_qa_fields: false, // Fallback calls don't have QA fields yet
+        })).filter(call => call.remarks === "Lead")
       )
     } catch {
       setCalls([])
@@ -301,8 +321,21 @@ export default function QaCallReviewPage() {
   React.useEffect(() => {
     ;(async () => {
       try {
+        const headers: Record<string, string> = {}
+        let credentials: RequestCredentials = "omit"
+        if (USE_AUTH_COOKIE) {
+          credentials = "include"
+          const csrfToken = getCsrfTokenFromCookies()
+          if (csrfToken) {
+            headers["X-CSRF-Token"] = csrfToken
+          }
+        } else {
+          const t = getToken()
+          if (t) headers["Authorization"] = `Bearer ${t}`
+        }
         const res = await fetch(`${API_BASE}/api/users`, {
-          credentials: USE_AUTH_COOKIE ? "include" : "omit",
+          headers,
+          credentials,
         })
         if (!res.ok) return
         const data = await res.json()
@@ -328,14 +361,105 @@ export default function QaCallReviewPage() {
     setFQaComments("")
     setFCallRating("")
     setFCallNotes("")
-    setFeedback("")
     setFCallLinks("")
-    setFQaName("")
+    // Don't reset QA Name - keep the logged user's name
     setFAuditDate("")
+    setFEmailStatus("")
     setTranscript(null)
     setTranscriptError(null)
+    setDmFormData(null)
+    setIsEditMode(false)
+    // Re-populate QA Name if it was cleared
+    fetchAndSetQaName()
   }
 
+  // Function to fetch logged username and populate QA Name field
+  const fetchAndSetQaName = React.useCallback(async () => {
+    try {
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = "omit"
+      if (USE_AUTH_COOKIE) {
+        credentials = "include"
+      } else {
+        const t = getToken()
+        if (t) headers["Authorization"] = `Bearer ${t}`
+      }
+      
+      const res = await fetch(`${API_BASE}/api/auth/me`, { headers, credentials })
+      if (res.ok) {
+        const data = await res.json().catch(() => null) as any
+        const username = data?.user?.username
+        if (username && username.trim()) {
+          setFQaName(username.trim())
+          console.log('QA Name auto-populated:', username)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch logged username for QA Name:', error)
+    }
+  }, [])
+
+  // Auto-populate QA Name when component mounts
+  React.useEffect(() => {
+    fetchAndSetQaName()
+  }, [fetchAndSetQaName])
+
+  const loadDmFormData = async (callId: number | string) => {
+    setDmFormLoading(true)
+    setDmFormData(null)
+    
+    // Find the call data to get the unique_id
+    const callData = calls.find(c => String(c.id) === String(callId))
+    const uniqueId = callData?.unique_id
+    
+    if (!uniqueId) {
+      console.log('No unique_id found for call:', callId)
+      setDmFormData(null)
+      setDmFormLoading(false)
+      return
+    }
+    
+    console.log('Loading DM Form Data for unique_id:', uniqueId)
+    console.log('API URL:', `${API_BASE}/api/dm-form/unique/${uniqueId}`)
+    try {
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = "omit"
+      if (USE_AUTH_COOKIE) {
+        credentials = "include"
+      } else {
+        const t = getToken()
+        if (t) headers["Authorization"] = `Bearer ${t}`
+      }
+      
+      const res = await fetch(`${API_BASE}/api/dm-form/unique/${uniqueId}`, { headers, credentials })
+      console.log('API Response status:', res.status)
+      
+      if (!res.ok) {
+        if (res.status === 404) {
+          console.log('No DM form data found for this unique_id')
+          setDmFormData(null)
+        } else {
+          const errorText = await res.text().catch(() => 'Unknown error')
+          console.error('API Error:', errorText)
+          throw new Error(`HTTP ${res.status}: ${errorText}`)
+        }
+      } else {
+        const data = (await res.json().catch(() => null)) as any;
+        console.log('DM Form found:', data?.success)
+        if (data?.success && data?.data) {
+          console.log('Form data keys:', Object.keys(data.data))
+          setDmFormData(data.data);
+        } else {
+          setDmFormData(null)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading DM form data:', error)
+      setDmFormData(null)
+    } finally {
+      setDmFormLoading(false)
+    }
+  }
   const loadTranscript = async (callId: number | string) => {
     setTranscriptLoading(true)
     setTranscriptError(null)
@@ -376,41 +500,179 @@ export default function QaCallReviewPage() {
       let credentials: RequestCredentials = "omit"
       if (USE_AUTH_COOKIE) {
         credentials = "include"
+        const csrfToken = getCsrfTokenFromCookies()
+        if (csrfToken) {
+          headers["X-CSRF-Token"] = csrfToken
+        }
       } else {
         const t = getToken()
         if (t) headers["Authorization"] = `Bearer ${t}`
       }
+      
+      // First check if there's a QA review
       const res = await fetch(`${API_BASE}/api/qa/reviews/${callId}`, { headers, credentials })
-      if (res.status === 404) {
-        // No existing review; keep empty form so QA can create a new one
-        setMessage("No existing review found. You can create a new review for this call.")
-      } else if (!res.ok) {
-        setMessage("Failed to load existing review")
-      } else {
+      let hasQaReview = false
+      
+      if (res.ok) {
         const data = await res.json()
         const r = data?.review
         if (r) {
-          setComments(r.comments || "")
-          setFQaStatus(r.f_qa_status || "")
-          setFDqReason1(r.f_dq_reason1 || "")
-          setFDqReason2(r.f_dq_reason2 || "")
-          setFDqReason3(r.f_dq_reason3 || "")
-          setFDqReason4(r.f_dq_reason4 || "")
-          setFQaComments(r.f_qa_comments || "")
-          setFCallRating(r.f_call_rating != null ? String(r.f_call_rating) : "")
-          setFCallNotes(r.f_call_notes || "")
-          setFeedback(r.feedback || "")
-          setFCallLinks(r.f_call_links || "")
-          setFQaName(r.f_qa_name || "")
-          setFAuditDate(r.f_audit_date ? String(r.f_audit_date).slice(0, 10) : "")
+          hasQaReview = true
+          console.log('Loading QA review data:', r)
+          
+          // Set all the QA fields
+          const qaData = {
+            comments: r.comments || "",
+            fQaStatus: r.f_qa_status || "",
+            fDqReason1: r.f_dq_reason1 || "",
+            fDqReason2: r.f_dq_reason2 || "",
+            fDqReason3: r.f_dq_reason3 || "",
+            fDqReason4: r.f_dq_reason4 || "",
+            fQaComments: r.f_qa_comments || "",
+            fCallRating: r.f_call_rating != null ? String(r.f_call_rating) : "",
+            fCallNotes: r.f_call_notes || "",
+            fCallLinks: r.f_call_links || "",
+            fQaName: r.f_qa_name || "",
+            fAuditDate: r.f_audit_date ? String(r.f_audit_date).slice(0, 10) : "",
+            fEmailStatus: r.f_email_status || ""
+          }
+          
+          console.log('Setting QA data to state:', qaData)
+          
+          setComments(qaData.comments)
+          setFQaStatus(qaData.fQaStatus)
+          setFDqReason1(qaData.fDqReason1)
+          setFDqReason2(qaData.fDqReason2)
+          setFDqReason3(qaData.fDqReason3)
+          setFDqReason4(qaData.fDqReason4)
+          setFQaComments(qaData.fQaComments)
+          setFCallRating(qaData.fCallRating)
+          setFCallNotes(qaData.fCallNotes)
+          setFCallLinks(qaData.fCallLinks)
+          setFQaName(qaData.fQaName)
+          setFAuditDate(qaData.fAuditDate)
+          setFEmailStatus(qaData.fEmailStatus)
+          
+          // If QA Name is empty in existing review, set it to current logged user
+          if (!r.f_qa_name || r.f_qa_name.trim() === "") {
+            await fetchAndSetQaName()
+          }
         }
       }
+      
+      // Also check DM form for QA fields
+      const callData = calls.find(c => String(c.id) === String(callId))
+      const uniqueId = callData?.unique_id
+      
+      if (uniqueId && !hasQaReview) {
+        try {
+          const dmRes = await fetch(`${API_BASE}/api/dm-form/unique/${uniqueId}`, { headers, credentials })
+          if (dmRes.ok) {
+            const dmData = await dmRes.json()
+            const dmForm = dmData?.data
+            
+            if (dmForm) {
+              // Check if any QA fields are filled in DM form
+              const qaFields = [
+                dmForm.f_qa_status,
+                dmForm.f_email_status,
+                dmForm.f_dq_reason1,
+                dmForm.f_dq_reason2,
+                dmForm.f_dq_reason3,
+                dmForm.f_dq_reason4,
+                dmForm.f_call_rating,
+                dmForm.f_qa_name,
+                dmForm.f_audit_date,
+                dmForm.f_qa_comments,
+                dmForm.f_call_notes,
+                dmForm.f_call_links
+              ]
+              
+              const hasQaData = qaFields.some(field => field !== null && field !== undefined && field !== '')
+              
+              if (hasQaData) {
+                hasQaReview = true
+                console.log('Loading QA data from DM form:', dmForm)
+                
+                // Set all the QA fields from DM form
+                const dmQaData = {
+                  fQaStatus: dmForm.f_qa_status || "",
+                  fEmailStatus: dmForm.f_email_status || "",
+                  fDqReason1: dmForm.f_dq_reason1 || "",
+                  fDqReason2: dmForm.f_dq_reason2 || "",
+                  fDqReason3: dmForm.f_dq_reason3 || "",
+                  fDqReason4: dmForm.f_dq_reason4 || "",
+                  fCallRating: dmForm.f_call_rating ? String(dmForm.f_call_rating) : "",
+                  fQaName: dmForm.f_qa_name || "",
+                  fAuditDate: dmForm.f_audit_date ? String(dmForm.f_audit_date).slice(0, 10) : "",
+                  fQaComments: dmForm.f_qa_comments || "",
+                  fCallNotes: dmForm.f_call_notes || "",
+                  fCallLinks: dmForm.f_call_links || ""
+                }
+                
+                console.log('Setting DM QA data to state:', dmQaData)
+                
+                setFQaStatus(dmQaData.fQaStatus)
+                setFEmailStatus(dmQaData.fEmailStatus)
+                setFDqReason1(dmQaData.fDqReason1)
+                setFDqReason2(dmQaData.fDqReason2)
+                setFDqReason3(dmQaData.fDqReason3)
+                setFDqReason4(dmQaData.fDqReason4)
+                setFCallRating(dmQaData.fCallRating)
+                setFQaName(dmQaData.fQaName)
+                setFAuditDate(dmQaData.fAuditDate)
+                setFQaComments(dmQaData.fQaComments)
+                setFCallNotes(dmQaData.fCallNotes)
+                setFCallLinks(dmQaData.fCallLinks)
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error checking DM form for QA fields:', error)
+        }
+      }
+      
+      // Set edit mode based on whether we have QA data
+      setIsEditMode(hasQaReview)
+      
+      // Add a small delay to ensure state updates are complete before logging
+      setTimeout(() => {
+        console.log('Final QA review state:', {
+          hasQaReview,
+          isEditMode: hasQaReview,
+          fQaStatus,
+          fEmailStatus,
+          fDqReason1,
+          fDqReason2,
+          fDqReason3,
+          fDqReason4,
+          fCallRating,
+          fQaName,
+          fAuditDate,
+          fQaComments,
+          fCallNotes,
+          fCallLinks
+        })
+      }, 100)
+      
+      if (hasQaReview) {
+        setMessage("Existing QA data found. You can edit the review.")
+      } else {
+        setMessage("No existing review found. You can create a new review for this call.")
+        // Ensure QA Name is set for new reviews
+        await fetchAndSetQaName()
+      }
+      
     } catch {
       setMessage("Failed to load existing review")
+      setIsEditMode(false)
+      // Still try to set QA Name even on error
+      await fetchAndSetQaName()
     } finally {
       setLoadingReview(false)
     }
     await loadTranscript(callId)
+    await loadDmFormData(callId)
   }
 
   const openReviewDialog = (callId: number | string) => {
@@ -422,16 +684,28 @@ export default function QaCallReviewPage() {
     if (!selectedCallId) return
     setSaving(true)
     setMessage(null)
+    
+    // Ensure QA Name is set before saving
+    if (!fQaName || fQaName.trim() === "") {
+      await fetchAndSetQaName()
+    }
+    
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" }
       let credentials: RequestCredentials = "omit"
       if (USE_AUTH_COOKIE) {
         credentials = "include"
+        const csrfToken = getCsrfTokenFromCookies()
+        if (csrfToken) {
+          headers["X-CSRF-Token"] = csrfToken
+        }
       } else {
         const t = getToken()
         if (t) headers["Authorization"] = `Bearer ${t}`
       }
-      const body = {
+      
+      // Save QA review data
+      const qaBody = {
         comments: comments || null,
         f_qa_status: fQaStatus || null,
         f_dq_reason1: fDqReason1 || null,
@@ -441,22 +715,147 @@ export default function QaCallReviewPage() {
         f_qa_comments: fQaComments || null,
         f_call_rating: fCallRating ? Number(fCallRating) : null,
         f_call_notes: fCallNotes || null,
-        feedback: feedback || null,
         f_call_links: fCallLinks || null,
-        f_qa_name: fQaName || null,
+        f_qa_name: fQaName || null, // Ensure QA Name is included
         f_audit_date: fAuditDate || null,
       }
-      const res = await fetch(`${API_BASE}/api/qa/reviews/${selectedCallId}`, {
+      
+      const qaRes = await fetch(`${API_BASE}/api/qa/reviews/${selectedCallId}`, {
         method: "POST",
         headers,
         credentials,
-        body: JSON.stringify(body),
+        body: JSON.stringify(qaBody),
       })
-      if (!res.ok) {
+      
+      if (!qaRes.ok) {
         setMessage("Failed to save review")
         return
       }
-      setMessage("Review saved")
+      
+      // Save DM form data if it exists
+      if (dmFormData) {
+        try {
+          console.log('DM Form Data:', dmFormData)
+          console.log('Email Status Value:', fEmailStatus)
+          
+          // Find the call data to get the unique_id
+          const callData = calls.find(c => String(c.id) === String(selectedCallId))
+          const uniqueId = callData?.unique_id
+          
+          if (!uniqueId) {
+            console.log('No unique_id found for call:', selectedCallId)
+            console.warn("Cannot update DM form without unique_id")
+          } else {
+            // First get the form by unique_id to find its f_id
+            const getRes = await fetch(`${API_BASE}/api/dm-form/unique/${uniqueId}`, {
+              headers,
+              credentials,
+            })
+            
+            console.log('DM Form GET Response (by unique_id):', getRes.status)
+            
+            let formId = null
+            
+            if (getRes.ok) {
+              const getResult = await getRes.json()
+              formId = getResult.data?.f_id
+              console.log('Found Form ID:', formId)
+            } else if (getRes.status === 404) {
+              // DM form doesn't exist, create a new one
+              console.log('DM form not found, creating new one...')
+              
+              const createPayload = {
+                ...dmFormData,
+                f_lead: String(selectedCallId), // Set the lead ID to link to this call
+                unique_id: uniqueId, // Include the unique_id
+                // Add QA fields
+                f_email_status: fEmailStatus || null,
+                f_qa_status: fQaStatus || null,
+                f_dq_reason1: fDqReason1 || null,
+                f_dq_reason2: fDqReason2 || null,
+                f_dq_reason3: fDqReason3 || null,
+                f_dq_reason4: fDqReason4 || null,
+                f_qa_comments: fQaComments || null,
+                f_call_rating: fCallRating ? String(fCallRating) : null,
+                f_call_notes: fCallNotes || null,
+                f_call_links: fCallLinks || null,
+                f_qa_name: fQaName || null,
+                f_audit_date: fAuditDate || null,
+              }
+              
+              console.log('Creating DM form with payload:', createPayload)
+              
+              const createRes = await fetch(`${API_BASE}/api/dm-form`, {
+                method: "POST",
+                headers,
+                credentials,
+                body: JSON.stringify(createPayload),
+              })
+              
+              console.log('DM Form CREATE Response:', createRes.status)
+              
+              if (createRes.ok) {
+                const createResult = await createRes.json()
+                formId = createResult.data?.f_id
+                console.log('Created new Form ID:', formId)
+              } else {
+                const errorText = await createRes.text()
+                console.error("Failed to create DM form:", errorText)
+                console.warn("Failed to create DM form, but QA review was saved")
+              }
+            }
+            
+            // Update the form (either existing or newly created)
+            if (formId) {
+              const dmUpdatePayload = {
+                // Add QA fields to DM form update
+                f_email_status: fEmailStatus || null,
+                f_qa_status: fQaStatus || null,
+                f_dq_reason1: fDqReason1 || null,
+                f_dq_reason2: fDqReason2 || null,
+                f_dq_reason3: fDqReason3 || null,
+                f_dq_reason4: fDqReason4 || null,
+                f_qa_comments: fQaComments || null,
+                f_call_rating: fCallRating ? String(fCallRating) : null,
+                f_call_notes: fCallNotes || null,
+                f_call_links: fCallLinks || null,
+                f_qa_name: fQaName || null,
+                f_audit_date: fAuditDate || null,
+              }
+              
+              console.log('DM Form Update Payload:', dmUpdatePayload)
+              
+              const dmRes = await fetch(`${API_BASE}/api/dm-form/${formId}`, {
+                method: "PATCH",
+                headers,
+                credentials,
+                body: JSON.stringify(dmUpdatePayload),
+              })
+              
+              console.log('DM Form PATCH Response:', dmRes.status)
+              
+              if (!dmRes.ok) {
+                const errorText = await dmRes.text()
+                console.error("Failed to save DM form data:", errorText)
+                console.warn("Failed to save DM form data, but QA review was saved")
+              } else {
+                console.log("DM form updated successfully")
+              }
+            }
+          }
+        } catch (dmError) {
+          console.error("Error saving DM form data:", dmError)
+          console.warn("Error saving DM form data, but QA review was saved:", dmError)
+        }
+      } else {
+        console.log("No DM form data found to update")
+      }
+      
+      setMessage(isEditMode ? "QA review updated successfully" : "QA review created successfully")
+      
+      // Refresh the calls list to update review status
+      await fetchCalls()
+      
     } catch {
       setMessage("Failed to save review")
     } finally {
@@ -615,7 +1014,7 @@ export default function QaCallReviewPage() {
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Call ID</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Destination</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Start (UTC)</th>
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">Disposition</th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">Remarks</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Recording</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground" />
                     </tr>
@@ -633,7 +1032,7 @@ export default function QaCallReviewPage() {
                         <td className="px-3 py-2">{c.id}</td>
                         <td className="px-3 py-2 max-w-[140px] truncate">{c.destination || "-"}</td>
                         <td className="px-3 py-2 whitespace-nowrap">{fmtDateTime(c.start_time)}</td>
-                        <td className="px-3 py-2 whitespace-nowrap">{c.disposition || "-"}</td>
+                        <td className="px-3 py-2 max-w-[150px] truncate">{c.remarks || "-"}</td>
                         <td className="px-3 py-2 min-w-[220px]">
                           {c.recording_url ? (
                             <CompactAudio src={c.recording_url} name={c.id} />
@@ -642,14 +1041,28 @@ export default function QaCallReviewPage() {
                           )}
                         </td>
                         <td className="px-3 py-2 text-right">
-                          <Button
-                            size="sm"
-                            variant={selectedCallId === c.id ? "default" : "outline"}
-                            onClick={() => openReviewDialog(c.id)}
-                            disabled={loadingReview && selectedCallId === c.id}
-                          >
-                            {loadingReview && selectedCallId === c.id ? "Loading…" : "Review"}
-                          </Button>
+                          {(c.reviewed || c.has_dm_qa_fields) ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-green-600 font-medium">Lead Reviewed</span>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => openReviewDialog(c.id)}
+                                disabled={loadingReview && selectedCallId === c.id}
+                              >
+                                {loadingReview && selectedCallId === c.id ? "Loading…" : "Edit QA"}
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant={selectedCallId === c.id ? "default" : "outline"}
+                              onClick={() => openReviewDialog(c.id)}
+                              disabled={loadingReview && selectedCallId === c.id}
+                            >
+                              {loadingReview && selectedCallId === c.id ? "Loading…" : "Review Lead"}
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -658,7 +1071,7 @@ export default function QaCallReviewPage() {
               </div>
 
               <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
-                Click <strong>Review</strong> on any call to open the QA form in a dialog and capture detailed audit data.
+                Click <strong>Review Lead</strong> to create a new QA review. Each lead can only be reviewed once. Use <strong>Edit QA</strong> to modify existing reviews.
               </div>
             </CardContent>
           </Card>
@@ -673,15 +1086,16 @@ export default function QaCallReviewPage() {
             setSelectedCallId(null)
             setMessage(null)
             setLoadingReview(false)
+            setIsEditMode(false)
             resetForm()
           }
         }}
       >
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
           <DialogHeader>
-            <DialogTitle>Call Review</DialogTitle>
+            <DialogTitle>{isEditMode ? "Edit QA Review" : "New QA Review"}</DialogTitle>
             <DialogDescription>
-              {selectedCallId ? `Reviewing call ID ${selectedCallId}` : "Select a call from the queue to begin."}
+              {selectedCallId ? (isEditMode ? `Editing existing QA review for call ID ${selectedCallId}` : `Creating new QA review for call ID ${selectedCallId}. Each lead can only be reviewed once.`) : "Select a call from the queue to begin."}
             </DialogDescription>
           </DialogHeader>
 
@@ -765,6 +1179,10 @@ export default function QaCallReviewPage() {
                   <Input value={fQaStatus} onChange={(e) => setFQaStatus(e.target.value)} />
                 </div>
                 <div>
+                  <label className="block text-xs mb-1">Email status</label>
+                  <Input value={fEmailStatus} onChange={(e) => setFEmailStatus(e.target.value)} />
+                </div>
+                <div>
                   <label className="block text-xs mb-1">DQ reason 1</label>
                   <Input value={fDqReason1} onChange={(e) => setFDqReason1(e.target.value)} />
                 </div>
@@ -794,6 +1212,171 @@ export default function QaCallReviewPage() {
                 </div>
               </div>
 
+              {/* DM Form Fields - Disabled */}
+              {dmFormLoading ? (
+                <div className="text-sm text-muted-foreground p-4 border rounded-md bg-muted/20">
+                  Loading DM form data...
+                </div>
+              ) : dmFormData ? (
+                <div className="space-y-4">
+                  <div className="text-sm font-medium text-muted-foreground border-b pb-2">DM Form Data (Read-only)</div>
+                  
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div>
+                      <label className="block text-xs mb-1">Salutation</label>
+                      <Input value={dmFormData.f_salutation || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">First Name</label>
+                      <Input value={dmFormData.f_first_name || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Last Name</label>
+                      <Input value={dmFormData.f_last_name || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Job Title</label>
+                      <Input value={dmFormData.f_job_title || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Department</label>
+                      <Input value={dmFormData.f_department || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Job Level</label>
+                      <Input value={dmFormData.f_job_level || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Email</label>
+                      <Input value={dmFormData.f_email_add || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Secondary Email</label>
+                      <Input value={dmFormData.Secondary_Email || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Contact No</label>
+                      <Input value={dmFormData.f_conatct_no || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Company Name</label>
+                      <Input value={dmFormData.f_company_name || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Website</label>
+                      <Input value={dmFormData.f_website || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Address 1</label>
+                      <Input value={dmFormData.f_address1 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">City</label>
+                      <Input value={dmFormData.f_city || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">State</label>
+                      <Input value={dmFormData.f_state || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Zip Code</label>
+                      <Input value={dmFormData.f_zip_code || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Country</label>
+                      <Input value={dmFormData.f_country || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Employee Size</label>
+                      <Input value={dmFormData.f_emp_size || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Industry</label>
+                      <Input value={dmFormData.f_industry || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Sub Industry</label>
+                      <Input value={dmFormData.f_sub_industry || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Revenue</label>
+                      <Input value={dmFormData.f_revenue || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Revenue Link</label>
+                      <Input value={dmFormData.f_revenue_link || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Profile Link</label>
+                      <Input value={dmFormData.f_profile_link || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Company Link</label>
+                      <Input value={dmFormData.f_company_link || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Address Link</label>
+                      <Input value={dmFormData.f_address_link || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Asset Name 1</label>
+                      <Input value={dmFormData.f_asset_name1 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Asset Name 2</label>
+                      <Input value={dmFormData.f_asset_name2 || ""} disabled className="bg-muted" />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div>
+                      <label className="block text-xs mb-1">CQ1</label>
+                      <Input value={dmFormData.f_cq1 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ2</label>
+                      <Input value={dmFormData.f_cq2 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ3</label>
+                      <Input value={dmFormData.f_cq3 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ4</label>
+                      <Input value={dmFormData.f_cq4 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ5</label>
+                      <Input value={dmFormData.f_cq5 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ6</label>
+                      <Input value={dmFormData.f_cq6 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ7</label>
+                      <Input value={dmFormData.f_cq7 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ8</label>
+                      <Input value={dmFormData.f_cq8 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ9</label>
+                      <Input value={dmFormData.f_cq9 || ""} disabled className="bg-muted" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">CQ10</label>
+                      <Input value={dmFormData.f_cq10 || ""} disabled className="bg-muted" />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground p-4 border rounded-md bg-muted/20">
+                  No DM form data available for this call.
+                </div>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="sm:col-span-2 lg:col-span-3">
                   <label className="block text-xs mb-1">QA comments</label>
@@ -804,27 +1387,11 @@ export default function QaCallReviewPage() {
                   />
                 </div>
                 <div className="sm:col-span-2 lg:col-span-3">
-                  <label className="block text-xs mb-1">General comments</label>
-                  <textarea
-                    className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={comments}
-                    onChange={(e) => setComments(e.target.value)}
-                  />
-                </div>
-                <div className="sm:col-span-2 lg:col-span-3">
                   <label className="block text-xs mb-1">Call notes</label>
                   <textarea
                     className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
                     value={fCallNotes}
                     onChange={(e) => setFCallNotes(e.target.value)}
-                  />
-                </div>
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <label className="block text-xs mb-1">Feedback</label>
-                  <textarea
-                    className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={feedback}
-                    onChange={(e) => setFeedback(e.target.value)}
                   />
                 </div>
                 <div className="sm:col-span-2 lg:col-span-3">
@@ -840,7 +1407,7 @@ export default function QaCallReviewPage() {
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="text-xs text-muted-foreground min-h-[1.25rem]">{message}</div>
                 <Button size="sm" onClick={saveReview} disabled={saving}>
-                  {saving ? "Saving…" : "Save review"}
+                  {saving ? (isEditMode ? "Updating…" : "Creating…") : (isEditMode ? "Update QA Review" : "Create QA Review")}
                 </Button>
               </div>
             </div>

@@ -57,6 +57,7 @@ declare global {
 const API_PREFIX = `${API_BASE}/api`
 
 const dmFieldKeys = [
+  'unique_id',
   'f_salutation',
   'f_first_name',
   'f_last_name',
@@ -93,6 +94,18 @@ const dmFieldKeys = [
   'f_cq10',
   'f_asset_name1',
   'f_asset_name2',
+  'f_email_status',
+  'f_qa_status',
+  'f_dq_reason1',
+  'f_dq_reason2',
+  'f_dq_reason3',
+  'f_dq_reason4',
+  'f_qa_comments',
+  'f_call_rating',
+  'f_call_notes',
+  'f_call_links',
+  'f_qa_name',
+  'f_audit_date',
 ] as const
 
 type DmFieldKey = (typeof dmFieldKeys)[number]
@@ -645,6 +658,11 @@ export default function ManualDialerPage() {
       const session = data.session
       sessionRef.current = session
 
+      // Set unique_id in DM form when session is created
+      if (session?.id) {
+        setDmForm(prev => ({ ...prev, unique_id: String(session.id) }))
+      }
+
       session.on("peerconnection", (e: any) => {
         const pc: RTCPeerConnection = e.peerconnection
         attachRemoteAudio(pc)
@@ -1123,7 +1141,8 @@ export default function ManualDialerPage() {
               credentials,
               body: JSON.stringify({ 
                 f_lead: dispositionValue,
-                f_resource_name: userName // Add logged-in user name
+                f_resource_name: userName, // Add logged-in user name
+                unique_id: dmForm.unique_id || String(sessionRef.current?.id || '') // Include unique_id from call session
               }),
             })
             
@@ -1140,6 +1159,7 @@ export default function ManualDialerPage() {
         f_campaign_name: selectedCampaign || '',
         f_lead: dispositionValue,
         f_resource_name: userName, // Add logged-in user name
+        unique_id: dmForm.unique_id || String(sessionRef.current?.id || '') // Include unique_id from call session
       }
       
       const res = await fetch(`${API_PREFIX}/dm-form`, {

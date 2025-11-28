@@ -18,6 +18,11 @@ const optionalField = z
   })
 
 const dmFieldKeys = [
+  'f_campaign_name',
+  'f_lead',
+  'f_resource_name',
+  'f_data_source',
+  'unique_id',
   'f_salutation',
   'f_first_name',
   'f_last_name',
@@ -54,6 +59,18 @@ const dmFieldKeys = [
   'f_cq10',
   'f_asset_name1',
   'f_asset_name2',
+  'f_email_status',
+  'f_qa_status',
+  'f_dq_reason1',
+  'f_dq_reason2',
+  'f_dq_reason3',
+  'f_dq_reason4',
+  'f_qa_comments',
+  'f_call_rating',
+  'f_call_notes',
+  'f_call_links',
+  'f_qa_name',
+  'f_audit_date',
 ] as const
 
 type LeadFieldKey = (typeof dmFieldKeys)[number]
@@ -68,9 +85,6 @@ const baseShape = dmFieldKeys.reduce<Record<LeadFieldKey, typeof optionalField>>
 
 const DmFormSchema = z
   .object({
-    f_campaign_name: optionalField,
-    f_lead: optionalField,
-    f_resource_name: optionalField,
     ...baseShape,
   })
   .strict()
@@ -106,6 +120,103 @@ function sanitizePayload(input: Partial<DmFormInput>) {
 
   return { data, touched }
 }
+
+// Debug endpoint to check calls with unique_ids
+router.get('/debug/calls', requireAuth, async (req: any, res, next) => {
+  try {
+    const recentCalls = await (db as any).calls.findMany({
+      select: {
+        id: true,
+        unique_id: true,
+        destination: true,
+        start_time: true,
+      },
+      orderBy: { start_time: 'desc' },
+      take: 10
+    })
+    
+    res.json({ 
+      success: true, 
+      count: recentCalls.length,
+      data: recentCalls 
+    })
+  } catch (e) {
+    next(e)
+  }
+})
+
+// Debug endpoint to check all DM forms
+router.get('/debug/all', requireAuth, async (req: any, res, next) => {
+  try {
+    const allForms = await (db as any).dm_form.findMany({
+      select: {
+        f_id: true,
+        f_campaign_name: true,
+        f_lead: true,
+        unique_id: true,
+        f_resource_name: true,
+        f_date: true,
+      },
+      orderBy: { f_date: 'desc' },
+      take: 10
+    })
+    
+    res.json({ 
+      success: true, 
+      count: allForms.length,
+      data: allForms 
+    })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/lead/:leadId', requireAuth, async (req: any, res, next) => {
+  try {
+    const leadId = req.params.leadId
+    
+    if (!leadId) {
+      return res.status(400).json({ success: false, message: 'Lead ID is required' })
+    }
+    
+    // Search by f_lead (call ID) - simple approach
+    const form = await (db as any).dm_form.findFirst({
+      where: { f_lead: leadId },
+    })
+    
+    if (!form) {
+      return res.status(404).json({ success: false, message: 'DM form not found for this lead' })
+    }
+    
+    res.json({ success: true, data: form })
+  } catch (e) {
+    next(e)
+  }
+})
+
+// New endpoint to find DM form by unique_id
+router.get('/unique/:uniqueId', requireAuth, async (req: any, res, next) => {
+  try {
+    const uniqueId = req.params.uniqueId
+    
+    if (!uniqueId) {
+      return res.status(400).json({ success: false, message: 'Unique ID is required' })
+    }
+    
+    // Search by unique_id
+    const form = await (db as any).dm_form.findFirst({
+      where: { unique_id: uniqueId },
+    })
+    
+    if (!form) {
+      return res.status(404).json({ success: false, message: 'DM form not found for this unique ID' })
+    }
+    
+    res.json({ success: true, data: form })
+  } catch (e) {
+    next(e)
+  }
+})
 
 router.get('/', requireAuth, async (req: any, res, next) => {
   try {
