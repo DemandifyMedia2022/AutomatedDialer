@@ -164,18 +164,60 @@ router.get('/leads', requireAuth, requireRoles(['qa', 'manager', 'superadmin']),
       take: 200,
     })
 
-    const items = (rows || []).map((r: any) => ({
-      call_id: typeof r.call_id === 'bigint' ? Number(r.call_id) : r.call_id,
-      username: r.calls?.username ?? null,
-      destination: r.calls?.destination ?? null,
-      start_time: r.calls?.start_time ?? null,
-      recording_url: r.calls?.recording_url ?? null,
-      overall_score: r.overall_score,
-      tone_score: r.tone_score,
-      compliance_score: r.compliance_score,
-      lead_quality: r.lead_quality,
-      lead_tags_csv: r.lead_tags_csv,
-    }))
+    const items = []
+    for (const r of rows || []) {
+      const callData = {
+        call_id: typeof r.call_id === 'bigint' ? Number(r.call_id) : r.call_id,
+        unique_id: r.calls?.unique_id ?? null,
+        username: r.calls?.username ?? null,
+        destination: r.calls?.destination ?? null,
+        start_time: r.calls?.start_time ?? null,
+        recording_url: r.calls?.recording_url ?? null,
+        overall_score: r.overall_score,
+        tone_score: r.tone_score,
+        compliance_score: r.compliance_score,
+        lead_quality: r.lead_quality,
+        lead_tags_csv: r.lead_tags_csv,
+        reviewed: true, // This item has a review
+        reviewer_user_id: r.reviewer_user_id,
+        created_at: r.created_at,
+      }
+
+      // Check if DM form has QA fields filled
+      try {
+        const dmForm = await (db as any).dm_form.findFirst({
+          where: { unique_id: r.calls?.unique_id ?? null }
+        })
+
+        if (dmForm) {
+          // Check if any QA fields are filled
+          const qaFields = [
+            dmForm.f_qa_status,
+            dmForm.f_email_status,
+            dmForm.f_dq_reason1,
+            dmForm.f_dq_reason2,
+            dmForm.f_dq_reason3,
+            dmForm.f_dq_reason4,
+            dmForm.f_call_rating,
+            dmForm.f_qa_name,
+            dmForm.f_audit_date,
+            dmForm.f_qa_comments,
+            dmForm.f_call_notes,
+            dmForm.f_call_links
+          ]
+
+          const hasQaData = qaFields.some(field => field !== null && field !== undefined && field !== '')
+          callData.has_dm_qa_fields = hasQaData
+        } else {
+          callData.has_dm_qa_fields = false
+        }
+      } catch (error) {
+        console.error('Error checking DM form QA fields:', error)
+        callData.has_dm_qa_fields = false
+      }
+
+      items.push(callData)
+    }
 
     return res.json({ success: true, items })
   } catch (e) {

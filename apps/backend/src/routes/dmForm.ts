@@ -22,6 +22,7 @@ const dmFieldKeys = [
   'f_lead',
   'f_resource_name',
   'f_data_source',
+  'unique_id',
   'f_salutation',
   'f_first_name',
   'f_last_name',
@@ -58,6 +59,18 @@ const dmFieldKeys = [
   'f_cq10',
   'f_asset_name1',
   'f_asset_name2',
+  'f_email_status',
+  'f_qa_status',
+  'f_dq_reason1',
+  'f_dq_reason2',
+  'f_dq_reason3',
+  'f_dq_reason4',
+  'f_qa_comments',
+  'f_call_rating',
+  'f_call_notes',
+  'f_call_links',
+  'f_qa_name',
+  'f_audit_date',
 ] as const
 
 type LeadFieldKey = (typeof dmFieldKeys)[number]
@@ -173,6 +186,30 @@ router.get('/lead/:leadId', requireAuth, async (req: any, res, next) => {
     
     if (!form) {
       return res.status(404).json({ success: false, message: 'DM form not found for this lead' })
+    }
+    
+    res.json({ success: true, data: form })
+  } catch (e) {
+    next(e)
+  }
+})
+
+// New endpoint to find DM form by unique_id
+router.get('/unique/:uniqueId', requireAuth, async (req: any, res, next) => {
+  try {
+    const uniqueId = req.params.uniqueId
+    
+    if (!uniqueId) {
+      return res.status(400).json({ success: false, message: 'Unique ID is required' })
+    }
+    
+    // Search by unique_id
+    const form = await (db as any).dm_form.findFirst({
+      where: { unique_id: uniqueId },
+    })
+    
+    if (!form) {
+      return res.status(404).json({ success: false, message: 'DM form not found for this unique ID' })
     }
     
     res.json({ success: true, data: form })
