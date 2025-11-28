@@ -32,6 +32,13 @@ import {
 } from "@/components/ui/command"
 import { ChevronsUpDown, Check } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 type CallRow = {
   id: number | string
@@ -41,6 +48,7 @@ type CallRow = {
   start_time: string
   recording_url?: string | null
   remarks?: string | null
+  campaign_name?: string | null
   reviewed?: boolean
   reviewer_user_id?: number | null
   created_at?: string | null
@@ -121,6 +129,7 @@ export default function QaCallReviewPage() {
               start_time: r.start_time,
               recording_url: r.recording_url ?? null,
               remarks: r.remarks ?? null,
+              campaign_name: r.campaign_name ?? null,
               reviewed: r.reviewed ?? false,
               reviewer_user_id: r.reviewer_user_id ?? null,
               created_at: r.created_at ?? null,
@@ -152,6 +161,7 @@ export default function QaCallReviewPage() {
           start_time: r.start_time,
           recording_url: r.recording_url ?? null,
           remarks: r.remarks ?? null,
+          campaign_name: r.campaign_name ?? null,
           reviewed: false, // Fallback calls are not yet reviewed
           reviewer_user_id: null,
           created_at: null,
@@ -1013,6 +1023,7 @@ export default function QaCallReviewPage() {
                     <tr>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Call ID</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Destination</th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">Campaign</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Start (UTC)</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Remarks</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Recording</th>
@@ -1022,7 +1033,7 @@ export default function QaCallReviewPage() {
                   <tbody className="divide-y">
                     {calls.length === 0 && (
                       <tr>
-                        <td className="px-3 py-6 text-center text-muted-foreground" colSpan={6}>
+                        <td className="px-3 py-6 text-center text-muted-foreground" colSpan={7}>
                           {loadingCalls ? "Loading…" : "No calls found"}
                         </td>
                       </tr>
@@ -1031,6 +1042,7 @@ export default function QaCallReviewPage() {
                       <tr key={String(c.id)} className={selectedCallId === c.id ? "bg-muted/40" : undefined}>
                         <td className="px-3 py-2">{c.id}</td>
                         <td className="px-3 py-2 max-w-[140px] truncate">{c.destination || "-"}</td>
+                        <td className="px-3 py-2 max-w-[120px] truncate">{c.campaign_name || "-"}</td>
                         <td className="px-3 py-2 whitespace-nowrap">{fmtDateTime(c.start_time)}</td>
                         <td className="px-3 py-2 max-w-[150px] truncate">{c.remarks || "-"}</td>
                         <td className="px-3 py-2 min-w-[220px]">
@@ -1176,31 +1188,266 @@ export default function QaCallReviewPage() {
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
                   <label className="block text-xs mb-1">QA status</label>
-                  <Input value={fQaStatus} onChange={(e) => setFQaStatus(e.target.value)} />
+                  <Select value={fQaStatus} onValueChange={setFQaStatus}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select QA status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Qualified">Qualified</SelectItem>
+                      <SelectItem value="Disqualified">Disqualified</SelectItem>
+                      <SelectItem value="Client - Rejects">Client - Rejects</SelectItem>
+                      <SelectItem value="Qualified for Campaign">Qualified for Campaign</SelectItem>
+                      <SelectItem value="Approval">Approval</SelectItem>
+                      <SelectItem value="Under Review for Email/ Phone number">Under Review for Email/ Phone number</SelectItem>
+                      <SelectItem value="Under Review for call discrepancy">Under Review for call discrepancy</SelectItem>
+                      <SelectItem value="Approval Denied">Approval Denied</SelectItem>
+                      <SelectItem value="Under Review">Under Review</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-xs mb-1">Email status</label>
-                  <Input value={fEmailStatus} onChange={(e) => setFEmailStatus(e.target.value)} />
+                  <Select value={fEmailStatus} onValueChange={setFEmailStatus}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Email Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Sent for Verification">Sent for Verification</SelectItem>
+                      <SelectItem value="Valid">Valid</SelectItem>
+                      <SelectItem value="Catch- All">Catch- All</SelectItem>
+                      <SelectItem value="Invalid">Invalid</SelectItem>
+                      <SelectItem value="Unknown">Unknown</SelectItem>
+                      <SelectItem value="Do not Mail">Do not Mail</SelectItem>
+                      <SelectItem value="Abuse">Abuse</SelectItem>
+                      <SelectItem value="Appended">Appended</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-xs mb-1">DQ reason 1</label>
-                  <Input value={fDqReason1} onChange={(e) => setFDqReason1(e.target.value)} />
+                  <Select value={fDqReason1} onValueChange={setFDqReason1}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select DQ reason 1" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Client Suppression">Client Suppression</SelectItem>
+                      <SelectItem value="Communication skills">Communication skills</SelectItem>
+                      <SelectItem value="Consent Missing">Consent Missing</SelectItem>
+                      <SelectItem value="CQ not answered">CQ not answered</SelectItem>
+                      <SelectItem value="CQ not asked">CQ not asked</SelectItem>
+                      <SelectItem value="CTPS/TPS">CTPS/TPS</SelectItem>
+                      <SelectItem value="Dead Contact">Dead Contact</SelectItem>
+                      <SelectItem value="Disposition not available">Disposition not available</SelectItem>
+                      <SelectItem value="Disqualified by MIS">Disqualified by MIS</SelectItem>
+                      <SelectItem value="DNC">DNC</SelectItem>
+                      <SelectItem value="Domain Limit Exceeded">Domain Limit Exceeded</SelectItem>
+                      <SelectItem value="WP title not read">WP title not read</SelectItem>
+                      <SelectItem value="Same Prospect Duplicate">Same Prospect Duplicate</SelectItem>
+                      <SelectItem value="Email Bounce back">Email Bounce back</SelectItem>
+                      <SelectItem value="Incomplete Call">Incomplete Call</SelectItem>
+                      <SelectItem value="Incomplete data/ Incorrect Data">Incomplete data/ Incorrect Data</SelectItem>
+                      <SelectItem value="Incorrect Call Approach">Incorrect Call Approach</SelectItem>
+                      <SelectItem value="Incorrect WP Pitched">Incorrect WP Pitched</SelectItem>
+                      <SelectItem value="Internal Suppression">Internal Suppression</SelectItem>
+                      <SelectItem value="Invalid Answer">Invalid Answer</SelectItem>
+                      <SelectItem value="Invalid Disposition">Invalid Disposition</SelectItem>
+                      <SelectItem value="Invalid Email">Invalid Email</SelectItem>
+                      <SelectItem value="Invalid Employee Size">Invalid Employee Size</SelectItem>
+                      <SelectItem value="Invalid Geo">Invalid Geo</SelectItem>
+                      <SelectItem value="Invalid Industry">Invalid Industry</SelectItem>
+                      <SelectItem value="Invalid Job Title">Invalid Job Title</SelectItem>
+                      <SelectItem value="Invalid Phone Number">Invalid Phone Number</SelectItem>
+                      <SelectItem value="Invalid Revenue">Invalid Revenue</SelectItem>
+                      <SelectItem value="Invalid Zip Code">Invalid Zip Code</SelectItem>
+                      <SelectItem value="Invalid Profile">Invalid Profile</SelectItem>
+                      <SelectItem value="Invalid Details">Invalid Details</SelectItem>
+                      <SelectItem value="Link not found">Link not found</SelectItem>
+                      <SelectItem value="Mobile phone number">Mobile phone number</SelectItem>
+                      <SelectItem value="NAICS/SIC code mismatch">NAICS/SIC code mismatch</SelectItem>
+                      <SelectItem value="Not an RPC">Not an RPC</SelectItem>
+                      <SelectItem value="Not From TAL">Not From TAL</SelectItem>
+                      <SelectItem value="Not interested">Not interested</SelectItem>
+                      <SelectItem value="Personal/Generic email address">Personal/Generic email address</SelectItem>
+                      <SelectItem value="Suspect profile">Suspect profile</SelectItem>
+                      <SelectItem value="Tollfree number">Tollfree number</SelectItem>
+                      <SelectItem value="Voice log Missing">Voice log Missing</SelectItem>
+                      <SelectItem value="No longer with the company">No longer with the company</SelectItem>
+                      <SelectItem value="Proper Value Proposition not shared on call">Proper Value Proposition not shared on call</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-xs mb-1">DQ reason 2</label>
-                  <Input value={fDqReason2} onChange={(e) => setFDqReason2(e.target.value)} />
+                  <Select value={fDqReason2} onValueChange={setFDqReason2}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select DQ reason 2" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Client Suppression">Client Suppression</SelectItem>
+                      <SelectItem value="Communication skills">Communication skills</SelectItem>
+                      <SelectItem value="Consent Missing">Consent Missing</SelectItem>
+                      <SelectItem value="CQ not answered">CQ not answered</SelectItem>
+                      <SelectItem value="CQ not asked">CQ not asked</SelectItem>
+                      <SelectItem value="CTPS/TPS">CTPS/TPS</SelectItem>
+                      <SelectItem value="Dead Contact">Dead Contact</SelectItem>
+                      <SelectItem value="Disposition not available">Disposition not available</SelectItem>
+                      <SelectItem value="Disqualified by MIS">Disqualified by MIS</SelectItem>
+                      <SelectItem value="DNC">DNC</SelectItem>
+                      <SelectItem value="Domain Limit Exceeded">Domain Limit Exceeded</SelectItem>
+                      <SelectItem value="WP title not read">WP title not read</SelectItem>
+                      <SelectItem value="Same Prospect Duplicate">Same Prospect Duplicate</SelectItem>
+                      <SelectItem value="Email Bounce back">Email Bounce back</SelectItem>
+                      <SelectItem value="Incomplete Call">Incomplete Call</SelectItem>
+                      <SelectItem value="Incomplete data/ Incorrect Data">Incomplete data/ Incorrect Data</SelectItem>
+                      <SelectItem value="Incorrect Call Approach">Incorrect Call Approach</SelectItem>
+                      <SelectItem value="Incorrect WP Pitched">Incorrect WP Pitched</SelectItem>
+                      <SelectItem value="Internal Suppression">Internal Suppression</SelectItem>
+                      <SelectItem value="Invalid Answer">Invalid Answer</SelectItem>
+                      <SelectItem value="Invalid Disposition">Invalid Disposition</SelectItem>
+                      <SelectItem value="Invalid Email">Invalid Email</SelectItem>
+                      <SelectItem value="Invalid Employee Size">Invalid Employee Size</SelectItem>
+                      <SelectItem value="Invalid Geo">Invalid Geo</SelectItem>
+                      <SelectItem value="Invalid Industry">Invalid Industry</SelectItem>
+                      <SelectItem value="Invalid Job Title">Invalid Job Title</SelectItem>
+                      <SelectItem value="Invalid Phone Number">Invalid Phone Number</SelectItem>
+                      <SelectItem value="Invalid Revenue">Invalid Revenue</SelectItem>
+                      <SelectItem value="Invalid Zip Code">Invalid Zip Code</SelectItem>
+                      <SelectItem value="Invalid Profile">Invalid Profile</SelectItem>
+                      <SelectItem value="Invalid Details">Invalid Details</SelectItem>
+                      <SelectItem value="Link not found">Link not found</SelectItem>
+                      <SelectItem value="Mobile phone number">Mobile phone number</SelectItem>
+                      <SelectItem value="NAICS/SIC code mismatch">NAICS/SIC code mismatch</SelectItem>
+                      <SelectItem value="Not an RPC">Not an RPC</SelectItem>
+                      <SelectItem value="Not From TAL">Not From TAL</SelectItem>
+                      <SelectItem value="Not interested">Not interested</SelectItem>
+                      <SelectItem value="Personal/Generic email address">Personal/Generic email address</SelectItem>
+                      <SelectItem value="Suspect profile">Suspect profile</SelectItem>
+                      <SelectItem value="Tollfree number">Tollfree number</SelectItem>
+                      <SelectItem value="Voice log Missing">Voice log Missing</SelectItem>
+                      <SelectItem value="No longer with the company">No longer with the company</SelectItem>
+                      <SelectItem value="Proper Value Proposition not shared on call">Proper Value Proposition not shared on call</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-xs mb-1">DQ reason 3</label>
-                  <Input value={fDqReason3} onChange={(e) => setFDqReason3(e.target.value)} />
+                  <Select value={fDqReason3} onValueChange={setFDqReason3}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select DQ reason 3" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Client Suppression">Client Suppression</SelectItem>
+                      <SelectItem value="Communication skills">Communication skills</SelectItem>
+                      <SelectItem value="Consent Missing">Consent Missing</SelectItem>
+                      <SelectItem value="CQ not answered">CQ not answered</SelectItem>
+                      <SelectItem value="CQ not asked">CQ not asked</SelectItem>
+                      <SelectItem value="CTPS/TPS">CTPS/TPS</SelectItem>
+                      <SelectItem value="Dead Contact">Dead Contact</SelectItem>
+                      <SelectItem value="Disposition not available">Disposition not available</SelectItem>
+                      <SelectItem value="Disqualified by MIS">Disqualified by MIS</SelectItem>
+                      <SelectItem value="DNC">DNC</SelectItem>
+                      <SelectItem value="Domain Limit Exceeded">Domain Limit Exceeded</SelectItem>
+                      <SelectItem value="WP title not read">WP title not read</SelectItem>
+                      <SelectItem value="Same Prospect Duplicate">Same Prospect Duplicate</SelectItem>
+                      <SelectItem value="Email Bounce back">Email Bounce back</SelectItem>
+                      <SelectItem value="Incomplete Call">Incomplete Call</SelectItem>
+                      <SelectItem value="Incomplete data/ Incorrect Data">Incomplete data/ Incorrect Data</SelectItem>
+                      <SelectItem value="Incorrect Call Approach">Incorrect Call Approach</SelectItem>
+                      <SelectItem value="Incorrect WP Pitched">Incorrect WP Pitched</SelectItem>
+                      <SelectItem value="Internal Suppression">Internal Suppression</SelectItem>
+                      <SelectItem value="Invalid Answer">Invalid Answer</SelectItem>
+                      <SelectItem value="Invalid Disposition">Invalid Disposition</SelectItem>
+                      <SelectItem value="Invalid Email">Invalid Email</SelectItem>
+                      <SelectItem value="Invalid Employee Size">Invalid Employee Size</SelectItem>
+                      <SelectItem value="Invalid Geo">Invalid Geo</SelectItem>
+                      <SelectItem value="Invalid Industry">Invalid Industry</SelectItem>
+                      <SelectItem value="Invalid Job Title">Invalid Job Title</SelectItem>
+                      <SelectItem value="Invalid Phone Number">Invalid Phone Number</SelectItem>
+                      <SelectItem value="Invalid Revenue">Invalid Revenue</SelectItem>
+                      <SelectItem value="Invalid Zip Code">Invalid Zip Code</SelectItem>
+                      <SelectItem value="Invalid Profile">Invalid Profile</SelectItem>
+                      <SelectItem value="Invalid Details">Invalid Details</SelectItem>
+                      <SelectItem value="Link not found">Link not found</SelectItem>
+                      <SelectItem value="Mobile phone number">Mobile phone number</SelectItem>
+                      <SelectItem value="NAICS/SIC code mismatch">NAICS/SIC code mismatch</SelectItem>
+                      <SelectItem value="Not an RPC">Not an RPC</SelectItem>
+                      <SelectItem value="Not From TAL">Not From TAL</SelectItem>
+                      <SelectItem value="Not interested">Not interested</SelectItem>
+                      <SelectItem value="Personal/Generic email address">Personal/Generic email address</SelectItem>
+                      <SelectItem value="Suspect profile">Suspect profile</SelectItem>
+                      <SelectItem value="Tollfree number">Tollfree number</SelectItem>
+                      <SelectItem value="Voice log Missing">Voice log Missing</SelectItem>
+                      <SelectItem value="No longer with the company">No longer with the company</SelectItem>
+                      <SelectItem value="Proper Value Proposition not shared on call">Proper Value Proposition not shared on call</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-xs mb-1">DQ reason 4</label>
-                  <Input value={fDqReason4} onChange={(e) => setFDqReason4(e.target.value)} />
+                  <Select value={fDqReason4} onValueChange={setFDqReason4}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select DQ reason 4" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Client Suppression">Client Suppression</SelectItem>
+                      <SelectItem value="Communication skills">Communication skills</SelectItem>
+                      <SelectItem value="Consent Missing">Consent Missing</SelectItem>
+                      <SelectItem value="CQ not answered">CQ not answered</SelectItem>
+                      <SelectItem value="CQ not asked">CQ not asked</SelectItem>
+                      <SelectItem value="CTPS/TPS">CTPS/TPS</SelectItem>
+                      <SelectItem value="Dead Contact">Dead Contact</SelectItem>
+                      <SelectItem value="Disposition not available">Disposition not available</SelectItem>
+                      <SelectItem value="Disqualified by MIS">Disqualified by MIS</SelectItem>
+                      <SelectItem value="DNC">DNC</SelectItem>
+                      <SelectItem value="Domain Limit Exceeded">Domain Limit Exceeded</SelectItem>
+                      <SelectItem value="WP title not read">WP title not read</SelectItem>
+                      <SelectItem value="Same Prospect Duplicate">Same Prospect Duplicate</SelectItem>
+                      <SelectItem value="Email Bounce back">Email Bounce back</SelectItem>
+                      <SelectItem value="Incomplete Call">Incomplete Call</SelectItem>
+                      <SelectItem value="Incomplete data/ Incorrect Data">Incomplete data/ Incorrect Data</SelectItem>
+                      <SelectItem value="Incorrect Call Approach">Incorrect Call Approach</SelectItem>
+                      <SelectItem value="Incorrect WP Pitched">Incorrect WP Pitched</SelectItem>
+                      <SelectItem value="Internal Suppression">Internal Suppression</SelectItem>
+                      <SelectItem value="Invalid Answer">Invalid Answer</SelectItem>
+                      <SelectItem value="Invalid Disposition">Invalid Disposition</SelectItem>
+                      <SelectItem value="Invalid Email">Invalid Email</SelectItem>
+                      <SelectItem value="Invalid Employee Size">Invalid Employee Size</SelectItem>
+                      <SelectItem value="Invalid Geo">Invalid Geo</SelectItem>
+                      <SelectItem value="Invalid Industry">Invalid Industry</SelectItem>
+                      <SelectItem value="Invalid Job Title">Invalid Job Title</SelectItem>
+                      <SelectItem value="Invalid Phone Number">Invalid Phone Number</SelectItem>
+                      <SelectItem value="Invalid Revenue">Invalid Revenue</SelectItem>
+                      <SelectItem value="Invalid Zip Code">Invalid Zip Code</SelectItem>
+                      <SelectItem value="Invalid Profile">Invalid Profile</SelectItem>
+                      <SelectItem value="Invalid Details">Invalid Details</SelectItem>
+                      <SelectItem value="Link not found">Link not found</SelectItem>
+                      <SelectItem value="Mobile phone number">Mobile phone number</SelectItem>
+                      <SelectItem value="NAICS/SIC code mismatch">NAICS/SIC code mismatch</SelectItem>
+                      <SelectItem value="Not an RPC">Not an RPC</SelectItem>
+                      <SelectItem value="Not From TAL">Not From TAL</SelectItem>
+                      <SelectItem value="Not interested">Not interested</SelectItem>
+                      <SelectItem value="Personal/Generic email address">Personal/Generic email address</SelectItem>
+                      <SelectItem value="Suspect profile">Suspect profile</SelectItem>
+                      <SelectItem value="Tollfree number">Tollfree number</SelectItem>
+                      <SelectItem value="Voice log Missing">Voice log Missing</SelectItem>
+                      <SelectItem value="No longer with the company">No longer with the company</SelectItem>
+                      <SelectItem value="Proper Value Proposition not shared on call">Proper Value Proposition not shared on call</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-xs mb-1">Call rating</label>
-                  <Input type="number" min={0} max={10} value={fCallRating} onChange={(e) => setFCallRating(e.target.value)} />
+                  <Select value={fCallRating} onValueChange={setFCallRating}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Call Rating" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 - Good Call</SelectItem>
+                      <SelectItem value="2">2 - Good call but has an objection</SelectItem>
+                      <SelectItem value="3">3 - Call has more than 1 objection or query</SelectItem>
+                      <SelectItem value="4">4 - DQ for specs and Invalid Objection handling</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-xs mb-1">QA name</label>

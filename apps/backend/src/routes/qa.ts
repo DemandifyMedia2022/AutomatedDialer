@@ -173,6 +173,7 @@ router.get('/leads', requireAuth, requireRoles(['qa', 'manager', 'superadmin']),
         destination: r.calls?.destination ?? null,
         start_time: r.calls?.start_time ?? null,
         recording_url: r.calls?.recording_url ?? null,
+        campaign_name: r.calls?.campaign_name ?? null,
         overall_score: r.overall_score,
         tone_score: r.tone_score,
         compliance_score: r.compliance_score,
@@ -181,6 +182,7 @@ router.get('/leads', requireAuth, requireRoles(['qa', 'manager', 'superadmin']),
         reviewed: true, // This item has a review
         reviewer_user_id: r.reviewer_user_id,
         created_at: r.created_at,
+        has_dm_qa_fields: false, // Initialize with default value
       }
 
       // Check if DM form has QA fields filled
