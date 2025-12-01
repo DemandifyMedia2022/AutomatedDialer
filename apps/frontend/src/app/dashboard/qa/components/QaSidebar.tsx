@@ -28,12 +28,6 @@ const data = {
   },
   navMain: [
     {
-      title: "Dashboard",
-      url: "/dashboard/qa/dashboard",
-      icon: LayoutDashboard,
-      items: [],
-    },
-    {
       title: "QA Workbench",
       url: "#",
       icon: ClipboardList,
