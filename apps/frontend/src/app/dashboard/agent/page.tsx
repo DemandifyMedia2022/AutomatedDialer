@@ -456,8 +456,8 @@ export default function Page() {
                             )}
                           </div>
                         </div>
-                        <span className="text-sm font-semibold tabular-nums px-2.5 py-1 rounded-full bg-blue-500/10 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/20 dark:border-blue-500/30">
-                          {row.count}
+                        <span className="text-sm font-semibold tabular-nums px-2.5 py-1 rounded-full bg-green-500/10 dark:bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/20 dark:border-green-500/30">
+                          {row.count} leads
                         </span>
                       </div>
                     ))

@@ -523,9 +523,10 @@ router.get('/analytics/leaderboard', requireAuth, requireRoles(['agent', 'manage
     const timeParts: string[] = []
     if (from) { timeParts.push('start_time >= ?'); params.push(from) }
     if (to) { timeParts.push('start_time <= ?'); params.push(to) }
-    const where = timeParts.length ? `WHERE ${timeParts.join(' AND ')}` : ''
+    const timeWhere = timeParts.length ? `AND ${timeParts.join(' AND ')}` : ''
     const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
-                 FROM calls ${where}
+                 FROM calls 
+                 WHERE LOWER(remarks) = 'lead' ${timeWhere}
                  GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
                  ORDER BY cnt DESC
                  LIMIT 10`
@@ -553,9 +554,10 @@ router.get('/analytics/leaderboard/stream', requireAuth, requireRoles(['agent', 
       const timeParts: string[] = []
       if (from) { timeParts.push('start_time >= ?'); params.push(from) }
       if (to) { timeParts.push('start_time <= ?'); params.push(to) }
-      const where = timeParts.length ? `WHERE ${timeParts.join(' AND ')}` : ''
+      const timeWhere = timeParts.length ? `AND ${timeParts.join(' AND ')}` : ''
       const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
-                   FROM calls ${where}
+                   FROM calls 
+                   WHERE LOWER(remarks) = 'lead' ${timeWhere}
                    GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
                    ORDER BY cnt DESC
                    LIMIT 10`
