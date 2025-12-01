@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ClipboardList, BarChart3, Settings, Phone } from "lucide-react"
+import { ClipboardList, BarChart3, Settings, Phone, LayoutDashboard } from "lucide-react"
 import { NavMain } from "@/components/layout/nav-main"
 import { NavUser } from "@/components/layout/nav-user"
 import {
@@ -27,6 +27,12 @@ const data = {
     logo: Phone,
   },
   navMain: [
+    {
+      title: "Dashboard",
+      url: "/dashboard/qa/dashboard",
+      icon: LayoutDashboard,
+      items: [],
+    },
     {
       title: "QA Workbench",
       url: "#",

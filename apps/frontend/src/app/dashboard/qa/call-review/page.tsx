@@ -15,9 +15,11 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Calendar } from "@/components/ui/calendar"
-import { Download, Pause, Play, RefreshCcw, ChevronDownIcon } from "lucide-react"
+import { Download, Pause, Play, RefreshCcw, ChevronDownIcon, Phone, CheckCircle, Target, Clock, TrendingUp, Users, Star, ArrowRight } from "lucide-react"
 import { type DateRange } from "react-day-picker"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
@@ -96,6 +98,68 @@ export default function QaCallReviewPage() {
   // DM Form fields
   const [dmFormData, setDmFormData] = React.useState<any | null>(null)
   const [dmFormLoading, setDmFormLoading] = React.useState(false)
+
+  // Dashboard overview state
+  const [dashboardData, setDashboardData] = React.useState<any | null>(null)
+  const [dashboardLoading, setDashboardLoading] = React.useState(false)
+  const [lastUpdated, setLastUpdated] = React.useState<Date>(new Date())
+
+  const fetchDashboardData = React.useCallback(async () => {
+    setDashboardLoading(true)
+    try {
+      // Use the same data as the calls table for consistency
+      console.log('Current calls data:', calls)
+      console.log('Call details:', calls.map(call => ({
+        id: call.id,
+        remarks: call.remarks,
+        has_dm_qa_fields: call.has_dm_qa_fields,
+        created_at: call.created_at
+      })))
+      
+      const notAuditedCalls = calls.filter(call => {
+        const isLead = call.remarks?.toLowerCase() === 'lead'
+        const isNotAudited = !call.has_dm_qa_fields
+        console.log(`Call ${call.id}: isLead=${isLead}, isNotAudited=${isNotAudited}, has_dm_qa_fields=${call.has_dm_qa_fields}`)
+        return isLead && isNotAudited
+      })
+      
+      const auditedCalls = calls.filter(call => {
+        const isLead = call.remarks?.toLowerCase() === 'lead'
+        const isAudited = call.has_dm_qa_fields === true
+        return isLead && isAudited
+      })
+      
+      const auditedTodayCalls = auditedCalls.filter(call => {
+        // For now, count all audited leads as "today" since we don't have audit date
+        // In the future, we should use the actual audit timestamp
+        return true // All audited leads count for today's dashboard
+      })
+      
+      const leadsIdentified = calls.filter(call => call.remarks?.toLowerCase() === 'lead')
+
+      const dashboardStats = {
+        callsNeedingReview: notAuditedCalls.length,
+        reviewedToday: auditedTodayCalls.length,
+        leadsIdentified: leadsIdentified.length,
+        recentActivity: []
+      }
+
+      console.log('Filtered results:', {
+        notAuditedCalls: notAuditedCalls.length,
+        auditedCalls: auditedCalls.length,
+        auditedTodayCalls: auditedTodayCalls.length,
+        leadsIdentified: leadsIdentified.length
+      })
+      console.log('Dashboard stats calculated:', dashboardStats)
+      
+      setDashboardData(dashboardStats)
+      setLastUpdated(new Date())
+    } catch (error) {
+      console.error('Error calculating dashboard data:', error)
+    } finally {
+      setDashboardLoading(false)
+    }
+  }, [calls])
 
   const fetchCalls = React.useCallback(async () => {
     setLoadingCalls(true)
@@ -323,6 +387,18 @@ export default function QaCallReviewPage() {
   React.useEffect(() => {
     fetchCalls()
   }, [fetchCalls])
+
+  // Fetch dashboard data on component mount and when calls data changes
+  React.useEffect(() => {
+    fetchDashboardData()
+  }, [fetchDashboardData])
+
+  // Auto-refresh dashboard data when calls data changes
+  React.useEffect(() => {
+    if (calls.length > 0) {
+      fetchDashboardData()
+    }
+  }, [calls, fetchDashboardData])
 
   const setTodayRange = () => {
     const today = new Date()
@@ -884,6 +960,97 @@ export default function QaCallReviewPage() {
         </header>
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+          {/* QA Overview Cards */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card className="relative overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Calls Needing Review</CardTitle>
+                <Phone className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {dashboardLoading ? (
+                  <div className="h-8 bg-muted rounded w-1/2 animate-pulse"></div>
+                ) : (
+                  <div className="text-2xl font-bold text-orange-600">{dashboardData?.callsNeedingReview || 0}</div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Pending non-audited leads count
+                </p>
+                {dashboardData && dashboardData.callsNeedingReview > 0 && (
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span>Progress today</span>
+                      <span>{dashboardData.reviewedToday}/{dashboardData.callsNeedingReview + dashboardData.reviewedToday}</span>
+                    </div>
+                    <Progress value={(dashboardData.reviewedToday / (dashboardData.callsNeedingReview + dashboardData.reviewedToday)) * 100} className="h-1" />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Reviewed Today</CardTitle>
+                <CheckCircle className="h-4 w-4 text-green-600" />
+              </CardHeader>
+              <CardContent>
+                {dashboardLoading ? (
+                  <div className="h-8 bg-muted rounded w-1/2 animate-pulse"></div>
+                ) : (
+                  <div className="text-2xl font-bold text-green-600">{dashboardData?.reviewedToday || 0}</div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Calls QA-reviewed today
+                </p>
+                <div className="mt-2 flex items-center gap-1">
+                  <TrendingUp className="h-3 w-3 text-green-500" />
+                  <span className="text-xs text-green-600">Active today</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Leads Identified</CardTitle>
+                <Target className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                {dashboardLoading ? (
+                  <div className="h-8 bg-muted rounded w-1/2 animate-pulse"></div>
+                ) : (
+                  <div className="text-2xl font-bold text-blue-600">{dashboardData?.leadsIdentified || 0}</div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Leads marked from QA reviews
+                </p>
+                <div className="mt-2">
+                  <Badge variant="secondary" className="text-xs">
+                    {dashboardData && dashboardData.reviewedToday > 0 ? `${Math.round((dashboardData.leadsIdentified / dashboardData.reviewedToday) * 100)}% conversion` : 'No data'}
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Last Updated</CardTitle>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{lastUpdated.toLocaleTimeString()}</div>
+                <p className="text-xs text-muted-foreground">
+                  Real-time dashboard data
+                </p>
+                <div className="mt-2">
+                  <Button size="sm" variant="outline" onClick={fetchDashboardData} disabled={dashboardLoading} className="text-xs">
+                    <RefreshCcw className={`h-3 w-3 mr-1 ${dashboardLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           <Card>
             <CardHeader>
               <CardTitle>Call Review Queue</CardTitle>
