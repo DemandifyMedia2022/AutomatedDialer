@@ -227,4 +227,184 @@ router.get('/leads', requireAuth, requireRoles(['qa', 'manager', 'superadmin']),
   }
 })
 
+// GET /qa/audit/:uniqueId - check if lead is already audited and fetch audit data
+router.get('/audit/:uniqueId', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
+  try {
+    const uniqueId = String(req.params.uniqueId || '').trim()
+    if (!uniqueId) {
+      return res.status(400).json({ success: false, message: 'Invalid unique ID' })
+    }
+
+    // Check if DM form exists and has audit data
+    const dmForm = await (db as any).dm_form.findFirst({
+      where: { unique_id: uniqueId }
+    })
+
+    if (!dmForm) {
+      return res.json({ 
+        success: true, 
+        isAudited: false, 
+        message: 'No DM form found for this lead' 
+      })
+    }
+
+    // Check if any QA fields are filled
+    const qaFields = [
+      dmForm.f_qa_status,
+      dmForm.f_email_status,
+      dmForm.f_dq_reason1,
+      dmForm.f_dq_reason2,
+      dmForm.f_dq_reason3,
+      dmForm.f_dq_reason4,
+      dmForm.f_call_rating,
+      dmForm.f_qa_name,
+      dmForm.f_audit_date,
+      dmForm.f_qa_comments,
+      dmForm.f_call_notes,
+      dmForm.f_call_links
+    ]
+
+    const hasQaData = qaFields.some(field => field !== null && field !== undefined && field !== '')
+    const isAudited = hasQaData
+
+    const auditData = isAudited ? {
+      qa_status: dmForm.f_qa_status,
+      email_status: dmForm.f_email_status,
+      dq_reason1: dmForm.f_dq_reason1,
+      dq_reason2: dmForm.f_dq_reason2,
+      dq_reason3: dmForm.f_dq_reason3,
+      dq_reason4: dmForm.f_dq_reason4,
+      call_rating: dmForm.f_call_rating,
+      qa_name: dmForm.f_qa_name,
+      audit_date: dmForm.f_audit_date,
+      qa_comments: dmForm.f_qa_comments,
+      call_notes: dmForm.f_call_notes,
+      call_links: dmForm.f_call_links,
+      f_id: dmForm.f_id
+    } : null
+
+    return res.json({ 
+      success: true, 
+      isAudited, 
+      auditData,
+      message: isAudited ? 'Lead has been audited' : 'Lead has not been audited yet'
+    })
+  } catch (e) {
+    next(e)
+  }
+})
+
+// POST /qa/audit/:uniqueId - save or update audit data
+router.post('/audit/:uniqueId', ...upsertMiddlewares, async (req: any, res: any, next: any) => {
+  try {
+    const userId = req.user?.userId
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
+
+    const uniqueId = String(req.params.uniqueId || '').trim()
+    if (!uniqueId) {
+      return res.status(400).json({ success: false, message: 'Invalid unique ID' })
+    }
+
+    const {
+      qa_status,
+      email_status,
+      dq_reason1,
+      dq_reason2,
+      dq_reason3,
+      dq_reason4,
+      call_rating,
+      qa_name,
+      audit_date,
+      qa_comments,
+      call_notes,
+      call_links
+    } = req.body || {}
+
+    // Find existing DM form
+    const existingForm = await (db as any).dm_form.findFirst({
+      where: { unique_id: uniqueId }
+    })
+
+    if (!existingForm) {
+      return res.status(404).json({ success: false, message: 'DM form not found for this lead' })
+    }
+
+    // Update audit fields in DM form
+    const updateData: any = {}
+    if (qa_status !== undefined) updateData.f_qa_status = qa_status
+    if (email_status !== undefined) updateData.f_email_status = email_status
+    if (dq_reason1 !== undefined) updateData.f_dq_reason1 = dq_reason1
+    if (dq_reason2 !== undefined) updateData.f_dq_reason2 = dq_reason2
+    if (dq_reason3 !== undefined) updateData.f_dq_reason3 = dq_reason3
+    if (dq_reason4 !== undefined) updateData.f_dq_reason4 = dq_reason4
+    if (call_rating !== undefined) updateData.f_call_rating = call_rating
+    if (qa_name !== undefined) updateData.f_qa_name = qa_name
+    if (audit_date !== undefined) updateData.f_audit_date = audit_date
+    if (qa_comments !== undefined) updateData.f_qa_comments = qa_comments
+    if (call_notes !== undefined) updateData.f_call_notes = call_notes
+    if (call_links !== undefined) updateData.f_call_links = call_links
+
+    const updated = await (db as any).dm_form.update({
+      where: { f_id: existingForm.f_id },
+      data: updateData
+    })
+
+    // Also create/update a qa_call_review entry to ensure the call appears in the leads list
+    const callId = existingForm.f_lead ? Number(existingForm.f_lead) : null
+    
+    if (callId) {
+      const existingReview = await (db as any).qa_call_reviews.findFirst({
+        where: { call_id: BigInt(callId), reviewer_user_id: userId }
+      })
+
+      const reviewData = {
+        call_id: BigInt(callId),
+        reviewer_user_id: userId,
+        overall_score: null,
+        tone_score: null,
+        compliance_score: null,
+        is_lead: true,
+        lead_quality: "qualified",
+        lead_tags_csv: "",
+        disposition_override: null,
+        comments: qa_comments || null,
+        issues_json: null,
+        agent_user_id: null,
+      }
+
+      if (existingReview) {
+        await (db as any).qa_call_reviews.update({
+          where: { id: existingReview.id },
+          data: reviewData
+        })
+      } else {
+        await (db as any).qa_call_reviews.create({
+          data: reviewData
+        })
+      }
+    }
+
+    return res.json({ 
+      success: true, 
+      message: 'Audit data saved successfully',
+      auditData: {
+        qa_status: updated.f_qa_status,
+        email_status: updated.f_email_status,
+        dq_reason1: updated.f_dq_reason1,
+        dq_reason2: updated.f_dq_reason2,
+        dq_reason3: updated.f_dq_reason3,
+        dq_reason4: updated.f_dq_reason4,
+        call_rating: updated.f_call_rating,
+        qa_name: updated.f_qa_name,
+        audit_date: updated.f_audit_date,
+        qa_comments: updated.f_qa_comments,
+        call_notes: updated.f_call_notes,
+        call_links: updated.f_call_links
+      }
+    })
+  } catch (e) {
+    next(e)
+  }
+})
+
 export default router

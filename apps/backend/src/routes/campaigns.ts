@@ -4,8 +4,8 @@ import { requireAuth, requireRoles } from '../middlewares/auth';
 
 const router = Router();
 
-// List campaigns (Manager+)
-router.get('/', requireAuth, requireRoles(['manager', 'superadmin']), async (_req, res, next) => {
+// List campaigns (Manager+, QA)
+router.get('/', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), async (_req, res, next) => {
   try {
     const items = await (db as any).campaigns.findMany({
       orderBy: { id: 'desc' },

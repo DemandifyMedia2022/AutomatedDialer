@@ -57,20 +57,22 @@ type CallRow = {
 
 export default function QaCallReviewPage() {
   const todayIso = React.useMemo(() => new Date().toISOString().slice(0, 10), [])
-  const [calls, setCalls] = React.useState<CallRow[]>([])
-  const [loadingCalls, setLoadingCalls] = React.useState(false)
+  const [calls, setCalls] = React.useState<any[]>([])
   const [selectedCallId, setSelectedCallId] = React.useState<number | string | null>(null)
+  const [loadingCalls, setLoadingCalls] = React.useState(false)
+  const [reviewDialogOpen, setReviewDialogOpen] = React.useState(false)
+  const [loadingReview, setLoadingReview] = React.useState(false)
+  const [saving, setSaving] = React.useState(false)
+  const [message, setMessage] = React.useState<string | null>(null)
+  const [isEditMode, setIsEditMode] = React.useState(false)
+  const [campaigns, setCampaigns] = React.useState<string[]>([])
+  const [selectedCampaign, setSelectedCampaign] = React.useState("all")
   const [fromDate, setFromDate] = React.useState(() => todayIso)
   const [toDate, setToDate] = React.useState(() => todayIso)
   const [userFilter, setUserFilter] = React.useState("all")
   const [userComboOpen, setUserComboOpen] = React.useState(false)
   const [userNames, setUserNames] = React.useState<string[]>([])
   const [comments, setComments] = React.useState("")
-  const [saving, setSaving] = React.useState(false)
-  const [loadingReview, setLoadingReview] = React.useState(false)
-  const [message, setMessage] = React.useState<string | null>(null)
-  const [reviewDialogOpen, setReviewDialogOpen] = React.useState(false)
-  const [isEditMode, setIsEditMode] = React.useState(false)
   const [fQaStatus, setFQaStatus] = React.useState("")
   const [fDqReason1, setFDqReason1] = React.useState("")
   const [fDqReason2, setFDqReason2] = React.useState("")
@@ -116,29 +118,9 @@ export default function QaCallReviewPage() {
         if (t) headers["Authorization"] = `Bearer ${t}`
       }
       const res = await fetch(`${API_BASE}/api/qa/leads?${qs.toString()}`, { headers, credentials })
-      if (res.ok) {
-        const data = await res.json()
-        const rows: any[] = data?.items || []
-        if (rows.length > 0) {
-          setCalls(
-            rows.map((r) => ({
-              id: r.call_id,
-              unique_id: r.unique_id ?? null,
-              username: r.username ?? null,
-              destination: r.destination ?? null,
-              start_time: r.start_time,
-              recording_url: r.recording_url ?? null,
-              remarks: r.remarks ?? null,
-              campaign_name: r.campaign_name ?? null,
-              reviewed: r.reviewed ?? false,
-              reviewer_user_id: r.reviewer_user_id ?? null,
-              created_at: r.created_at ?? null,
-              has_dm_qa_fields: r.has_dm_qa_fields ?? false,
-            })).filter(call => call.remarks === "Lead")
-          )
-          return
-        }
-      }
+      console.log('QA leads response status:', res.status)
+      // Always use fallback to show all calls with audit status
+      // This ensures we see both audited and not audited calls
 
       // Fallback: if there are no QA-marked leads yet, list recent calls so QA can start reviewing
       const qsCalls = new URLSearchParams()
@@ -152,8 +134,25 @@ export default function QaCallReviewPage() {
       }
       const dataCalls = await resCalls.json()
       const rowsCalls: any[] = dataCalls?.items || []
-      setCalls(
-        rowsCalls.map((r) => ({
+      console.log('Fallback calls response:', rowsCalls.length, 'items')
+      
+      // For fallback calls, check audit status for each call
+      const callsWithAuditStatus = []
+      for (const r of rowsCalls) {
+        console.log('Processing call:', r.id, 'remarks:', r.remarks, 'unique_id:', r.unique_id)
+        const uniqueId = r.unique_id
+        let has_dm_qa_fields = false
+        
+        if (uniqueId) {
+          try {
+            const auditStatus = await checkAuditStatus(uniqueId)
+            has_dm_qa_fields = auditStatus?.isAudited || false
+          } catch (error) {
+            console.error('Error checking audit status for call:', r.id, error)
+          }
+        }
+        
+        callsWithAuditStatus.push({
           id: r.id,
           unique_id: r.unique_id ?? null,
           username: r.username ?? null,
@@ -165,15 +164,30 @@ export default function QaCallReviewPage() {
           reviewed: false, // Fallback calls are not yet reviewed
           reviewer_user_id: null,
           created_at: null,
-          has_dm_qa_fields: false, // Fallback calls don't have QA fields yet
-        })).filter(call => call.remarks === "Lead")
-      )
+          has_dm_qa_fields, // Check actual audit status
+        })
+      }
+      
+      console.log('All calls before filtering:', callsWithAuditStatus.map(c => ({ id: c.id, remarks: c.remarks, campaign: c.campaign_name, audited: c.has_dm_qa_fields })))
+      const filteredCalls = callsWithAuditStatus.filter(call => {
+        const remarks = call.remarks?.trim().toLowerCase()
+        const isLead = remarks === "lead"
+        const matchesCampaign = selectedCampaign === "all" || call.campaign_name === selectedCampaign
+        
+        // If a specific campaign is selected, show only not audited leads
+        const showNotAuditedOnly = selectedCampaign !== "all"
+        const isNotAudited = !call.has_dm_qa_fields
+        
+        return isLead && matchesCampaign && (showNotAuditedOnly ? isNotAudited : true)
+      })
+      console.log('Final filtered calls:', filteredCalls.length, 'items')
+      setCalls(filteredCalls)
     } catch {
       setCalls([])
     } finally {
       setLoadingCalls(false)
     }
-  }, [fromDate, toDate, userFilter])
+  }, [fromDate, toDate, userFilter, selectedCampaign])
 
   const toAbsUrl = (url?: string | null) => {
     if (!url) return ""
@@ -327,6 +341,35 @@ export default function QaCallReviewPage() {
   }
 
   const filterLabel = fromDate && toDate ? `${fromDate} – ${toDate}` : "All dates"
+  // Load list of campaigns for the campaign filter
+  React.useEffect(() => {
+    ;(async () => {
+      try {
+        const headers: Record<string, string> = {}
+        let credentials: RequestCredentials = "omit"
+        if (USE_AUTH_COOKIE) {
+          credentials = "include"
+        } else {
+          const t = getToken()
+          if (t) headers["Authorization"] = `Bearer ${t}`
+        }
+        const res = await fetch(`${API_BASE}/api/campaigns`, {
+          headers,
+          credentials,
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        const campaignList: string[] = []
+        const list: any[] = data?.items || []
+        for (const c of list) {
+          const name = c?.campaign_name
+          if (name) campaignList.push(String(name))
+        }
+        setCampaigns(Array.from(new Set(campaignList)).sort((a, b) => a.localeCompare(b)))
+      } catch {}
+    })()
+  }, [])
+
   // Load list of users for the user filter (QA can filter calls by agent/user)
   React.useEffect(() => {
     ;(async () => {
@@ -519,162 +562,71 @@ export default function QaCallReviewPage() {
         if (t) headers["Authorization"] = `Bearer ${t}`
       }
       
-      // First check if there's a QA review
+      // Find the call data to get the unique_id
+      const callData = calls.find(c => String(c.id) === String(callId))
+      const uniqueId = callData?.unique_id
+      
+      let hasAuditData = false
+      
+      // Check audit status using the new audit endpoint
+      if (uniqueId) {
+        try {
+          const auditStatus = await checkAuditStatus(uniqueId)
+          if (auditStatus?.success && auditStatus?.isAudited && auditStatus?.auditData) {
+            hasAuditData = true
+            console.log('Loading audit data:', auditStatus.auditData)
+            
+            const auditData = auditStatus.auditData
+            // Set all the audit fields
+            setFQaStatus(auditData.qa_status || "")
+            setFEmailStatus(auditData.email_status || "")
+            setFDqReason1(auditData.dq_reason1 || "")
+            setFDqReason2(auditData.dq_reason2 || "")
+            setFDqReason3(auditData.dq_reason3 || "")
+            setFDqReason4(auditData.dq_reason4 || "")
+            setFCallRating(auditData.call_rating || "")
+            setFQaName(auditData.qa_name || "")
+            setFAuditDate(auditData.audit_date ? String(auditData.audit_date).slice(0, 10) : "")
+            setFQaComments(auditData.qa_comments || "")
+            setFCallNotes(auditData.call_notes || "")
+            setFCallLinks(auditData.call_links || "")
+            
+            // If QA Name is empty in existing audit, set it to current logged user
+            if (!auditData.qa_name || auditData.qa_name.trim() === "") {
+              await fetchAndSetQaName()
+            }
+          }
+        } catch (error) {
+          console.error('Error checking audit status:', error)
+        }
+      }
+      
+      // Also check traditional QA review for backward compatibility
       const res = await fetch(`${API_BASE}/api/qa/reviews/${callId}`, { headers, credentials })
-      let hasQaReview = false
       
       if (res.ok) {
         const data = await res.json()
         const r = data?.review
-        if (r) {
-          hasQaReview = true
+        if (r && !hasAuditData) {
+          // Only load QA review if we don't already have audit data
           console.log('Loading QA review data:', r)
-          
-          // Set all the QA fields
-          const qaData = {
-            comments: r.comments || "",
-            fQaStatus: r.f_qa_status || "",
-            fDqReason1: r.f_dq_reason1 || "",
-            fDqReason2: r.f_dq_reason2 || "",
-            fDqReason3: r.f_dq_reason3 || "",
-            fDqReason4: r.f_dq_reason4 || "",
-            fQaComments: r.f_qa_comments || "",
-            fCallRating: r.f_call_rating != null ? String(r.f_call_rating) : "",
-            fCallNotes: r.f_call_notes || "",
-            fCallLinks: r.f_call_links || "",
-            fQaName: r.f_qa_name || "",
-            fAuditDate: r.f_audit_date ? String(r.f_audit_date).slice(0, 10) : "",
-            fEmailStatus: r.f_email_status || ""
-          }
-          
-          console.log('Setting QA data to state:', qaData)
-          
-          setComments(qaData.comments)
-          setFQaStatus(qaData.fQaStatus)
-          setFDqReason1(qaData.fDqReason1)
-          setFDqReason2(qaData.fDqReason2)
-          setFDqReason3(qaData.fDqReason3)
-          setFDqReason4(qaData.fDqReason4)
-          setFQaComments(qaData.fQaComments)
-          setFCallRating(qaData.fCallRating)
-          setFCallNotes(qaData.fCallNotes)
-          setFCallLinks(qaData.fCallLinks)
-          setFQaName(qaData.fQaName)
-          setFAuditDate(qaData.fAuditDate)
-          setFEmailStatus(qaData.fEmailStatus)
-          
-          // If QA Name is empty in existing review, set it to current logged user
-          if (!r.f_qa_name || r.f_qa_name.trim() === "") {
-            await fetchAndSetQaName()
-          }
+          setComments(r.comments || "")
         }
       }
       
-      // Also check DM form for QA fields
-      const callData = calls.find(c => String(c.id) === String(callId))
-      const uniqueId = callData?.unique_id
+      // Set edit mode based on whether we have audit data
+      setIsEditMode(hasAuditData)
       
-      if (uniqueId && !hasQaReview) {
-        try {
-          const dmRes = await fetch(`${API_BASE}/api/dm-form/unique/${uniqueId}`, { headers, credentials })
-          if (dmRes.ok) {
-            const dmData = await dmRes.json()
-            const dmForm = dmData?.data
-            
-            if (dmForm) {
-              // Check if any QA fields are filled in DM form
-              const qaFields = [
-                dmForm.f_qa_status,
-                dmForm.f_email_status,
-                dmForm.f_dq_reason1,
-                dmForm.f_dq_reason2,
-                dmForm.f_dq_reason3,
-                dmForm.f_dq_reason4,
-                dmForm.f_call_rating,
-                dmForm.f_qa_name,
-                dmForm.f_audit_date,
-                dmForm.f_qa_comments,
-                dmForm.f_call_notes,
-                dmForm.f_call_links
-              ]
-              
-              const hasQaData = qaFields.some(field => field !== null && field !== undefined && field !== '')
-              
-              if (hasQaData) {
-                hasQaReview = true
-                console.log('Loading QA data from DM form:', dmForm)
-                
-                // Set all the QA fields from DM form
-                const dmQaData = {
-                  fQaStatus: dmForm.f_qa_status || "",
-                  fEmailStatus: dmForm.f_email_status || "",
-                  fDqReason1: dmForm.f_dq_reason1 || "",
-                  fDqReason2: dmForm.f_dq_reason2 || "",
-                  fDqReason3: dmForm.f_dq_reason3 || "",
-                  fDqReason4: dmForm.f_dq_reason4 || "",
-                  fCallRating: dmForm.f_call_rating ? String(dmForm.f_call_rating) : "",
-                  fQaName: dmForm.f_qa_name || "",
-                  fAuditDate: dmForm.f_audit_date ? String(dmForm.f_audit_date).slice(0, 10) : "",
-                  fQaComments: dmForm.f_qa_comments || "",
-                  fCallNotes: dmForm.f_call_notes || "",
-                  fCallLinks: dmForm.f_call_links || ""
-                }
-                
-                console.log('Setting DM QA data to state:', dmQaData)
-                
-                setFQaStatus(dmQaData.fQaStatus)
-                setFEmailStatus(dmQaData.fEmailStatus)
-                setFDqReason1(dmQaData.fDqReason1)
-                setFDqReason2(dmQaData.fDqReason2)
-                setFDqReason3(dmQaData.fDqReason3)
-                setFDqReason4(dmQaData.fDqReason4)
-                setFCallRating(dmQaData.fCallRating)
-                setFQaName(dmQaData.fQaName)
-                setFAuditDate(dmQaData.fAuditDate)
-                setFQaComments(dmQaData.fQaComments)
-                setFCallNotes(dmQaData.fCallNotes)
-                setFCallLinks(dmQaData.fCallLinks)
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error checking DM form for QA fields:', error)
-        }
-      }
-      
-      // Set edit mode based on whether we have QA data
-      setIsEditMode(hasQaReview)
-      
-      // Add a small delay to ensure state updates are complete before logging
-      setTimeout(() => {
-        console.log('Final QA review state:', {
-          hasQaReview,
-          isEditMode: hasQaReview,
-          fQaStatus,
-          fEmailStatus,
-          fDqReason1,
-          fDqReason2,
-          fDqReason3,
-          fDqReason4,
-          fCallRating,
-          fQaName,
-          fAuditDate,
-          fQaComments,
-          fCallNotes,
-          fCallLinks
-        })
-      }, 100)
-      
-      if (hasQaReview) {
-        setMessage("Existing QA data found. You can edit the review.")
+      if (hasAuditData) {
+        setMessage("Existing audit data found. You can edit the audit.")
       } else {
-        setMessage("No existing review found. You can create a new review for this call.")
-        // Ensure QA Name is set for new reviews
+        setMessage("No existing audit found. You can create a new audit for this call.")
+        // Ensure QA Name is set for new audits
         await fetchAndSetQaName()
       }
       
     } catch {
-      setMessage("Failed to load existing review")
+      setMessage("Failed to load existing audit")
       setIsEditMode(false)
       // Still try to set QA Name even on error
       await fetchAndSetQaName()
@@ -688,6 +640,33 @@ export default function QaCallReviewPage() {
   const openReviewDialog = (callId: number | string) => {
     setReviewDialogOpen(true)
     loadReview(callId)
+  }
+
+  const checkAuditStatus = async (uniqueId: string) => {
+    try {
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = "omit"
+      if (USE_AUTH_COOKIE) {
+        credentials = "include"
+        const csrfToken = getCsrfTokenFromCookies()
+        if (csrfToken) {
+          headers["X-CSRF-Token"] = csrfToken
+        }
+      } else {
+        const t = getToken()
+        if (t) headers["Authorization"] = `Bearer ${t}`
+      }
+      
+      const res = await fetch(`${API_BASE}/api/qa/audit/${uniqueId}`, { headers, credentials })
+      if (res.ok) {
+        const data = await res.json()
+        return data
+      }
+      return null
+    } catch (error) {
+      console.error('Error checking audit status:', error)
+      return null
+    }
   }
 
   const saveReview = async () => {
@@ -714,20 +693,56 @@ export default function QaCallReviewPage() {
         if (t) headers["Authorization"] = `Bearer ${t}`
       }
       
-      // Save QA review data
+      // Find the call data to get the unique_id
+      const callData = calls.find(c => String(c.id) === String(selectedCallId))
+      const uniqueId = callData?.unique_id
+      
+      if (!uniqueId) {
+        setMessage("Cannot save audit: No unique ID found for this call")
+        return
+      }
+      
+      // Save audit data using the new audit endpoint
+      const auditBody = {
+        qa_status: fQaStatus || null,
+        email_status: fEmailStatus || null,
+        dq_reason1: fDqReason1 || null,
+        dq_reason2: fDqReason2 || null,
+        dq_reason3: fDqReason3 || null,
+        dq_reason4: fDqReason4 || null,
+        call_rating: fCallRating || null,
+        qa_name: fQaName || null,
+        audit_date: fAuditDate || null,
+        qa_comments: fQaComments || null,
+        call_notes: fCallNotes || null,
+        call_links: fCallLinks || null,
+      }
+      
+      const auditRes = await fetch(`${API_BASE}/api/qa/audit/${uniqueId}`, {
+        method: "POST",
+        headers,
+        credentials,
+        body: JSON.stringify(auditBody),
+      })
+      
+      if (!auditRes.ok) {
+        const errorData = await auditRes.json().catch(() => ({}))
+        setMessage(errorData.message || "Failed to save audit data")
+        return
+      }
+      
+      // Also save the traditional QA review for backward compatibility
       const qaBody = {
         comments: comments || null,
-        f_qa_status: fQaStatus || null,
-        f_dq_reason1: fDqReason1 || null,
-        f_dq_reason2: fDqReason2 || null,
-        f_dq_reason3: fDqReason3 || null,
-        f_dq_reason4: fDqReason4 || null,
-        f_qa_comments: fQaComments || null,
-        f_call_rating: fCallRating ? Number(fCallRating) : null,
-        f_call_notes: fCallNotes || null,
-        f_call_links: fCallLinks || null,
-        f_qa_name: fQaName || null, // Ensure QA Name is included
-        f_audit_date: fAuditDate || null,
+        overall_score: null,
+        tone_score: null,
+        compliance_score: null,
+        is_lead: true,
+        lead_quality: "qualified",
+        lead_tags_csv: "",
+        disposition_override: null,
+        issues_json: null,
+        agent_user_id: null,
       }
       
       const qaRes = await fetch(`${API_BASE}/api/qa/reviews/${selectedCallId}`, {
@@ -738,136 +753,30 @@ export default function QaCallReviewPage() {
       })
       
       if (!qaRes.ok) {
-        setMessage("Failed to save review")
-        return
+        console.warn("Failed to save QA review, but audit data was saved")
       }
       
-      // Save DM form data if it exists
-      if (dmFormData) {
-        try {
-          console.log('DM Form Data:', dmFormData)
-          console.log('Email Status Value:', fEmailStatus)
-          
-          // Find the call data to get the unique_id
-          const callData = calls.find(c => String(c.id) === String(selectedCallId))
-          const uniqueId = callData?.unique_id
-          
-          if (!uniqueId) {
-            console.log('No unique_id found for call:', selectedCallId)
-            console.warn("Cannot update DM form without unique_id")
-          } else {
-            // First get the form by unique_id to find its f_id
-            const getRes = await fetch(`${API_BASE}/api/dm-form/unique/${uniqueId}`, {
-              headers,
-              credentials,
-            })
-            
-            console.log('DM Form GET Response (by unique_id):', getRes.status)
-            
-            let formId = null
-            
-            if (getRes.ok) {
-              const getResult = await getRes.json()
-              formId = getResult.data?.f_id
-              console.log('Found Form ID:', formId)
-            } else if (getRes.status === 404) {
-              // DM form doesn't exist, create a new one
-              console.log('DM form not found, creating new one...')
-              
-              const createPayload = {
-                ...dmFormData,
-                f_lead: String(selectedCallId), // Set the lead ID to link to this call
-                unique_id: uniqueId, // Include the unique_id
-                // Add QA fields
-                f_email_status: fEmailStatus || null,
-                f_qa_status: fQaStatus || null,
-                f_dq_reason1: fDqReason1 || null,
-                f_dq_reason2: fDqReason2 || null,
-                f_dq_reason3: fDqReason3 || null,
-                f_dq_reason4: fDqReason4 || null,
-                f_qa_comments: fQaComments || null,
-                f_call_rating: fCallRating ? String(fCallRating) : null,
-                f_call_notes: fCallNotes || null,
-                f_call_links: fCallLinks || null,
-                f_qa_name: fQaName || null,
-                f_audit_date: fAuditDate || null,
-              }
-              
-              console.log('Creating DM form with payload:', createPayload)
-              
-              const createRes = await fetch(`${API_BASE}/api/dm-form`, {
-                method: "POST",
-                headers,
-                credentials,
-                body: JSON.stringify(createPayload),
-              })
-              
-              console.log('DM Form CREATE Response:', createRes.status)
-              
-              if (createRes.ok) {
-                const createResult = await createRes.json()
-                formId = createResult.data?.f_id
-                console.log('Created new Form ID:', formId)
-              } else {
-                const errorText = await createRes.text()
-                console.error("Failed to create DM form:", errorText)
-                console.warn("Failed to create DM form, but QA review was saved")
-              }
-            }
-            
-            // Update the form (either existing or newly created)
-            if (formId) {
-              const dmUpdatePayload = {
-                // Add QA fields to DM form update
-                f_email_status: fEmailStatus || null,
-                f_qa_status: fQaStatus || null,
-                f_dq_reason1: fDqReason1 || null,
-                f_dq_reason2: fDqReason2 || null,
-                f_dq_reason3: fDqReason3 || null,
-                f_dq_reason4: fDqReason4 || null,
-                f_qa_comments: fQaComments || null,
-                f_call_rating: fCallRating ? String(fCallRating) : null,
-                f_call_notes: fCallNotes || null,
-                f_call_links: fCallLinks || null,
-                f_qa_name: fQaName || null,
-                f_audit_date: fAuditDate || null,
-              }
-              
-              console.log('DM Form Update Payload:', dmUpdatePayload)
-              
-              const dmRes = await fetch(`${API_BASE}/api/dm-form/${formId}`, {
-                method: "PATCH",
-                headers,
-                credentials,
-                body: JSON.stringify(dmUpdatePayload),
-              })
-              
-              console.log('DM Form PATCH Response:', dmRes.status)
-              
-              if (!dmRes.ok) {
-                const errorText = await dmRes.text()
-                console.error("Failed to save DM form data:", errorText)
-                console.warn("Failed to save DM form data, but QA review was saved")
-              } else {
-                console.log("DM form updated successfully")
-              }
-            }
-          }
-        } catch (dmError) {
-          console.error("Error saving DM form data:", dmError)
-          console.warn("Error saving DM form data, but QA review was saved:", dmError)
-        }
-      } else {
-        console.log("No DM form data found to update")
-      }
+      setMessage(isEditMode ? "Audit updated successfully" : "Audit created successfully")
       
-      setMessage(isEditMode ? "QA review updated successfully" : "QA review created successfully")
-      
-      // Refresh the calls list to update review status
+      // Refresh the calls list to update audit status
       await fetchCalls()
       
+      // If a specific campaign is selected and we just completed an audit, auto-advance to next not audited lead
+      if (selectedCampaign !== "all" && !isEditMode) {
+        setTimeout(() => {
+          const nextNotAuditedCall = calls.find(call => !call.has_dm_qa_fields && call.id !== selectedCallId)
+          if (nextNotAuditedCall) {
+            console.log('Auto-advancing to next lead:', nextNotAuditedCall.id)
+            openReviewDialog(nextNotAuditedCall.id)
+          } else {
+            console.log('No more not audited leads in this campaign')
+            setMessage("All leads in this campaign have been audited!")
+          }
+        }, 1500) // Wait 1.5 seconds to show success message
+      }
+      
     } catch {
-      setMessage("Failed to save review")
+      setMessage("Failed to save audit")
     } finally {
       setSaving(false)
     }
@@ -978,7 +887,11 @@ export default function QaCallReviewPage() {
           <Card>
             <CardHeader>
               <CardTitle>Call Review Queue</CardTitle>
-              <CardDescription>Select a call and apply QA scores, notes, and lead tags.</CardDescription>
+              <CardDescription>
+                {selectedCampaign === "all" 
+                  ? "Select a call and apply QA scores, notes, and lead tags." 
+                  : `Auditing queue for ${selectedCampaign}. Only not audited leads are shown for one-by-one processing.`}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between">
@@ -1017,6 +930,55 @@ export default function QaCallReviewPage() {
                 </Button>
               </div>
 
+              {/* Campaign Filter */}
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium">Campaign:</label>
+                  <Select value={selectedCampaign} onValueChange={setSelectedCampaign}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Select campaign" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Campaigns</SelectItem>
+                      {campaigns.map((campaign) => (
+                        <SelectItem key={campaign} value={campaign}>
+                          {campaign}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Queue Status for Campaign-specific auditing */}
+              {selectedCampaign !== "all" && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-medium text-blue-900">Audit Queue Status</h3>
+                      <p className="text-sm text-blue-700">
+                        Campaign: <strong>{selectedCampaign}</strong> | 
+                        Not Audited Leads: <strong>{calls.filter(c => !c.has_dm_qa_fields).length}</strong> | 
+                        Total Leads: <strong>{calls.length}</strong>
+                      </p>
+                    </div>
+                    {calls.filter(c => !c.has_dm_qa_fields).length > 0 && (
+                      <Button 
+                        size="sm" 
+                        onClick={() => {
+                          const firstNotAudited = calls.find(c => !c.has_dm_qa_fields)
+                          if (firstNotAudited) {
+                            openReviewDialog(firstNotAudited.id)
+                          }
+                        }}
+                      >
+                        Start Auditing
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="border rounded-md overflow-hidden">
                 <table className="min-w-full text-xs md:text-sm">
                   <thead className="bg-muted">
@@ -1026,6 +988,7 @@ export default function QaCallReviewPage() {
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Campaign</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Start (UTC)</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Remarks</th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">Audit Status</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Recording</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground" />
                     </tr>
@@ -1033,7 +996,7 @@ export default function QaCallReviewPage() {
                   <tbody className="divide-y">
                     {calls.length === 0 && (
                       <tr>
-                        <td className="px-3 py-6 text-center text-muted-foreground" colSpan={7}>
+                        <td className="px-3 py-6 text-center text-muted-foreground" colSpan={8}>
                           {loadingCalls ? "Loading…" : "No calls found"}
                         </td>
                       </tr>
@@ -1045,6 +1008,17 @@ export default function QaCallReviewPage() {
                         <td className="px-3 py-2 max-w-[120px] truncate">{c.campaign_name || "-"}</td>
                         <td className="px-3 py-2 whitespace-nowrap">{fmtDateTime(c.start_time)}</td>
                         <td className="px-3 py-2 max-w-[150px] truncate">{c.remarks || "-"}</td>
+                        <td className="px-3 py-2">
+                          {c.has_dm_qa_fields ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Audited
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                              Not Audited
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2 min-w-[220px]">
                           {c.recording_url ? (
                             <CompactAudio src={c.recording_url} name={c.id} />
@@ -1083,7 +1057,9 @@ export default function QaCallReviewPage() {
               </div>
 
               <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
-                Click <strong>Review Lead</strong> to create a new QA review. Each lead can only be reviewed once. Use <strong>Edit QA</strong> to modify existing reviews.
+                {selectedCampaign === "all" 
+                  ? "Click <strong>Review Lead</strong> to create a new audit. Each lead can only be audited once. Use <strong>Edit QA</strong> to modify existing audits."
+                  : `Campaign audit mode: Only not audited leads from ${selectedCampaign} are shown. Complete audits one by one - the system will automatically advance to the next lead.`}
               </div>
             </CardContent>
           </Card>
@@ -1105,17 +1081,17 @@ export default function QaCallReviewPage() {
       >
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
           <DialogHeader>
-            <DialogTitle>{isEditMode ? "Edit QA Review" : "New QA Review"}</DialogTitle>
+            <DialogTitle>{isEditMode ? "Edit Audit" : "New Audit"}</DialogTitle>
             <DialogDescription>
-              {selectedCallId ? (isEditMode ? `Editing existing QA review for call ID ${selectedCallId}` : `Creating new QA review for call ID ${selectedCallId}. Each lead can only be reviewed once.`) : "Select a call from the queue to begin."}
+              {selectedCallId ? (isEditMode ? `Editing existing audit for call ID ${selectedCallId}` : `Creating new audit for call ID ${selectedCallId}. Each lead can only be audited once.`) : "Select a call from the queue to begin."}
             </DialogDescription>
           </DialogHeader>
 
           {loadingReview ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">Loading review…</div>
+            <div className="py-8 text-center text-sm text-muted-foreground">Loading audit…</div>
           ) : !selectedCallId ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
-              Choose a call from the queue to open the QA review form.
+              Choose a call from the queue to open the audit form.
             </div>
           ) : (
             <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
@@ -1654,7 +1630,7 @@ export default function QaCallReviewPage() {
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="text-xs text-muted-foreground min-h-[1.25rem]">{message}</div>
                 <Button size="sm" onClick={saveReview} disabled={saving}>
-                  {saving ? (isEditMode ? "Updating…" : "Creating…") : (isEditMode ? "Update QA Review" : "Create QA Review")}
+                  {saving ? (isEditMode ? "Updating…" : "Creating…") : (isEditMode ? "Update Audit" : "Create Audit")}
                 </Button>
               </div>
             </div>
