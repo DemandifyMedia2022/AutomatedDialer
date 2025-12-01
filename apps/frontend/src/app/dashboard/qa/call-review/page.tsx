@@ -932,6 +932,223 @@ export default function QaCallReviewPage() {
     URL.revokeObjectURL(url)
   }
 
+  const exportToCsv = async () => {
+    if (calls.length === 0) return
+    
+    // Create CSV headers - all requested fields
+    const headers = [
+      // Call Information
+      'Call ID',
+      'Unique ID',
+      'Username',
+      'Destination',
+      'Start Time',
+      'Recording URL',
+      'Remarks',
+      'Campaign Name',
+      'Reviewed',
+      'Reviewer User ID',
+      'Created At',
+      'Has DM QA Fields',
+      
+      // Contact Information (from DM Form)
+      'Salutation',
+      'First Name',
+      'Last Name',
+      'Job Title',
+      'Department',
+      'Job Level',
+      'Email',
+      'Secondary Email',
+      'Contact No',
+      'Company Name',
+      'Website',
+      'Address 1',
+      'City',
+      'State',
+      'Zip Code',
+      'Country',
+      'Employee Size',
+      'Industry',
+      'Sub Industry',
+      'Revenue',
+      'Revenue Link',
+      'Profile Link',
+      'Company Link',
+      'Address Link',
+      'Asset Name 1',
+      'Asset Name 2',
+      
+      // CQ Fields (from DM Form)
+      'CQ1',
+      'CQ2',
+      'CQ3',
+      'CQ4',
+      'CQ5',
+      'CQ6',
+      'CQ7',
+      'CQ8',
+      'CQ9',
+      'CQ10',
+      
+      // QA Audit Fields
+      'QA status',
+      'Email status',
+      'DQ reason 1',
+      'DQ reason 2',
+      'DQ reason 3',
+      'DQ reason 4',
+      'Call rating',
+      'QA name',
+      'Audit date',
+      'QA comments',
+      'Call notes',
+      'Call links'
+    ]
+    
+    // Fetch DM form data and audit data for all calls
+    const enrichedCalls = await Promise.all(calls.map(async (call) => {
+      let dmFormData = null
+      let auditData = null
+      
+      try {
+        // Fetch DM form data
+        if (call.unique_id) {
+          const headers: Record<string, string> = {}
+          let credentials: RequestCredentials = "omit"
+          if (USE_AUTH_COOKIE) {
+            credentials = "include"
+            const csrfToken = getCsrfTokenFromCookies()
+            if (csrfToken) {
+              headers["X-CSRF-Token"] = csrfToken
+            }
+          } else {
+            const t = getToken()
+            if (t) headers["Authorization"] = `Bearer ${t}`
+          }
+          
+          const dmRes = await fetch(`${API_BASE}/api/dm-form/unique/${call.unique_id}`, { headers, credentials })
+          if (dmRes.ok) {
+            const dmData = await dmRes.json()
+            console.log('DM Data for call', call.id, ':', dmData) // Debug log
+            if (dmData?.success && dmData?.data) {
+              dmFormData = dmData.data
+              console.log('DM Form Data keys:', Object.keys(dmFormData)) // Log available keys
+            }
+          } else {
+            console.log('DM Form API failed for call', call.id, 'status:', dmRes.status)
+          }
+          
+          // Fetch audit data
+          const auditRes = await fetch(`${API_BASE}/api/qa/audit/${call.unique_id}`, { headers, credentials })
+          if (auditRes.ok) {
+            const auditResult = await auditRes.json()
+            if (auditResult?.success && auditResult?.auditData) {
+              auditData = auditResult.auditData
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching additional data for call:', call.id, error)
+      }
+      
+      return { ...call, dmFormData, auditData }
+    }))
+    
+    // Create CSV rows with all fields
+    const rows = enrichedCalls.map(call => {
+      // Debug log to see what data we have
+      console.log('Processing call', call.id, 'with DM data keys:', call.dmFormData ? Object.keys(call.dmFormData) : 'No DM data')
+      
+      return [
+      // Call Information
+      call.id || '',
+      call.unique_id || '',
+      call.username || '',
+      call.destination || '',
+      fmtDateTime(call.start_time),
+      call.recording_url || '',
+      call.remarks || '',
+      call.campaign_name || '',
+      call.reviewed ? 'Yes' : 'No',
+      call.reviewer_user_id || '',
+      call.created_at ? fmtDateTime(call.created_at) : '',
+      call.has_dm_qa_fields ? 'Yes' : 'No',
+      
+      // Contact Information (from DM Form) - using actual field names with f_ prefix
+      call.dmFormData?.f_salutation || '',
+      call.dmFormData?.f_first_name || '',
+      call.dmFormData?.f_last_name || '',
+      call.dmFormData?.f_job_title || '',
+      call.dmFormData?.f_department || '',
+      call.dmFormData?.f_job_level || '',
+      call.dmFormData?.f_email_add || '',
+      call.dmFormData?.Secondary_Email || '',
+      call.dmFormData?.f_conatct_no || '',
+      call.dmFormData?.f_company_name || '',
+      call.dmFormData?.f_website || '',
+      call.dmFormData?.f_address1 || '',
+      call.dmFormData?.f_city || '',
+      call.dmFormData?.f_state || '',
+      call.dmFormData?.f_zip_code || '',
+      call.dmFormData?.f_country || '',
+      call.dmFormData?.f_emp_size || '',
+      call.dmFormData?.f_industry || '',
+      call.dmFormData?.f_sub_industry || '',
+      call.dmFormData?.f_revenue || '',
+      call.dmFormData?.f_revenue_link || '',
+      call.dmFormData?.f_profile_link || '',
+      call.dmFormData?.f_company_link || '',
+      call.dmFormData?.f_address_link || '',
+      call.dmFormData?.f_asset_name1 || '',
+      call.dmFormData?.f_asset_name2 || '',
+      
+      // CQ Fields (from DM Form) - using actual field names with f_ prefix
+      call.dmFormData?.f_cq1 || '',
+      call.dmFormData?.f_cq2 || '',
+      call.dmFormData?.f_cq3 || '',
+      call.dmFormData?.f_cq4 || '',
+      call.dmFormData?.f_cq5 || '',
+      call.dmFormData?.f_cq6 || '',
+      call.dmFormData?.f_cq7 || '',
+      call.dmFormData?.f_cq8 || '',
+      call.dmFormData?.f_cq9 || '',
+      call.dmFormData?.f_cq10 || '',
+      
+      // QA Audit Fields - using actual field names with f_ prefix
+      call.dmFormData?.f_qa_status || '',
+      call.dmFormData?.f_email_status || '',
+      call.dmFormData?.f_dq_reason1 || '',
+      call.dmFormData?.f_dq_reason2 || '',
+      call.dmFormData?.f_dq_reason3 || '',
+      call.dmFormData?.f_dq_reason4 || '',
+      call.dmFormData?.f_call_rating || '',
+      call.dmFormData?.f_qa_name || '',
+      call.dmFormData?.f_audit_date ? String(call.dmFormData.f_audit_date).slice(0, 10) : '',
+      call.dmFormData?.f_qa_comments || '',
+      call.dmFormData?.f_call_notes || '',
+      call.dmFormData?.f_call_links || ''
+    ]
+    })
+    
+    // Convert to CSV string
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n')
+    
+    // Create and download CSV file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `call_review_complete_export_${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <>
     <SidebarProvider>
@@ -1097,7 +1314,7 @@ export default function QaCallReviewPage() {
                 </Button>
               </div>
 
-              {/* Campaign Filter */}
+              {/* Campaign Filter and Export */}
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <label className="text-sm font-medium">Campaign:</label>
@@ -1115,6 +1332,16 @@ export default function QaCallReviewPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={exportToCsv}
+                  disabled={calls.length === 0}
+                  className="flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Export CSV
+                </Button>
               </div>
 
               {/* Queue Status for Campaign-specific auditing */}
