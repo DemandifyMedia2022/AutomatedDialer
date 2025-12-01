@@ -410,116 +410,19 @@ router.post('/audit/:uniqueId', ...upsertMiddlewares, async (req: any, res: any,
 // GET /qa/dashboard - real-time dashboard statistics
 router.get('/dashboard', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
-    // Fetch all calls
-    const calls = await (db as any).calls.findMany({
-      take: 1000,
-      orderBy: { start_time: 'desc' }
-    })
-
-    // Filter for leads
-    const leadCalls = calls.filter((call: any) => call.remarks?.toLowerCase() === 'lead')
-    const totalLeads = leadCalls.length
-
-    // Check audit status for each lead
-    const auditedLeads: any[] = []
-    const notAuditedLeads: any[] = []
-
-    for (const call of leadCalls) {
-      if (!call.unique_id) {
-        notAuditedLeads.push(call)
-        continue
-      }
-
-      try {
-        const dmForm = await (db as any).dm_form.findFirst({
-          where: { unique_id: call.unique_id }
-        })
-
-        if (dmForm) {
-          const qaFields = [
-            dmForm.f_qa_status,
-            dmForm.f_email_status,
-            dmForm.f_dq_reason1,
-            dmForm.f_dq_reason2,
-            dmForm.f_dq_reason3,
-            dmForm.f_dq_reason4,
-            dmForm.f_call_rating,
-            dmForm.f_qa_name,
-            dmForm.f_audit_date,
-            dmForm.f_qa_comments,
-            dmForm.f_call_notes,
-            dmForm.f_call_links
-          ]
-
-          const hasQaData = qaFields.some(field => field !== null && field !== undefined && field !== '')
-          
-          if (hasQaData) {
-            auditedLeads.push(call)
-          } else {
-            notAuditedLeads.push(call)
-          }
-        } else {
-          notAuditedLeads.push(call)
-        }
-      } catch (error) {
-        notAuditedLeads.push(call)
-      }
-    }
-
-    const auditedCount = auditedLeads.length
-    const notAuditedCount = notAuditedLeads.length
-    const completionRate = totalLeads > 0 ? (auditedCount / totalLeads) * 100 : 0
-
-    // Fetch campaigns
-    const campaigns = await (db as any).campaigns.findMany()
+    console.log('🔄 QA Dashboard API called')
     
-    // Campaign stats
-    const campaignStats = campaigns.map((campaign: any) => {
-      const campaignLeads = leadCalls.filter((call: any) => call.campaign_name === campaign.campaign_name)
-      const campaignAudited = campaignLeads.filter((call: any) => {
-        // Check if this lead was audited
-        return auditedLeads.some((audited: any) => audited.id === call.id)
-      }).length
-      
-      return {
-        name: campaign.campaign_name,
-        total: campaignLeads.length,
-        audited: campaignAudited,
-        completionRate: campaignLeads.length > 0 ? (campaignAudited / campaignLeads.length) * 100 : 0
-      }
-    }).filter((c: any) => c.total > 0).sort((a: any, b: any) => b.total - a.total).slice(0, 5)
-
-    // Recent activity (last 10 audited leads)
-    const recentActivity = auditedLeads
-      .slice(0, 10)
-      .map((call: any) => ({
-        id: call.id,
-        campaign: call.campaign_name || 'Unknown',
-        auditor: 'QA User', // This would come from audit data
-        timestamp: call.start_time || new Date().toISOString(),
-        status: 'Completed'
-      }))
-
-    // Time-based stats (simplified for now)
-    const now = new Date()
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    
-    const todayAudits = auditedLeads.filter((call: any) => {
-      if (!call.start_time) return false
-      const callDate = new Date(call.start_time)
-      return callDate >= todayStart
-    }).length
-
-    const dashboardStats = {
-      totalLeads,
-      auditedLeads: auditedCount,
-      notAuditedLeads: notAuditedCount,
-      auditCompletionRate: completionRate,
-      todayAudits,
-      weeklyAudits: todayAudits * 2, // Placeholder calculation
-      monthlyAudits: todayAudits * 5, // Placeholder calculation
-      topCampaigns: campaignStats,
-      recentActivity,
+    // Return demo data for now to isolate the issue
+    const demoStats = {
+      totalLeads: 2,
+      auditedLeads: 1,
+      notAuditedLeads: 1,
+      auditCompletionRate: 50.0,
+      todayAudits: 1,
+      weeklyAudits: 5,
+      monthlyAudits: 20,
+      topCampaigns: [],
+      recentActivity: [],
       qaPerformance: [
         { auditor: 'Rajat Mane', auditsCompleted: 45, avgTime: '12 min', accuracy: 98 },
         { auditor: 'QA User 2', auditsCompleted: 32, avgTime: '15 min', accuracy: 95 },
@@ -528,9 +431,15 @@ router.get('/dashboard', requireAuth, requireRoles(['qa', 'manager', 'superadmin
       lastUpdated: new Date().toISOString()
     }
 
-    return res.json({ success: true, data: dashboardStats })
+    console.log('✅ Returning demo stats:', demoStats)
+    return res.json({ success: true, data: demoStats })
   } catch (e) {
-    next(e)
+    console.error('❌ Dashboard API error:', e)
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error',
+      error: e instanceof Error ? e.message : 'Unknown error'
+    })
   }
 })
 

@@ -42,6 +42,8 @@ interface QaOverviewData {
 }
 
 export function QaOverviewCards() {
+  console.log('🚀 QaOverviewCards component mounted!')
+  
   const [data, setData] = React.useState<QaOverviewData | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [lastUpdated, setLastUpdated] = React.useState<Date>(new Date())
@@ -50,6 +52,8 @@ export function QaOverviewCards() {
   const fetchCallsAndData = React.useCallback(async () => {
     setLoading(true)
     try {
+      console.log('🔄 Starting fetchCallsAndData...')
+      
       const headers: Record<string, string> = {}
       let credentials: RequestCredentials = "omit"
       
@@ -70,11 +74,18 @@ export function QaOverviewCards() {
       qs.set("from", `${todayIso}T00:00:00.000Z`)
       qs.set("to", `${todayIso}T23:59:59.999Z`)
       
+      console.log('📞 Fetching calls with params:', qs.toString())
+      
       const resCalls = await fetch(`${API_BASE}/api/calls?${qs.toString()}`, { headers, credentials })
+      
+      console.log('📞 Calls API response:', resCalls.ok, resCalls.status)
       
       if (resCalls.ok) {
         const dataCalls = await resCalls.json()
         const rowsCalls: any[] = dataCalls?.items || []
+        
+        console.log('📞 Raw calls data:', rowsCalls.length, 'calls')
+        console.log('📞 Sample call data:', rowsCalls.slice(0, 2))
         
         // Process calls with audit status like the Review page
         const callsWithAuditStatus = []
@@ -82,16 +93,25 @@ export function QaOverviewCards() {
           const uniqueId = r.unique_id
           let has_dm_qa_fields = false
           
+          console.log(`🔍 Checking call ${r.id}: uniqueId=${uniqueId}, remarks=${r.remarks}`)
+          
           if (uniqueId) {
             try {
               const auditRes = await fetch(`${API_BASE}/api/qa/audit/${uniqueId}`, { headers, credentials })
+              console.log(`🔍 Audit API response for ${uniqueId}:`, auditRes.ok, auditRes.status)
+              
               if (auditRes.ok) {
                 const auditData = await auditRes.json()
                 has_dm_qa_fields = auditData?.isAudited || false
+                console.log(`🔍 Audit data for ${uniqueId}:`, auditData)
+              } else {
+                console.log(`🔍 Audit API failed for ${uniqueId}`)
               }
             } catch (error) {
-              console.error('Error checking audit status for call:', r.id, error)
+              console.error('🔍 Error checking audit status for call:', r.id, error)
             }
+          } else {
+            console.log(`🔍 No uniqueId for call ${r.id}`)
           }
           
           callsWithAuditStatus.push({
@@ -110,10 +130,19 @@ export function QaOverviewCards() {
           })
         }
         
+        console.log('📊 Calls with audit status:', callsWithAuditStatus.map(c => ({
+          id: c.id,
+          remarks: c.remarks,
+          has_dm_qa_fields: c.has_dm_qa_fields
+        })))
+        
         // Filter for leads only
         const leadCalls = callsWithAuditStatus.filter(call => 
           call.remarks?.toLowerCase() === 'lead'
         )
+        
+        console.log('🎯 Lead calls only:', leadCalls.length, 'leads')
+        console.log('🎯 Lead calls details:', leadCalls)
         
         setCalls(leadCalls)
         
@@ -128,12 +157,20 @@ export function QaOverviewCards() {
           recentActivity: []
         }
         
-        console.log('Dashboard calculated stats:', dashboardStats)
+        console.log('📈 Final dashboard stats:', dashboardStats)
+        console.log('📈 Breakdown:', {
+          totalLeads: leadCalls.length,
+          notAudited: notAuditedCalls.length,
+          audited: auditedCalls.length
+        })
+        
         setData(dashboardStats)
         setLastUpdated(new Date())
+      } else {
+        console.error('📞 Failed to fetch calls:', resCalls.status)
       }
     } catch (error) {
-      console.error('Error fetching QA overview:', error)
+      console.error('❌ Error fetching QA overview:', error)
       // Set demo data on error
       setData({
         callsNeedingReview: 1,
@@ -147,12 +184,17 @@ export function QaOverviewCards() {
   }, [])
 
   React.useEffect(() => {
+    console.log('⚡ useEffect triggered - calling fetchCallsAndData')
     fetchCallsAndData()
   }, [fetchCallsAndData])
 
   React.useEffect(() => {
+    console.log('⏰ Setting up 30-second interval')
     const interval = setInterval(fetchCallsAndData, 30000) // Refresh every 30 seconds
-    return () => clearInterval(interval)
+    return () => {
+      console.log('🛑 Cleaning up interval')
+      clearInterval(interval)
+    }
   }, [fetchCallsAndData])
 
   const formatTime = (date: Date) => {
