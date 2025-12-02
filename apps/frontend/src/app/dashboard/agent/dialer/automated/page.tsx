@@ -179,6 +179,7 @@ export default function AutomatedDialerPage() {
   const uploadedOnceRef = useRef<boolean>(false)
   const dialStartRef = useRef<number | null>(null)
   const lastDialDestinationRef = useRef<string | null>(null)
+  const currentCallIdRef = useRef<number | null>(null)
 
   // Live transcription (client-only) refs
   const liveSessionIdRef = useRef<string | null>(null)
@@ -298,6 +299,16 @@ export default function AutomatedDialerPage() {
       s.on("transcription:error", (_payload: any) => {
         // ignore in UI for now
       })
+      s.on('agentic:start_call', async (payload: any) => {
+        try {
+          const ph = String(payload?.lead?.phone || '').replace(/[^0-9+]/g, '').replace(/^00/, '+')
+          if (!ph) return
+          if (!uaRef.current) return
+          if (sessionRef.current) return
+          if (!String(status).includes('Registered')) return
+          await placeCallTo(ph)
+        } catch {}
+      })
       socketRef.current = s
       return s
     } catch {
@@ -333,11 +344,40 @@ export default function AutomatedDialerPage() {
     }
   }, [])
 
+  // Ensure socket is connected to receive manager-triggered start_call events
+  useEffect(() => {
+    try { ensureSocket() } catch {}
+  }, [ensureSocket])
+
   useEffect(() => {
     return () => {
       try { socketRef.current?.disconnect() } catch {}
       socketRef.current = null
     }
+  }, [])
+
+  const sendPhase = useCallback(async (
+    phase: 'dialing' | 'ringing' | 'connected' | 'ended',
+    extra?: Partial<{ source: string; destination: string; direction: string; action: string }>
+  ) => {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies(); if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const t = getToken(); if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const callId = currentCallIdRef.current || Date.now()
+      currentCallIdRef.current = callId
+      await fetch(`${API_PREFIX}/calls/phase`, {
+        method: 'POST',
+        headers,
+        credentials,
+        body: JSON.stringify({ phase, callId, ...extra })
+      }).catch(() => { })
+    } catch {}
   }, [])
 
   // ---- Dialer Sheets (Option A) helpers ----
@@ -610,7 +650,12 @@ export default function AutomatedDialerPage() {
         try { const pc: RTCPeerConnection = (session as any).connection; if (pc) attachRemoteAudio(pc) } catch {}
       })
 
-      session.on("progress", () => { setStatus("Ringing"); startRingback() })
+      session.on("progress", () => {
+        setStatus("Ringing");
+        startRingback();
+        const dest = lastDialDestinationRef.current || currentPhone
+        try { sendPhase('ringing', { source: ext, destination: dest || '', direction: 'OUT' }) } catch {}
+      })
       session.on("accepted", async () => {
         stopRingback()
         setStatus("In Call")
@@ -622,6 +667,10 @@ export default function AutomatedDialerPage() {
         try {
           ensureSocket()
           await createLiveSession()
+        } catch {}
+        try {
+          const dest = lastDialDestinationRef.current || currentPhone
+          await sendPhase('connected', { source: ext, destination: dest || '', direction: 'OUT' })
         } catch {}
         setShowPopup(true)
         try { const w = window.innerWidth; const h = window.innerHeight; const px = Math.max(8, Math.floor(w / 2 - 180)); const py = Math.max(60, Math.floor(h / 2 - 120)); setPopupPos({ x: px, y: py }) } catch {}
@@ -647,6 +696,7 @@ export default function AutomatedDialerPage() {
           setPendingUploadExtra({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : undefined })
           setShowDisposition(true)
         }
+        try { await sendPhase('ended') } catch {}
         scheduleNext()
       })
       session.on("ended", async () => {
@@ -658,6 +708,7 @@ export default function AutomatedDialerPage() {
           setPendingUploadExtra({})
           setShowDisposition(true)
         }
+        try { await sendPhase('ended') } catch {}
         scheduleNext()
       })
     })
@@ -938,6 +989,7 @@ export default function AutomatedDialerPage() {
       dialStartRef.current = Date.now()
       await ensureAudioCtx()
       lastDialDestinationRef.current = num || null
+      try { await sendPhase('dialing', { source: ext, destination: num || '', direction: 'OUT' }) } catch {}
       setShowPopup(true)
       try { const w = window.innerWidth; const h = window.innerHeight; const px = Math.max(8, Math.floor(w / 2 - 180)); const py = Math.max(60, Math.floor(h / 2 - 120)); setPopupPos({ x: px, y: py }) } catch {}
       uaRef.current.call(numberToSipUri(num, ext), options)

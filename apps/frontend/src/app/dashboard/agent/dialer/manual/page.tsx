@@ -55,6 +55,7 @@ declare global {
 }
 
 const API_PREFIX = `${API_BASE}/api`
+const DIAL_PREFIX = process.env.NEXT_PUBLIC_DIAL_PREFIX || ''
 
 const dmFieldKeys = [
   'unique_id',
@@ -167,7 +168,14 @@ export default function ManualDialerPage() {
   const [docsLoading, setDocsLoading] = useState(false)
   const [docQuery, setDocQuery] = useState("")
   const [previewDoc, setPreviewDoc] = useState<any | null>(null)
-  const [selectedCampaign, setSelectedCampaign] = useState<string | undefined>(undefined)
+  const [selectedCampaign, setSelectedCampaign] = useState<string | undefined>(() => {
+    if (typeof window === "undefined") return undefined
+    try {
+      return localStorage.getItem("manual_dialer_campaign") || undefined
+    } catch {
+      return undefined
+    }
+  })
   const { campaigns, loading: campaignsLoading } = useCampaigns()
 
   // Draggable in-call popup position
@@ -220,17 +228,19 @@ export default function ManualDialerPage() {
   const [disposition, setDisposition] = useState("")
   const [pendingUploadExtra, setPendingUploadExtra] = useState<any>(null)
   const [dmForm, setDmForm] = useState<DmFormState>(() => buildDefaultDmFormState(selectedCampaign))
+
+  const resetDmForm = () => {
+    setDmForm(buildDefaultDmFormState(selectedCampaign))
+  }
+
+  const updateDmField = (field: string, value: string) => {
+    setDmForm(prev => ({ ...prev, [field]: value }))
+  }
+
   const [dmSaving, setDmSaving] = useState(false)
   const [dmMessage, setDmMessage] = useState<string | null>(null)
   const [currentSection, setCurrentSection] = useState(0)
   const canEditDmForm = status.startsWith("In Call") || status === "Call Ended" || showDisposition
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("manual_dialer_campaign")
-      if (saved) setSelectedCampaign(saved)
-    } catch {}
-  }, [])
 
   useEffect(() => {
     try {
@@ -377,7 +387,7 @@ export default function ManualDialerPage() {
   const ensureSocket = useCallback(() => {
     if (socketRef.current) return socketRef.current
     try {
-      const opts: any = { transports: ["websocket"] }
+      const opts: any = { transports: ["polling", "websocket"], path: "/socket.io" }
       if (USE_AUTH_COOKIE) {
         opts.withCredentials = true
       } else {
@@ -385,6 +395,7 @@ export default function ManualDialerPage() {
         if (t) opts.auth = { token: t }
       }
       const s = io(API_BASE, opts)
+
       s.on("transcription:segment", (payload: any) => {
         try {
           if (!payload || payload.sessionId !== liveSessionIdRef.current || !payload.segment) return
@@ -969,63 +980,8 @@ export default function ManualDialerPage() {
     busyGainRef.current = null
   }
 
-  const placeCall = async () => {
-    setError(null)
-    if (!uaRef.current) return setError("UA not ready")
-    if (!number) return setError("Enter a number")
-
-    const eventHandlers = {}
-
-    const options = {
-      eventHandlers,
-      mediaConstraints: { audio: true, video: false },
-      pcConfig: { rtcpMuxPolicy: "require" },
-      rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
-    }
-
-    try {
-      // reset per-call state
-      hasAnsweredRef.current = false
-      uploadedOnceRef.current = false
-      dialStartRef.current = Date.now()
-      await ensureAudioCtx()
-      const dialNum = `${countryCode}${number}`
-      lastDialDestinationRef.current = dialNum || null
-      // Track and broadcast live call phase
-      currentCallIdRef.current = Date.now()
-      try { await sendPhase('dialing', { source: ext, destination: dialNum, direction: 'OUT' }) } catch {}
-      // Show popup immediately when dialing and center it
-      setShowPopup(true)
-      try {
-        const w = window.innerWidth
-        const h = window.innerHeight
-        const px = Math.max(8, Math.floor(w / 2 - 180))
-        const py = Math.max(60, Math.floor(h / 2 - 120))
-        setPopupPos({ x: px, y: py })
-      } catch {}
-      // For many SIP servers, the user part should not include '+'
-      const sipUser = dialNum.replace(/^\+/, '')
-      uaRef.current.call(numberToSipUri(sipUser, ext), options)
-      localStorage.setItem("lastDialedNumber", dialNum)
-      try { localStorage.setItem('dial_num', number) } catch {}
-      // Optimistically show in recent history
-      setCallHistory((prev) => [{ destination: dialNum, end_time: null }, ...prev].slice(0, 5))
-    } catch (e: any) {
-      setError(e?.message || "Call start error")
-    }
-  }
-
-  const updateDmField = (key: DmFormKey, value: string) => {
-    setDmForm((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }))
-  }
-
-  const resetDmForm = () => {
-    setDmForm(buildDefaultDmFormState(selectedCampaign))
-    setDmMessage(null)
-  }
-
   const serializeDmPayload = () => {
-    const payload: Record<string, string | null> = {}
+    const payload: any = {}
     for (const key of extendedDmKeys) {
       const raw = (dmForm[key] || '').trim()
       payload[key] = raw.length ? raw : null
@@ -1237,6 +1193,38 @@ export default function ManualDialerPage() {
     if (!uploadedOnceRef.current) {
       setPendingUploadExtra({})
       setShowDisposition(true)
+    }
+  }
+
+  const placeCall = async () => {
+    setError(null)
+    if (!uaRef.current) { setError("UA not ready"); return }
+    if (!number) { setError("Empty number"); return }
+    
+    const destination = `${countryCode}${number}`
+    const options = {
+      eventHandlers: {},
+      mediaConstraints: { audio: true, video: false },
+      pcConfig: { rtcpMuxPolicy: "require" },
+      rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
+    }
+    try {
+      hasAnsweredRef.current = false
+      uploadedOnceRef.current = false
+      dialStartRef.current = Date.now()
+      await ensureAudioCtx()
+      lastDialDestinationRef.current = destination || null
+      setShowPopup(true)
+      try { 
+        const w = window.innerWidth; 
+        const h = window.innerHeight; 
+        const px = Math.max(8, Math.floor(w / 2 - 180)); 
+        const py = Math.max(60, Math.floor(h / 2 - 120)); 
+        setPopupPos({ x: px, y: py }) 
+      } catch {}
+      uaRef.current.call(numberToSipUri(destination, ext), options)
+    } catch (e: any) {
+      setError(e?.message || "Call start error")
     }
   }
 
@@ -1779,7 +1767,7 @@ export default function ManualDialerPage() {
                     </div>
                     <div className="flex items-center gap-2 ml-2 shrink-0">
                       {h.disposition ? (
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                           h.disposition === 'Answered' ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/20' :
                           h.disposition === 'Busy' ? 'bg-orange-500/10 text-orange-700 border border-orange-500/20' :
                           h.disposition === 'No Answer' ? 'bg-slate-500/10 text-slate-700 border border-slate-500/20' :
@@ -2056,7 +2044,9 @@ export default function ManualDialerPage() {
                     )
                   })()}
                 </div>
-                <div className="text-xs text-muted-foreground font-medium">Drag to move</div>
+                <div className="text-xs font-medium px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-700 border border-blue-500/20">
+                  Drag to move
+                </div>
               </div>
               <div className="px-5 pt-4 pb-5">
                 <div className="text-center text-xl font-bold tracking-wide text-foreground">{number || lastDialedNumber || "Unknown"}</div>
@@ -2281,9 +2271,18 @@ export default function ManualDialerPage() {
       </SidebarInset>
     </SidebarProvider>
   )
-}
 
-function numberToSipUri(num: string, _ext: string) {
-  if (num.startsWith("sip:")) return num
-  return num
+  function numberToSipUri(num: string, ext: string) {
+    if (num.startsWith("sip:")) return num
+    const domain = sipDomainRef.current || 'pbx2.telxio.com.sg'
+    // sanitize: trim, remove spaces/dashes
+    let n = String(num).trim().replace(/[\s-]/g, '')
+    // If E.164 with leading '+', many Asterisk/Telxio dialplans expect digits only.
+    // Use ;user=phone hint so PBX treats it as a telephone number.
+    const isE164 = n.startsWith('+')
+    if (isE164) n = n.slice(1)
+    // Optional outbound route prefix (e.g., 9 or 00) configured via env
+    if (DIAL_PREFIX) n = `${DIAL_PREFIX}${n}`
+    return `sip:${n}@${domain};user=phone`
+  }
 }

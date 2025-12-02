@@ -31,6 +31,7 @@ import {
   RefreshCcw,
   Phone
 } from "lucide-react"
+import { LineChartWrapper } from "@/app/dashboard/superadmin/components/charts/LineChartWrapper"
 
 interface DashboardStats {
   totalLeads: number
@@ -63,6 +64,7 @@ interface DashboardStats {
     accuracy: number
     rank?: number
   }>
+  auditTrends?: Array<{ date: string; audited: number }>
 }
 
 export default function QaDashboardPage() {
@@ -149,6 +151,7 @@ export default function QaDashboardPage() {
         notAuditedLeads?: number
       }> = []
       
+      let auditTrends: Array<{ date: string; audited: number }> = []
       if (callsRes.ok) {
         const callsData = await callsRes.json()
         const calls = callsData?.items || []
@@ -263,6 +266,31 @@ export default function QaDashboardPage() {
         
         console.log('📈 Campaign stats calculated:', topCampaigns)
         
+        // Build daily audit trend for current month from leadCalls
+        try {
+          const dailyMap = new Map<string, number>()
+          // seed days of current month up to today with 0 for continuity
+          const seedDate = new Date(currentYear, currentMonth, 1)
+          const todayDay = new Date().getDate()
+          for (let d = 1; d <= todayDay; d++) {
+            const key = new Date(currentYear, currentMonth, d).toISOString().slice(0,10)
+            dailyMap.set(key, 0)
+          }
+          for (const call of leadCalls) {
+            if (!call.start_time) continue
+            const key = new Date(call.start_time).toISOString().slice(0,10)
+            const prev = dailyMap.get(key) || 0
+            // count audited leads per day
+            if (call.has_dm_qa_fields) dailyMap.set(key, prev + 1)
+          }
+          auditTrends = Array.from(dailyMap.entries())
+            .sort(([a],[b]) => a.localeCompare(b))
+            .map(([date, audited]) => ({ date, audited }))
+        } catch (e) {
+          console.warn('Failed to compute auditTrends', e)
+          auditTrends = []
+        }
+        
         // Calculate real Top QA Performers from DM data
         const performerStats = new Map()
         auditedLeadsWithDM.forEach((call: any) => {
@@ -343,7 +371,8 @@ export default function QaDashboardPage() {
         const mergedData = {
           ...data.data,
           qaPerformance,
-          topCampaigns: topCampaigns || []
+          topCampaigns: topCampaigns || [],
+          auditTrends
         }
         console.log('✅ Setting stats with real leaderboard and campaigns:', mergedData)
         setStats(mergedData)
@@ -647,33 +676,100 @@ export default function QaDashboardPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5" />
-                  Audit Trends
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-emerald-600" />
+                    Audit Trends
+                  </CardTitle>
+                  {(() => {
+                    const arr = Array.isArray(stats.auditTrends) ? stats.auditTrends : []
+                    const monthTotal = arr.reduce((s, d) => s + (d.audited || 0), 0)
+                    const todayKey = new Date().toISOString().slice(0,10)
+                    const last7 = (() => {
+                      const now = new Date()
+                      let sum = 0
+                      for (let i = 0; i < 7; i++) {
+                        const k = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i).toISOString().slice(0,10)
+                        sum += arr.find((x) => x.date === k)?.audited || 0
+                      }
+                      return sum
+                    })()
+                    const prev7 = (() => {
+                      const now = new Date()
+                      let sum = 0
+                      for (let i = 7; i < 14; i++) {
+                        const k = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i).toISOString().slice(0,10)
+                        sum += arr.find((x) => x.date === k)?.audited || 0
+                      }
+                      return sum
+                    })()
+                    const delta = last7 - prev7
+                    const deltaSign = delta === 0 ? '' : delta > 0 ? '+' : ''
+                    return (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">This month: {monthTotal}</Badge>
+                        <Badge variant={delta >= 0 ? 'secondary' : 'destructive'} className="text-xs">
+                          7d: {last7} ({deltaSign}{delta})
+                        </Badge>
+                      </div>
+                    )
+                  })()}
+                </div>
                 <CardDescription>
-                  Real-time audit completion for current month
+                  Real-time audit completion for the current month
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Today</span>
-                  <Badge variant="secondary">
-                    {stats.topCampaigns.reduce((sum, campaign) => sum + (campaign.auditedLeads || 0), 0)} audits
-                  </Badge>
+                <div className="rounded-lg p-3 bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/10 border border-emerald-200/50 dark:border-emerald-900/40">
+                  {Array.isArray(stats.auditTrends) && stats.auditTrends.length > 0 ? (
+                    <LineChartWrapper
+                      data={stats.auditTrends}
+                      xKey="date"
+                      lines={[{ key: 'audited', name: 'Audited', color: 'hsl(142, 76%, 36%)' }]}
+                      height={260}
+                      showLegend={false}
+                      xAxisFormatter={(v) => {
+                        try { return new Date(v).getDate().toString() } catch { return String(v) }
+                      }}
+                      yAxisFormatter={(v) => String(v)}
+                      tooltipFormatter={(v) => `${v} audits`}
+                    />
+                  ) : (
+                    <div className="text-sm text-muted-foreground">No trend data available</div>
+                  )}
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">This Week</span>
-                  <Badge variant="secondary">
-                    {stats.topCampaigns.reduce((sum, campaign) => sum + (campaign.auditedLeads || 0), 0)} audits
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">This Month</span>
-                  <Badge variant="secondary">
-                    {stats.topCampaigns.reduce((sum, campaign) => sum + (campaign.auditedLeads || 0), 0)} audits
-                  </Badge>
-                </div>
+
+                {(() => {
+                  const arr = Array.isArray(stats.auditTrends) ? stats.auditTrends : []
+                  const todayKey = new Date().toISOString().slice(0,10)
+                  const today = arr.find((x) => x.date === todayKey)?.audited || 0
+                  const week = (() => {
+                    const now = new Date()
+                    let sum = 0
+                    for (let i = 0; i < 7; i++) {
+                      const k = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i).toISOString().slice(0,10)
+                      sum += arr.find((x) => x.date === k)?.audited || 0
+                    }
+                    return sum
+                  })()
+                  const month = arr.reduce((s, d) => s + (d.audited || 0), 0)
+                  return (
+                    <div className="grid gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Today</span>
+                        <Badge variant="secondary">{today} audits</Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">This Week</span>
+                        <Badge variant="secondary">{week} audits</Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">This Month</span>
+                        <Badge variant="secondary">{month} audits</Badge>
+                      </div>
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
 

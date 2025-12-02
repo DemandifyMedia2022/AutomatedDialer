@@ -52,10 +52,12 @@ export default function CsvManager() {
       const fileInput = document.getElementById('csv-upload') as HTMLInputElement
       if (fileInput) fileInput.value = ''
       refetch()
-    } catch (error) {
+    } catch (error: any) {
+      const status = error?.response?.status
+      const serverMsg = error?.response?.data?.message || error?.response?.data?.error || error?.message
       toast({
         title: "Error",
-        description: "Failed to upload file",
+        description: `Failed to upload file${status ? ` (HTTP ${status})` : ''}${serverMsg ? `: ${serverMsg}` : ''}`,
         variant: "destructive",
       })
     } finally {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { USE_AUTH_COOKIE, getToken } from '@/lib/auth'
+import { API_BASE } from '@/lib/api'
 
 type Status = 'OFFLINE'|'AVAILABLE'|'ON_CALL'|'IDLE'|'BREAK'
 
@@ -12,7 +13,6 @@ function getCookie(name: string) {
 }
 
 export function useAgentPresence() {
-  const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'
   const [status, setStatusState] = useState<Status>('AVAILABLE')
   const [breakReasons, setBreakReasons] = useState<Array<{id:number; code:string; label:string}>>([])
   const [totalTodaySeconds, setTotalTodaySeconds] = useState<number>(0)
@@ -93,8 +93,6 @@ export function useAgentPresence() {
     } catch {}
   }, [API_BASE, credentials])
 
-  
-
   useEffect(() => {
     loadBreaks(); loadMe(); loadSummary()
   }, [loadBreaks, loadMe, loadSummary])
@@ -108,30 +106,67 @@ export function useAgentPresence() {
   }, [heartbeat])
 
   useEffect(() => {
-    try {
-      const s = io(API_BASE, {
-        withCredentials: USE_AUTH_COOKIE,
-        transports: ['websocket'],
-        auth: USE_AUTH_COOKIE ? undefined : { token: getToken() || undefined },
-      })
-      socketRef.current = s
-      s.on('connect', () => {})
-      s.on('presence:update', (p: any) => {
-        if (p?.status) setStatusState(p.status as Status)
-        if (p?.since) {
-          const t = new Date(p.since).getTime(); if (!isNaN(t)) lastChangeRef.current = t
-        } else {
-          lastChangeRef.current = Date.now()
-        }
-      })
-      s.on('break:started', () => { setStatusState('BREAK'); lastChangeRef.current = Date.now() })
-      s.on('break:ended', () => { setStatusState('AVAILABLE'); lastChangeRef.current = Date.now() })
-      s.on('session:closed', () => { setStatusState('OFFLINE'); lastChangeRef.current = Date.now() })
-      return () => { try { s.disconnect() } catch {} }
-    } catch { return }
+    let reconnectAttempts = 0
+    const maxReconnectAttempts = 5
+
+    const connectSocket = () => {
+      try {
+        const s = io(API_BASE, {
+          withCredentials: USE_AUTH_COOKIE,
+          transports: ['websocket', 'polling'],
+          path: '/socket.io',
+          auth: USE_AUTH_COOKIE ? undefined : { token: getToken() || undefined },
+          timeout: 5000,
+          reconnection: true,
+          reconnectionAttempts: maxReconnectAttempts,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+        })
+        
+        socketRef.current = s
+        
+        s.on('connect', () => {
+          reconnectAttempts = 0
+        })
+        
+        s.on('connect_error', (error) => {
+          console.warn('[useAgentPresence] Socket connection error:', error.message)
+          reconnectAttempts++
+          if (reconnectAttempts >= maxReconnectAttempts) {
+            console.warn('[useAgentPresence] Max reconnection attempts reached')
+          }
+        })
+        
+        s.on('disconnect', (reason) => {
+          console.warn('[useAgentPresence] Socket disconnected:', reason)
+        })
+        
+        s.on('presence:update', (p: any) => {
+          if (p?.status) setStatusState(p.status as Status)
+          if (p?.since) {
+            const t = new Date(p.since).getTime(); if (!isNaN(t)) lastChangeRef.current = t
+          } else {
+            lastChangeRef.current = Date.now()
+          }
+        })
+        s.on('break:started', () => { setStatusState('BREAK'); lastChangeRef.current = Date.now() })
+        s.on('break:ended', () => { setStatusState('AVAILABLE'); lastChangeRef.current = Date.now() })
+        s.on('session:closed', () => { setStatusState('OFFLINE'); lastChangeRef.current = Date.now() })
+        
+        return s
+      } catch (error) {
+        console.error('[useAgentPresence] Failed to create socket:', error)
+        return null
+      }
+    }
+
+    const socket = connectSocket()
+    
+    return () => { 
+      try { socket?.disconnect() } catch {} 
+    }
   }, [API_BASE])
 
-  // Fallback: periodic polling to auto-refresh UI even if WS is unavailable
   useEffect(() => {
     const doPoll = async () => { try { await loadMe(); await loadSummary() } catch {} }
     doPoll()

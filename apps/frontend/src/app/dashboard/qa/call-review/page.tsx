@@ -1278,8 +1278,10 @@ export default function QaCallReviewPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+              {/* Filters Row: Date, Campaign, Export, Refresh */}
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Date range */}
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" size="sm" className="justify-between gap-2 w-[220px]">
@@ -1296,52 +1298,54 @@ export default function QaCallReviewPage() {
                       />
                     </PopoverContent>
                   </Popover>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span>Use the picker to adjust the date window. Default shows today&apos;s calls.</span>
-                    <Button variant="outline" size="sm" onClick={setTodayRange}>
-                      Today
-                    </Button>
-                  </div>
-                </div>
-                <Button size="sm" variant="outline" onClick={fetchCalls} disabled={loadingCalls} className="gap-2">
-                  {loadingCalls ? (
-                    "Refreshing…"
-                  ) : (
-                    <>
-                      <RefreshCcw className="h-4 w-4" /> Refresh
-                    </>
-                  )}
-                </Button>
-              </div>
 
-              {/* Campaign Filter and Export */}
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium">Campaign:</label>
-                  <Select value={selectedCampaign} onValueChange={setSelectedCampaign}>
-                    <SelectTrigger className="w-[200px]">
-                      <SelectValue placeholder="Select campaign" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Campaigns</SelectItem>
-                      {campaigns.map((campaign) => (
-                        <SelectItem key={campaign} value={campaign}>
-                          {campaign}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {/* Campaign filter */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium">Campaign:</label>
+                    <Select value={selectedCampaign} onValueChange={setSelectedCampaign}>
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Select campaign" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Campaigns</SelectItem>
+                        {campaigns.map((campaign) => (
+                          <SelectItem key={campaign} value={campaign}>
+                            {campaign}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Today helper */}
+                  <Button variant="outline" size="sm" onClick={setTodayRange}>
+                    Today
+                  </Button>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={exportToCsv}
-                  disabled={calls.length === 0}
-                  className="flex items-center gap-2"
-                >
-                  <Download className="h-4 w-4" />
-                  Export CSV
-                </Button>
+
+                <div className="flex items-center gap-2">
+                  {/* Export */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={exportToCsv}
+                    disabled={calls.length === 0}
+                    className="flex items-center gap-2"
+                  >
+                    <Download className="h-4 w-4" />
+                    Export CSV
+                  </Button>
+                  {/* Refresh */}
+                  <Button size="sm" variant="outline" onClick={fetchCalls} disabled={loadingCalls} className="gap-2">
+                    {loadingCalls ? (
+                      "Refreshing…"
+                    ) : (
+                      <>
+                        <RefreshCcw className="h-4 w-4" /> Refresh
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {/* Queue Status for Campaign-specific auditing */}
