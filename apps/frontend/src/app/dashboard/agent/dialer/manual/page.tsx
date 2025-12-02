@@ -612,7 +612,7 @@ export default function ManualDialerPage() {
   }, [])
 
   const sendPhase = useCallback(async (
-    phase: 'dialing' | 'ringing' | 'connected' | 'ended',
+    phase: 'dialing' | 'ringing' | 'connecting' | 'connected' | 'ended',
     extra?: Partial<{ source: string; destination: string; direction: string }>
   ) => {
     try {
@@ -631,6 +631,25 @@ export default function ManualDialerPage() {
         headers,
         credentials,
         body: JSON.stringify({ phase, callId, ...extra })
+      }).catch(() => { })
+    } catch { }
+  }, [])
+
+  const setPresenceStatus = useCallback(async (to: 'AVAILABLE' | 'ON_CALL') => {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies(); if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const t = getToken(); if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      await fetch(`${API_PREFIX}/presence/status`, {
+        method: 'POST',
+        headers,
+        credentials,
+        body: JSON.stringify({ status: to })
       }).catch(() => { })
     } catch { }
   }, [])
@@ -684,6 +703,10 @@ export default function ManualDialerPage() {
           const pc: RTCPeerConnection = (session as any).connection
           if (pc) attachRemoteAudio(pc)
         } catch {}
+        try {
+          const dest = lastDialDestinationRef.current || `${countryCode}${number}`
+          void sendPhase('connected', { source: ext, destination: dest || '', direction: 'OUT' }).catch(() => {})
+        } catch {}
       })
 
       session.on("progress", () => {
@@ -697,6 +720,7 @@ export default function ManualDialerPage() {
         setStatus("In Call")
         callStartRef.current = Date.now()
         hasAnsweredRef.current = true
+
         if (timerRef.current) window.clearInterval(timerRef.current)
         timerRef.current = window.setInterval(() => {
           setStatus((s) => (s.startsWith("In Call") ? `In Call ${elapsed()}` : s))
@@ -707,8 +731,14 @@ export default function ManualDialerPage() {
           ensureSocket()
           await createLiveSession()
         } catch {}
+        try {
+          const dest = lastDialDestinationRef.current || `${countryCode}${number}`
+          await sendPhase('connecting', { source: ext, destination: dest || '', direction: 'OUT' })
+        } catch {}
+        try { await setPresenceStatus('ON_CALL') } catch {}
         // Ensure popup is visible and centered on screen when call is active
         setShowPopup(true)
+
         try {
           const w = window.innerWidth
           const h = window.innerHeight
@@ -740,6 +770,7 @@ export default function ManualDialerPage() {
           setShowDisposition(true)
         }
         try { await sendPhase('ended') } catch {}
+        try { await setPresenceStatus('AVAILABLE') } catch {}
       })
       session.on("ended", async () => {
         stopRingback()
@@ -751,6 +782,7 @@ export default function ManualDialerPage() {
           setShowDisposition(true)
         }
         try { await sendPhase('ended') } catch {}
+        try { await setPresenceStatus('AVAILABLE') } catch {}
       })
 
       // Incoming call handling
@@ -1194,6 +1226,8 @@ export default function ManualDialerPage() {
       setPendingUploadExtra({})
       setShowDisposition(true)
     }
+    try { await sendPhase('ended') } catch {}
+    try { await setPresenceStatus('AVAILABLE') } catch {}
   }
 
   const placeCall = async () => {
@@ -1222,6 +1256,7 @@ export default function ManualDialerPage() {
         const py = Math.max(60, Math.floor(h / 2 - 120)); 
         setPopupPos({ x: px, y: py }) 
       } catch {}
+      try { await sendPhase('dialing', { source: ext, destination, direction: 'OUT' }) } catch {}
       uaRef.current.call(numberToSipUri(destination, ext), options)
     } catch (e: any) {
       setError(e?.message || "Call start error")

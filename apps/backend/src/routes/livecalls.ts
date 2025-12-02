@@ -110,3 +110,31 @@ export async function updateLiveCallPhase(req: any, phase: CallPhase, callId: nu
 export function getLiveCalls() {
   return [...liveCalls.values()]
 }
+
+// ======================
+//  STALE ENTRY SWEEPER
+// ======================
+const TTL_MS = 2 * 60 * 1000 // 2 minutes for pre-connect states
+let sweepTimer: NodeJS.Timer | null = null
+
+function sweepLiveCalls() {
+  try {
+    const now = Date.now()
+    let changed = false
+    for (const [userId, lc] of liveCalls.entries()) {
+      const s = String(lc.status || '').toLowerCase()
+      if (s === 'dialing' || s === 'ringing' || s === 'connecting') {
+        const t = typeof lc.callId === 'number' ? lc.callId : now
+        if (now - t > TTL_MS) { liveCalls.delete(userId); changed = true }
+      }
+    }
+    if (changed) {
+      try { void emitToManagers('live:calls:update', [...liveCalls.values()]) } catch {}
+    }
+  } catch {}
+}
+
+export function startLiveCallsSweeper() {
+  if (sweepTimer) return
+  sweepTimer = setInterval(sweepLiveCalls, 15000)
+}

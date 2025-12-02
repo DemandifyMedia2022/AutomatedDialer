@@ -17,7 +17,7 @@ import transcription from './transcription';
 import qa from './qa';
 import dmForm from './dmForm';
 import superadmin from './superadmin';
-import { getLiveCalls, updateLiveCallPhase } from './livecalls';
+import { getLiveCalls, updateLiveCallPhase, startLiveCallsSweeper } from './livecalls';
 
 import { env } from '../config/env';
 import multer from 'multer';
@@ -30,6 +30,9 @@ import { z } from 'zod';
 import { transcribeCallRecordingForCall } from '../services/transcriptionService';
 
 const router = Router();
+
+// Start background sweepers (idempotent)
+try { startLiveCallsSweeper() } catch {}
 
 router.get('/health', health);
 router.use('/auth', auth);
