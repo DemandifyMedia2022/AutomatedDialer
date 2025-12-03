@@ -1704,7 +1704,7 @@ export default function AutomatedDialerPage() {
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>My Assigned Sheets</DialogTitle>
+                          <DialogTitle>My Assigned Sheets...</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-2 max-h-72 overflow-auto">
                           {mySheets.length === 0 ? (
