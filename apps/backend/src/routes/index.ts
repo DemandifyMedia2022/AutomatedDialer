@@ -17,6 +17,7 @@ import transcription from './transcription';
 import qa from './qa';
 import dmForm from './dmForm';
 import superadmin from './superadmin';
+import calls from './calls';
 import { getLiveCalls, updateLiveCallPhase, startLiveCallsSweeper } from './livecalls';
 
 import { env } from '../config/env';
@@ -52,6 +53,7 @@ router.use('/transcription', transcription);
 router.use('/qa', qa);
 router.use('/dm-form', dmForm);
 router.use('/superadmin', superadmin);
+router.use('/calls', calls);
 
 router.get('/sip/config', (_req, res) => {
   res.json({
