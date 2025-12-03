@@ -330,10 +330,6 @@ export default function AutomatedDialerPage() {
   const localMicStreamRef = useRef<MediaStream | null>(null)
 
   // Tones
-  const ringGainRef = useRef<GainNode | null>(null)
-  const ringOsc1Ref = useRef<OscillatorNode | null>(null)
-  const ringOsc2Ref = useRef<OscillatorNode | null>(null)
-  const ringTimerRef = useRef<number | null>(null)
   const busyGainRef = useRef<GainNode | null>(null)
   const busyOsc1Ref = useRef<OscillatorNode | null>(null)
   const busyOsc2Ref = useRef<OscillatorNode | null>(null)
@@ -789,12 +785,12 @@ export default function AutomatedDialerPage() {
 
       session.on("progress", () => {
         setStatus("Ringing");
-        startRingback();
+        // Attach remote audio to hear the original ringing sound from PBX
+        try { const pc: RTCPeerConnection = (session as any).connection; if (pc) attachRemoteAudio(pc) } catch {}
         const dest = lastDialDestinationRef.current || currentPhone
         try { sendPhase('ringing', { source: ext, destination: dest || '', direction: 'OUT' }) } catch {}
       })
       session.on("accepted", async () => {
-        stopRingback()
         setStatus("In Call")
         callStartRef.current = Date.now()
         hasAnsweredRef.current = true
@@ -813,7 +809,6 @@ export default function AutomatedDialerPage() {
         try { const w = window.innerWidth; const h = window.innerHeight; const px = Math.max(8, Math.floor(w / 2 - 180)); const py = Math.max(60, Math.floor(h / 2 - 120)); setPopupPos({ x: px, y: py }) } catch {}
       })
       session.on("failed", async (e: any) => {
-        stopRingback()
         const code = Number(e?.response?.status_code || 0)
         const reason = e?.response?.reason_phrase || String(e?.cause || '')
         const reasonL = String(reason).toLowerCase()
@@ -837,7 +832,6 @@ export default function AutomatedDialerPage() {
         scheduleNext()
       })
       session.on("ended", async () => {
-        stopRingback()
         setStatus("Call Ended")
         clearTimer()
         setShowPopup(false)
@@ -876,47 +870,9 @@ export default function AutomatedDialerPage() {
     try { await audioCtxRef.current?.resume() } catch {}
   }
 
-  const startRingback = async () => {
-    try {
-      await ensureAudioCtx()
-      const ctx = audioCtxRef.current
-      if (!ctx) return
-      stopRingback()
-      const gain = ctx.createGain()
-      const osc1 = ctx.createOscillator()
-      const osc2 = ctx.createOscillator()
-      osc1.frequency.value = 440
-      osc2.frequency.value = 480
-      osc1.connect(gain)
-      osc2.connect(gain)
-      gain.connect(ctx.destination)
-      gain.gain.value = 0
-      osc1.start(); osc2.start()
-      ringGainRef.current = gain
-      ringOsc1Ref.current = osc1
-      ringOsc2Ref.current = osc2
-      let on = false
-      const tick = () => {
-        on = !on
-        if (ringGainRef.current) ringGainRef.current.gain.value = on ? 0.1 : 0
-        const next = on ? 2000 : 4000
-        ringTimerRef.current = window.setTimeout(tick, next)
-      }
-      tick()
-    } catch {}
-  }
+  // Removed synthetic ringback tone generation - now using actual media stream
 
-  const stopRingback = () => {
-    if (ringTimerRef.current) { window.clearTimeout(ringTimerRef.current); ringTimerRef.current = null }
-    try { ringOsc1Ref.current?.stop() } catch {}
-    try { ringOsc2Ref.current?.stop() } catch {}
-    try { ringOsc1Ref.current?.disconnect() } catch {}
-    try { ringOsc2Ref.current?.disconnect() } catch {}
-    try { ringGainRef.current?.disconnect() } catch {}
-    ringOsc1Ref.current = null
-    ringOsc2Ref.current = null
-    ringGainRef.current = null
-  }
+  // Removed synthetic ringback tone cleanup - now using actual media stream
 
   const startBusyTone = async () => {
     try {
@@ -1137,7 +1093,6 @@ export default function AutomatedDialerPage() {
 
   const hangup = async () => {
     try { sessionRef.current?.terminate() } catch {}
-    stopRingback()
     setShowPopup(false)
     if (!uploadedOnceRef.current) { setPendingUploadExtra({}); setShowDisposition(true) }
   }
