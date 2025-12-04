@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express'
 import { verifyJwt, JwtPayload } from '../utils/jwt'
 import { env } from '../config/env'
+import { db } from '../db/prisma'
 
 function parseCookies(cookieHeader?: string): Record<string, string> {
   const out: Record<string, string> = {}
@@ -39,8 +40,18 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     const payload = verifyJwt(token)
     if (!payload) return res.status(401).json({ success: false, message: 'Invalid token' })
 
-    req.user = payload
-    next()
+    // Check if user is still active
+    db.users.findUnique({ where: { id: payload.userId }, select: { status: true } })
+      .then(user => {
+        if (!user || user.status !== 'active') {
+          return res.status(401).json({ success: false, message: 'Account is inactive' })
+        }
+        req.user = payload
+        next()
+      })
+      .catch(() => {
+        return res.status(401).json({ success: false, message: 'Authentication failed' })
+      })
   } catch (e) {
     return res.status(401).json({ success: false, message: 'Unauthorized' })
   }
