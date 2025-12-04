@@ -305,13 +305,8 @@ router.post('/calls/phase', requireAuth, async (req: any, res: any, next: any) =
   }
 }) // <--- Added missing closing brace
 
-console.log('[CALLS] About to register PATCH route')
-
 // Update a call (for scheduling follow-ups)
 router.patch('/:id', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
-  console.log('[CALLS PATCH] Route hit for ID:', req.params.id)
-  console.log('[CALLS PATCH] Method:', req.method)
-  console.log('[CALLS PATCH] Body:', req.body)
   try {
     const callId = req.params.id
     const userId = req.user?.userId
@@ -346,11 +341,11 @@ router.patch('/:id', requireAuth, requireRoles(['agent', 'manager', 'superadmin'
 
     // Validate update data
     const updateSchema = z.object({
-      remarks: z.string().optional(),
-      disposition: z.string().optional(),
+      remarks: z.string().max(500).optional(),
+      disposition: z.string().max(255).optional(),
       follow_up: z.boolean().optional(),
       schedule_call: z.coerce.date().optional(),
-      Followup_notes: z.string().optional()
+      Followup_notes: z.string().max(2000).optional()
     })
 
     const parsed = updateSchema.safeParse(req.body)
@@ -359,6 +354,27 @@ router.patch('/:id', requireAuth, requireRoles(['agent', 'manager', 'superadmin'
     }
 
     const updateData = parsed.data as any
+    
+    // Validate schedule_call is in the future
+    if (updateData.schedule_call) {
+      const scheduledDate = new Date(updateData.schedule_call)
+      const now = new Date()
+      
+      if (scheduledDate <= now) {
+        return res.status(400).json({ success: false, message: 'Schedule time must be in the future' })
+      }
+      
+      // Check if scheduling too far in future (more than 90 days)
+      const maxFutureDate = new Date()
+      maxFutureDate.setDate(maxFutureDate.getDate() + 90)
+      
+      if (scheduledDate > maxFutureDate) {
+        return res.status(400).json({ success: false, message: 'Cannot schedule more than 90 days in advance' })
+      }
+    }
+
+    // Add updated_at timestamp
+    updateData.updated_at = new Date()
 
     // Update the call
     const updated = await (db as any).calls.update({
@@ -373,24 +389,12 @@ router.patch('/:id', requireAuth, requireRoles(['agent', 'manager', 'superadmin'
     }
 
     res.json({ success: true, data: safeUpdated })
-  } catch (e) {
-    console.error('[calls] update error', e)
+  } catch (e: any) {
+    if (e.code === 'P2025') {
+      return res.status(404).json({ success: false, message: 'Call not found' })
+    }
     next(e)
   }
-})
-
-console.log('[CALLS] PATCH route registered successfully')
-
-// Catch-all route to debug incoming requests
-router.all('/*', (req, res, next) => {
-  console.log('[CALLS] Catch-all route hit:', {
-    method: req.method,
-    url: req.url,
-    originalUrl: req.originalUrl,
-    path: req.path,
-    params: req.params
-  })
-  next()
 })
 
 export default router

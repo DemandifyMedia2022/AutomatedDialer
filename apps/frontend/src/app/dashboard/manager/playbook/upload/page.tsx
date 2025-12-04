@@ -23,6 +23,7 @@ export default function PlaybookUploadPage() {
   const [description, setDescription] = React.useState('')
   const [type, setType] = React.useState('guide')
   const [visibility, setVisibility] = React.useState('org')
+  const [status, setStatus] = React.useState('active')
   const [tags, setTags] = React.useState('')
   const [file, setFile] = React.useState<File | null>(null)
   const [text, setText] = React.useState('')
@@ -109,12 +110,13 @@ export default function PlaybookUploadPage() {
         form.append('title', title)
         form.append('description', description)
         form.append('visibility', visibility)
+        form.append('status', status)
         form.append('tags_csv', tags)
         if (text.trim()) form.append('content_richtext', text.trim())
         form.append('file', file)
         res = await fetch(`${API_BASE}/api/documents`, { method: 'POST', body: form, credentials, headers })
       } else {
-        const body = JSON.stringify({ type, title, description, visibility, tags_csv: tags, content_richtext: text.trim() })
+        const body = JSON.stringify({ type, title, description, visibility, status, tags_csv: tags, content_richtext: text.trim() })
         res = await fetch(`${API_BASE}/api/documents`, { method: 'POST', credentials, headers: { ...headers, 'Content-Type': 'application/json' }, body })
       }
 
@@ -126,6 +128,7 @@ export default function PlaybookUploadPage() {
       setOk('Playbook uploaded successfully!')
       setTitle('')
       setDescription('')
+      setStatus('active')
       setTags('')
       setFile(null)
       setText('')
@@ -230,8 +233,8 @@ export default function PlaybookUploadPage() {
                 />
               </div>
 
-              {/* Type, Visibility, Tags */}
-              <div className="grid sm:grid-cols-3 gap-4">
+              {/* Type, Visibility, Status, Tags */}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="type">Type</Label>
                   <Select value={type} onValueChange={setType} disabled={uploading}>
@@ -257,6 +260,18 @@ export default function PlaybookUploadPage() {
                       <SelectItem value="private">Private</SelectItem>
                       <SelectItem value="org">Organization</SelectItem>
                       <SelectItem value="public">Public</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="status">Status</Label>
+                  <Select value={status} onValueChange={setStatus} disabled={uploading}>
+                    <SelectTrigger id="status">
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

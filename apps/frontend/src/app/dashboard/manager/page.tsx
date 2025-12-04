@@ -65,16 +65,16 @@ function AreaChart({ data, maxXTicks = 6 }: { data: { label: string; value: numb
       <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full">
         <defs>
           <linearGradient id="chart-area-gradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0.25" />
+            <stop offset="0%" stopColor="blue-200" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="blue" stopOpacity="0.25" />
           </linearGradient>
         </defs>
         <rect x={paddingX} y={paddingY} width={innerW} height={innerH} fill="transparent" />
         {/* horizontal grid lines */}
         {[0.25, 0.5, 0.75].map((p, i) => (
-          <line key={i} x1={paddingX} x2={paddingX + innerW} y1={paddingY + innerH * p} y2={paddingY + innerH * p} stroke="hsl(var(--border))" strokeDasharray="4 4" className="transition-colors duration-300" />
+          <line key={i} x1={paddingX} x2={paddingX + innerW} y1={paddingY + innerH * p} y2={paddingY + innerH * p} stroke="blue-900" strokeDasharray="4 4" className="transition-colors duration-300" />
         ))}
-        <path d={pathD} fill="none" stroke="hsl(var(--primary))" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" className="transition-all duration-300" />
+        <path d={pathD} fill="none" stroke="blue-700" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" className="transition-all duration-300" />
         {/* area fill below curve */}
         <path d={`${pathD} L ${paddingX + innerW} ${paddingY + innerH} L ${paddingX} ${paddingY + innerH} Z`} fill="url(#chart-area-gradient)" className="transition-all duration-300" />
         {/* hover hit-area only (no visible dots) */}

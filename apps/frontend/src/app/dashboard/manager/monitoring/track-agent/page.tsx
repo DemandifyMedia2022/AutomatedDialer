@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Clock3, LogIn, LogOut } from "lucide-react"
+import { Clock3, LogIn, LogOut, CheckCircle, XCircle } from "lucide-react"
 import { io, Socket } from "socket.io-client"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -220,9 +220,15 @@ export default function TrackAgentPage() {
                         </TableCell>
                         <TableCell>
                           {row.status === "Available" ? (
-                            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-emerald-100 text-emerald-700 border border-emerald-200">Active</span>
+                            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-500/30">
+                              <CheckCircle className="mr-1 h-3 w-3" />
+                              Active
+                            </span>
                           ) : (
-                            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-red-100 text-red-700 border border-red-200">Offline</span>
+                            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-red-100 text-red-700 border border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-500/30">
+                              <XCircle className="mr-1 h-3 w-3" />
+                              Offline
+                            </span>
                           )}
                         </TableCell>
                         <TableCell>

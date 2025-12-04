@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { ScrollArea } from "@/components/ui/scroll-area"
+
 import { SparklesIcon, XIcon, SendIcon, Loader2 } from "lucide-react"
 import { usePathname } from "next/navigation"
 import { FollowUpNotification } from "@/components/agent/FollowUpNotification"
@@ -161,7 +161,7 @@ export default function AIAssistant({ apiKey, userRole }: AIAssistantProps) {
                 </div>
 
                 {/* Messages */}
-                <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+                <div className="flex-1 overflow-y-auto p-4 scrollbar-hide" ref={scrollRef}>
                     {messages.length === 0 ? (
                         <div className="flex flex-col h-full">
                             <div className="flex flex-col items-center justify-center flex-1 text-center p-8">
@@ -216,7 +216,7 @@ export default function AIAssistant({ apiKey, userRole }: AIAssistantProps) {
                             )}
                         </div>
                     )}
-                </ScrollArea>
+                </div>
 
                 {/* Input */}
                 <div className="border-t border-border p-4">
