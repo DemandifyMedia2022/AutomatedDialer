@@ -71,7 +71,7 @@ const data = {
       items: [
         { title: "Dialer", url: "/dashboard/manager/agentic-dialing" },
         { title: "Campaigns", url: "/dashboard/manager/agentic-dialing/campaigns" },
-        { title: "Upload", url: "/dashboard/manager/agentic-dialer/csv" },
+        { title: "Upload", url: "/dashboard/manager/agentic-dialing/csv" },
       ],
     },
     {

@@ -18,6 +18,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useCampaigns } from "@/hooks/agentic/useCampaigns"
 
 declare global {
   interface Window {
@@ -27,6 +28,88 @@ declare global {
 }
 
 const API_PREFIX = `${API_BASE}/api`
+
+// Decision Maker Form constants
+const dmFieldKeys = [
+  'unique_id',
+  'f_salutation',
+  'f_first_name',
+  'f_last_name',
+  'f_job_title',
+  'f_department',
+  'f_job_level',
+  'f_email_add',
+  'Secondary_Email',
+  'f_conatct_no',
+  'f_company_name',
+  'f_website',
+  'f_address1',
+  'f_city',
+  'f_state',
+  'f_zip_code',
+  'f_country',
+  'f_emp_size',
+  'f_industry',
+  'f_sub_industry',
+  'f_revenue',
+  'f_revenue_link',
+  'f_profile_link',
+  'f_company_link',
+  'f_address_link',
+  'f_cq1',
+  'f_cq2',
+  'f_cq3',
+  'f_cq4',
+  'f_cq5',
+  'f_cq6',
+  'f_cq7',
+  'f_cq8',
+  'f_cq9',
+  'f_cq10',
+  'f_asset_name1',
+  'f_asset_name2',
+  'f_email_status',
+  'f_qa_status',
+  'f_dq_reason1',
+  'f_dq_reason2',
+  'f_dq_reason3',
+  'f_dq_reason4',
+  'f_qa_comments',
+  'f_call_rating',
+  'f_call_notes',
+  'f_call_links',
+  'f_qa_name',
+  'f_audit_date',
+] as const
+
+type DmFieldKey = (typeof dmFieldKeys)[number]
+type DmFormState = Record<DmFieldKey | 'f_campaign_name', string>
+const extendedDmKeys = ['f_campaign_name', ...dmFieldKeys] as const
+type DmFormKey = typeof extendedDmKeys[number]
+
+const multilineDmFields = new Set<DmFieldKey>(['f_address1', 'f_profile_link', 'f_company_link', 'f_address_link'])
+
+const buildDefaultDmFormState = (campaign?: string, overrides?: Partial<DmFormState>): DmFormState => {
+  const base: Record<string, string> = {}
+  for (const key of dmFieldKeys) {
+    base[key] = ''
+  }
+  const merged = {
+    f_campaign_name: campaign ?? '',
+    ...base,
+    ...overrides,
+  }
+  return merged as DmFormState
+}
+
+const humanizeDmField = (key: string) => {
+  return key
+    .replace(/^f_/i, '')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
 
 export default function AutomatedDialerPage() {
   const WaveBars: React.FC<{ active: boolean }> = ({ active }) => (
@@ -76,6 +159,23 @@ export default function AutomatedDialerPage() {
   const [disposition, setDisposition] = useState("")
   const [pendingUploadExtra, setPendingUploadExtra] = useState<any>(null)
 
+  // Decision Maker Form state
+  const [selectedCampaign, setSelectedCampaign] = useState<string | undefined>(() => {
+    if (typeof window === "undefined") return undefined
+    try {
+      return localStorage.getItem("automated_dialer_campaign") || undefined
+    } catch {
+      return undefined
+    }
+  })
+  const { campaigns, loading: campaignsLoading } = useCampaigns()
+  const [dmForm, setDmForm] = useState<DmFormState>(() => buildDefaultDmFormState(selectedCampaign))
+  const [dmSaving, setDmSaving] = useState(false)
+  const [dmMessage, setDmMessage] = useState<string | null>(null)
+  const [currentSection, setCurrentSection] = useState(0)
+  const [formSubmittedForCurrentCall, setFormSubmittedForCurrentCall] = useState(false)
+  const canEditDmForm = status.startsWith("In Call") || status === "Call Ended" || showDisposition
+
   // Auto dial state
   type Prospect = { name?: string; designation?: string; company?: string; phone: string; raw?: any }
   const [queue, setQueue] = useState<Prospect[]>([])
@@ -106,6 +206,38 @@ export default function AutomatedDialerPage() {
   const FIXED_DELAY_MS = 30000
 
   const currentPhone = useMemo(() => queue[currentIndex]?.phone || '', [queue, currentIndex])
+
+  // Decision Maker Form helpers
+  const resetDmForm = () => {
+    setDmForm(buildDefaultDmFormState(selectedCampaign))
+    setFormSubmittedForCurrentCall(false)
+    setDmMessage(null)
+  }
+
+  const updateDmField = (field: string, value: string) => {
+    setDmForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  const selectedCampaignLabel = useMemo(() => {
+    if (!selectedCampaign) return ""
+    const found = campaigns.find((c: { key: string; label: string }) => c.key === selectedCampaign)
+    return found?.label || selectedCampaign
+  }, [campaigns, selectedCampaign])
+
+  useEffect(() => {
+    try {
+      if (!selectedCampaign) localStorage.removeItem("automated_dialer_campaign")
+      else localStorage.setItem("automated_dialer_campaign", selectedCampaign)
+    } catch {}
+  }, [selectedCampaign])
+
+  useEffect(() => {
+    setDmForm((prev) => {
+      const next = selectedCampaign ?? ''
+      if (prev.f_campaign_name === next) return prev
+      return { ...prev, f_campaign_name: next }
+    })
+  }, [selectedCampaign])
 
   // Refs to avoid stale closures in session event handlers
   const autoRunRef = useRef<boolean>(false)
@@ -179,6 +311,7 @@ export default function AutomatedDialerPage() {
   const uploadedOnceRef = useRef<boolean>(false)
   const dialStartRef = useRef<number | null>(null)
   const lastDialDestinationRef = useRef<string | null>(null)
+  const currentCallIdRef = useRef<number | null>(null)
 
   // Live transcription (client-only) refs
   const liveSessionIdRef = useRef<string | null>(null)
@@ -197,10 +330,6 @@ export default function AutomatedDialerPage() {
   const localMicStreamRef = useRef<MediaStream | null>(null)
 
   // Tones
-  const ringGainRef = useRef<GainNode | null>(null)
-  const ringOsc1Ref = useRef<OscillatorNode | null>(null)
-  const ringOsc2Ref = useRef<OscillatorNode | null>(null)
-  const ringTimerRef = useRef<number | null>(null)
   const busyGainRef = useRef<GainNode | null>(null)
   const busyOsc1Ref = useRef<OscillatorNode | null>(null)
   const busyOsc2Ref = useRef<OscillatorNode | null>(null)
@@ -298,6 +427,16 @@ export default function AutomatedDialerPage() {
       s.on("transcription:error", (_payload: any) => {
         // ignore in UI for now
       })
+      s.on('agentic:start_call', async (payload: any) => {
+        try {
+          const ph = String(payload?.lead?.phone || '').replace(/[^0-9+]/g, '').replace(/^00/, '+')
+          if (!ph) return
+          if (!uaRef.current) return
+          if (sessionRef.current) return
+          if (!String(status).includes('Registered')) return
+          await placeCallTo(ph)
+        } catch {}
+      })
       socketRef.current = s
       return s
     } catch {
@@ -333,11 +472,40 @@ export default function AutomatedDialerPage() {
     }
   }, [])
 
+  // Ensure socket is connected to receive manager-triggered start_call events
+  useEffect(() => {
+    try { ensureSocket() } catch {}
+  }, [ensureSocket])
+
   useEffect(() => {
     return () => {
       try { socketRef.current?.disconnect() } catch {}
       socketRef.current = null
     }
+  }, [])
+
+  const sendPhase = useCallback(async (
+    phase: 'dialing' | 'ringing' | 'connected' | 'ended',
+    extra?: Partial<{ source: string; destination: string; direction: string; action: string }>
+  ) => {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies(); if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const t = getToken(); if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      const callId = currentCallIdRef.current || Date.now()
+      currentCallIdRef.current = callId
+      await fetch(`${API_PREFIX}/calls/phase`, {
+        method: 'POST',
+        headers,
+        credentials,
+        body: JSON.stringify({ phase, callId, ...extra })
+      }).catch(() => { })
+    } catch {}
   }, [])
 
   // ---- Dialer Sheets (Option A) helpers ----
@@ -601,6 +769,11 @@ export default function AutomatedDialerPage() {
       const session = data.session
       sessionRef.current = session
 
+      // Set unique_id in DM form when session is created
+      if (session?.id) {
+        setDmForm(prev => ({ ...prev, unique_id: String(session.id) }))
+      }
+
       session.on("peerconnection", (e: any) => {
         const pc: RTCPeerConnection = e.peerconnection
         attachRemoteAudio(pc)
@@ -610,9 +783,14 @@ export default function AutomatedDialerPage() {
         try { const pc: RTCPeerConnection = (session as any).connection; if (pc) attachRemoteAudio(pc) } catch {}
       })
 
-      session.on("progress", () => { setStatus("Ringing"); startRingback() })
+      session.on("progress", () => {
+        setStatus("Ringing");
+        // Attach remote audio to hear the original ringing sound from PBX
+        try { const pc: RTCPeerConnection = (session as any).connection; if (pc) attachRemoteAudio(pc) } catch {}
+        const dest = lastDialDestinationRef.current || currentPhone
+        try { sendPhase('ringing', { source: ext, destination: dest || '', direction: 'OUT' }) } catch {}
+      })
       session.on("accepted", async () => {
-        stopRingback()
         setStatus("In Call")
         callStartRef.current = Date.now()
         hasAnsweredRef.current = true
@@ -623,11 +801,14 @@ export default function AutomatedDialerPage() {
           ensureSocket()
           await createLiveSession()
         } catch {}
+        try {
+          const dest = lastDialDestinationRef.current || currentPhone
+          await sendPhase('connected', { source: ext, destination: dest || '', direction: 'OUT' })
+        } catch {}
         setShowPopup(true)
         try { const w = window.innerWidth; const h = window.innerHeight; const px = Math.max(8, Math.floor(w / 2 - 180)); const py = Math.max(60, Math.floor(h / 2 - 120)); setPopupPos({ x: px, y: py }) } catch {}
       })
       session.on("failed", async (e: any) => {
-        stopRingback()
         const code = Number(e?.response?.status_code || 0)
         const reason = e?.response?.reason_phrase || String(e?.cause || '')
         const reasonL = String(reason).toLowerCase()
@@ -647,10 +828,10 @@ export default function AutomatedDialerPage() {
           setPendingUploadExtra({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : undefined })
           setShowDisposition(true)
         }
+        try { await sendPhase('ended') } catch {}
         scheduleNext()
       })
       session.on("ended", async () => {
-        stopRingback()
         setStatus("Call Ended")
         clearTimer()
         setShowPopup(false)
@@ -658,6 +839,7 @@ export default function AutomatedDialerPage() {
           setPendingUploadExtra({})
           setShowDisposition(true)
         }
+        try { await sendPhase('ended') } catch {}
         scheduleNext()
       })
     })
@@ -688,47 +870,9 @@ export default function AutomatedDialerPage() {
     try { await audioCtxRef.current?.resume() } catch {}
   }
 
-  const startRingback = async () => {
-    try {
-      await ensureAudioCtx()
-      const ctx = audioCtxRef.current
-      if (!ctx) return
-      stopRingback()
-      const gain = ctx.createGain()
-      const osc1 = ctx.createOscillator()
-      const osc2 = ctx.createOscillator()
-      osc1.frequency.value = 440
-      osc2.frequency.value = 480
-      osc1.connect(gain)
-      osc2.connect(gain)
-      gain.connect(ctx.destination)
-      gain.gain.value = 0
-      osc1.start(); osc2.start()
-      ringGainRef.current = gain
-      ringOsc1Ref.current = osc1
-      ringOsc2Ref.current = osc2
-      let on = false
-      const tick = () => {
-        on = !on
-        if (ringGainRef.current) ringGainRef.current.gain.value = on ? 0.1 : 0
-        const next = on ? 2000 : 4000
-        ringTimerRef.current = window.setTimeout(tick, next)
-      }
-      tick()
-    } catch {}
-  }
+  // Removed synthetic ringback tone generation - now using actual media stream
 
-  const stopRingback = () => {
-    if (ringTimerRef.current) { window.clearTimeout(ringTimerRef.current); ringTimerRef.current = null }
-    try { ringOsc1Ref.current?.stop() } catch {}
-    try { ringOsc2Ref.current?.stop() } catch {}
-    try { ringOsc1Ref.current?.disconnect() } catch {}
-    try { ringOsc2Ref.current?.disconnect() } catch {}
-    try { ringGainRef.current?.disconnect() } catch {}
-    ringOsc1Ref.current = null
-    ringOsc2Ref.current = null
-    ringGainRef.current = null
-  }
+  // Removed synthetic ringback tone cleanup - now using actual media stream
 
   const startBusyTone = async () => {
     try {
@@ -938,6 +1082,7 @@ export default function AutomatedDialerPage() {
       dialStartRef.current = Date.now()
       await ensureAudioCtx()
       lastDialDestinationRef.current = num || null
+      try { await sendPhase('dialing', { source: ext, destination: num || '', direction: 'OUT' }) } catch {}
       setShowPopup(true)
       try { const w = window.innerWidth; const h = window.innerHeight; const px = Math.max(8, Math.floor(w / 2 - 180)); const py = Math.max(60, Math.floor(h / 2 - 120)); setPopupPos({ x: px, y: py }) } catch {}
       uaRef.current.call(numberToSipUri(num, ext), options)
@@ -948,7 +1093,6 @@ export default function AutomatedDialerPage() {
 
   const hangup = async () => {
     try { sessionRef.current?.terminate() } catch {}
-    stopRingback()
     setShowPopup(false)
     if (!uploadedOnceRef.current) { setPendingUploadExtra({}); setShowDisposition(true) }
   }
@@ -989,6 +1133,8 @@ export default function AutomatedDialerPage() {
       setNextIn(0)
       setCurrentIndex(nextIdx)
       currentIndexRef.current = nextIdx
+      // Reset Decision Maker Form for next call
+      resetDmForm()
       placeCallTo(list[nextIdx].phone)
     }, delay)
   }
@@ -1002,6 +1148,8 @@ export default function AutomatedDialerPage() {
     const idx = currentIndexRef.current < list.length ? currentIndexRef.current : 0
     setCurrentIndex(idx)
     currentIndexRef.current = idx
+    // Reset Decision Maker Form for new session
+    resetDmForm()
     await placeCallTo(list[idx].phone)
   }
 
@@ -1023,6 +1171,8 @@ export default function AutomatedDialerPage() {
     }
     setCurrentIndex(nextIdx)
     currentIndexRef.current = nextIdx
+    // Reset Decision Maker Form for next call
+    resetDmForm()
     // If a call is already active, let the scheduler continue after it ends
     if (sessionRef.current) return
     await placeCallTo(list[nextIdx].phone)
@@ -1184,6 +1334,229 @@ export default function AutomatedDialerPage() {
     } catch {}
   }
 
+  // Decision Maker Form API functions
+  const serializeDmPayload = () => {
+    const payload: Record<string, string | null> = {}
+    for (const key of extendedDmKeys) {
+      const raw = (dmForm[key] || '').trim()
+      payload[key] = raw.length ? raw : null
+    }
+    return payload
+  }
+
+  const submitDmForm = async () => {
+    if (!canEditDmForm) {
+      setDmMessage("Connect a call to unlock the form.")
+      return
+    }
+    
+    // Check if form has already been submitted for current call
+    if (formSubmittedForCurrentCall) {
+      setDmMessage("Form already submitted for this call.")
+      return
+    }
+    
+    setDmSaving(true)
+    setDmMessage(null)
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies()
+        if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const token = getToken()
+        if (token) headers['Authorization'] = `Bearer ${token}`
+      }
+      const payload = serializeDmPayload()
+      
+      // Get logged-in user name from API
+      try {
+        const userRes = await fetch(`${API_PREFIX}/auth/me`, {
+          method: 'GET',
+          headers,
+          credentials,
+        })
+        if (userRes.ok) {
+          const userData = await userRes.json().catch(() => null) as any
+          payload.f_resource_name = userData?.user?.username || 'Unknown'
+        } else {
+          payload.f_resource_name = 'Unknown'
+        }
+      } catch {
+        payload.f_resource_name = 'Unknown'
+      }
+      
+      const res = await fetch(`${API_PREFIX}/dm-form`, {
+        method: 'POST',
+        headers,
+        credentials,
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(text || `Failed to save form (${res.status})`)
+      }
+      
+      // Mark form as submitted for current call
+      setFormSubmittedForCurrentCall(true)
+      setDmMessage("Form saved successfully.")
+    } catch (e: any) {
+      setDmMessage(e?.message || "Failed to save form.")
+    } finally {
+      setDmSaving(false)
+    }
+  }
+
+  const saveDispositionToDmForm = async (dispositionValue: string) => {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies()
+        if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const token = getToken()
+        if (token) headers['Authorization'] = `Bearer ${token}`
+      }
+      
+      // Get logged-in user name from API
+      let userName = 'Unknown'
+      try {
+        const userRes = await fetch(`${API_PREFIX}/auth/me`, {
+          method: 'GET',
+          headers,
+          credentials,
+        })
+        if (userRes.ok) {
+          const userData = await userRes.json().catch(() => null) as any
+          userName = userData?.user?.username || 'Unknown'
+        }
+      } catch {
+        userName = 'Unknown'
+      }
+      
+      // First, find the most recent entry for this campaign that doesn't have a disposition yet
+      const listRes = await fetch(`${API_PREFIX}/dm-form?campaign=${encodeURIComponent(selectedCampaign || '')}&limit=20`, {
+        method: 'GET',
+        headers,
+        credentials,
+      })
+      
+      if (listRes.ok) {
+        const listData = await listRes.json()
+        if (listData.success && listData.forms && listData.forms.length > 0) {
+          // Find the most recent entry that doesn't have a disposition in f_lead
+          const existingEntry = listData.forms.find((form: any) => 
+            form.f_campaign_name === selectedCampaign && 
+            (!form.f_lead || form.f_lead === '' || form.f_lead === null)
+          )
+          
+          if (existingEntry) {
+            // Update the existing entry with disposition
+            const updateRes = await fetch(`${API_PREFIX}/dm-form/${existingEntry.f_id}`, {
+              method: 'PATCH',
+              headers,
+              credentials,
+              body: JSON.stringify({
+                f_lead: dispositionValue,
+                f_resource_name: userName,
+                unique_id: dmForm.unique_id || String(sessionRef.current?.id || '') // Include unique_id from call session
+              }),
+            })
+            
+            if (updateRes.ok) {
+              console.log('Disposition updated in existing DM form:', dispositionValue)
+              return
+            }
+          }
+        }
+      }
+      
+      // If no existing entry found, create new one with disposition
+      const payload = {
+        f_campaign_name: selectedCampaign || '',
+        f_lead: dispositionValue,
+        f_resource_name: userName,
+        unique_id: dmForm.unique_id || String(sessionRef.current?.id || ''),
+        ...Object.fromEntries(
+          Object.entries(dmForm).filter(([key]) => key !== 'f_lead' && key !== 'f_resource_name')
+        )
+      }
+      
+      const res = await fetch(`${API_PREFIX}/dm-form`, {
+        method: 'POST',
+        headers,
+        credentials,
+        body: JSON.stringify(payload),
+      })
+      
+      if (res.ok) {
+        console.log('Disposition saved in new DM form:', dispositionValue)
+      }
+    } catch (error) {
+      console.error('Failed to save disposition to DM form:', error)
+    }
+  }
+
+  // Decision Maker Form sections
+  const formSections = [
+    {
+      title: "Personal Information",
+      fields: ['f_salutation', 'f_first_name', 'f_last_name', 'f_job_title', 'f_department', 'f_job_level'] as DmFieldKey[],
+      gridCols: 3
+    },
+    {
+      title: "Contact Information", 
+      fields: ['f_email_add', 'Secondary_Email', 'f_conatct_no', 'f_website'] as DmFieldKey[],
+      gridCols: 2
+    },
+    {
+      title: "Company Information",
+      fields: ['f_company_name', 'f_emp_size', 'f_industry', 'f_sub_industry', 'f_revenue'] as DmFieldKey[],
+      gridCols: 2
+    },
+    {
+      title: "Address Information",
+      fields: ['f_address1', 'f_city', 'f_state', 'f_zip_code', 'f_country'] as DmFieldKey[],
+      gridCols: 2
+    },
+    {
+      title: "Links & Resources",
+      fields: ['f_revenue_link', 'f_profile_link', 'f_company_link', 'f_address_link'] as DmFieldKey[],
+      gridCols: 2
+    },
+    {
+      title: "Custom Questions",
+      fields: ['f_cq1', 'f_cq2', 'f_cq3', 'f_cq4', 'f_cq5', 'f_cq6', 'f_cq7', 'f_cq8', 'f_cq9', 'f_cq10'] as DmFieldKey[],
+      gridCols: 2
+    },
+    {
+      title: "Assets",
+      fields: ['f_asset_name1', 'f_asset_name2'] as DmFieldKey[],
+      gridCols: 2
+    }
+  ]
+
+  const goToNext = () => {
+    if (currentSection < formSections.length - 1) {
+      setCurrentSection(currentSection + 1)
+    }
+  }
+
+  const goToPrevious = () => {
+    if (currentSection > 0) {
+      setCurrentSection(currentSection - 1)
+    }
+  }
+
+  const saveAndNext = async () => {
+    // Only navigate to next section, don't save intermediate data
+    goToNext()
+  }
+
   return (
     <SidebarProvider>
       <AgentSidebar />
@@ -1227,6 +1600,35 @@ export default function AutomatedDialerPage() {
             <div className="lg:col-span-1 space-y-3">
               <Card className="p-5">
                 <div className="flex flex-col gap-4">
+                  <div className="mb-4">
+                    <Label className="text-xs font-medium text-muted-foreground">Campaign</Label>
+                    <Select
+                      value={selectedCampaign ?? undefined}
+                      onValueChange={(value) => setSelectedCampaign(value)}
+                      disabled={campaignsLoading || campaigns.length === 0}
+                    >
+                      <SelectTrigger className="w-full mt-1.5">
+                        <SelectValue placeholder={campaignsLoading ? "Loading campaigns..." : "Select campaign"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {campaigns.length === 0 ? (
+                          <SelectItem value="no-campaign" disabled>
+                            {campaignsLoading ? "Loading..." : "No campaigns available"}
+                          </SelectItem>
+                        ) : (
+                          campaigns.map((campaign: { key: string; label: string }) => (
+                            <SelectItem key={campaign.key} value={campaign.key}>
+                              {campaign.label || campaign.key}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
+                      {selectedCampaign ? `Calling under ${selectedCampaignLabel}` : "Select a campaign to enable dialing."}
+                    </p>
+                  </div>
+
                   <div className="flex items-center gap-3">
                     <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
                       <DialogTrigger asChild>
@@ -1257,7 +1659,7 @@ export default function AutomatedDialerPage() {
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>My Assigned Sheets</DialogTitle>
+                          <DialogTitle>My Assigned Sheets...</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-2 max-h-72 overflow-auto">
                           {mySheets.length === 0 ? (
@@ -1398,6 +1800,120 @@ export default function AutomatedDialerPage() {
             </div>
 
             <div className="lg:col-span-2 space-y-3">
+              {/* Decision Maker Form: only shown when a call is live or has just ended */}
+              {canEditDmForm && (
+                <Card className="p-0 transition-shadow hover:shadow-md">
+                  <div className="flex items-center justify-between px-5 py-4 bg-emerald-50/50 dark:bg-emerald-900/10">
+                    <div>
+                      <div className="font-semibold text-base">Decision Maker Form</div>
+                      <p className="text-xs text-muted-foreground mt-0.5">Capture lead details while the call is active.</p>
+                    </div>
+                    <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
+                      Editing unlocked
+                    </span>
+                  </div>
+                  <Separator />
+                  <div className="p-5 space-y-4">
+                    {dmMessage ? (
+                      <Card className="border border-dashed bg-muted/40 p-3 text-xs text-foreground">
+                        {dmMessage}
+                      </Card>
+                    ) : null}
+                    
+                    {/* Campaign field only */}
+                    <div className="grid gap-3 md:grid-cols-1">
+                      <div key="f_campaign_name" className="space-y-1">
+                        <Label className="text-xs font-medium">{humanizeDmField('f_campaign_name')}</Label>
+                        <Select value={dmForm.f_campaign_name} onValueChange={(value) => updateDmField('f_campaign_name', value)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select campaign" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {campaigns.map((campaign: { key: string; label: string }) => (
+                              <SelectItem key={campaign.key} value={campaign.key}>
+                                {campaign.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    
+                    {/* Progress indicator */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex gap-2">
+                        {formSections.map((_, index) => (
+                          <div
+                            key={index}
+                            className={`h-2 flex-1 rounded-full transition-colors ${
+                              index <= currentSection ? 'bg-emerald-500' : 'bg-muted'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {currentSection + 1} of {formSections.length}
+                      </span>
+                    </div>
+                    
+                    {/* Current section */}
+                    <div className="space-y-4">
+                      <div className="space-y-3">
+                        <h4 className="text-sm font-medium text-foreground">
+                          {formSections[currentSection].title}
+                        </h4>
+                        <div className={`grid gap-2 md:grid-cols-${formSections[currentSection].gridCols}`}>
+                          {formSections[currentSection].fields.map((key) => (
+                            <div key={key} className="space-y-1">
+                              <Label className="text-xs font-medium">{humanizeDmField(key)}</Label>
+                              {multilineDmFields.has(key) ? (
+                                <Textarea
+                                  rows={2}
+                                  value={dmForm[key]}
+                                  onChange={(e) => updateDmField(key, e.target.value)}
+                                  placeholder={humanizeDmField(key)}
+                                />
+                              ) : (
+                                <Input
+                                  value={dmForm[key]}
+                                  onChange={(e) => updateDmField(key, e.target.value)}
+                                  placeholder={humanizeDmField(key)}
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Navigation buttons */}
+                      <div className="flex items-center justify-between pt-2 border-t">
+                        <div className="flex gap-2">
+                          {currentSection > 0 && (
+                            <Button variant="outline" size="sm" onClick={goToPrevious}>
+                              Previous
+                            </Button>
+                          )}
+                          <Button variant="outline" size="sm" onClick={resetDmForm}>
+                            Reset
+                          </Button>
+                        </div>
+                        <div className="flex gap-2">
+                          {currentSection < formSections.length - 1 ? (
+                            <Button size="sm" onClick={saveAndNext}>
+                              Next
+                            </Button>
+                          ) : (
+                            <Button size="sm" onClick={submitDmForm} disabled={!canEditDmForm || dmSaving}>
+                              {dmSaving ? 'Saving...' : 'Save Complete Form'}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
               <Card className="p-0">
                 <div className="flex items-center justify-between px-4 py-3">
                   <div className="font-semibold">Notes</div>
@@ -1579,6 +2095,8 @@ export default function AutomatedDialerPage() {
                       if (!disposition) return
                       try {
                         if (!uploadedOnceRef.current) uploadedOnceRef.current = true
+                        // Save disposition to Decision Maker Form
+                        await saveDispositionToDmForm(disposition)
                         await stopRecordingAndUpload(pendingUploadExtra || {})
                       } finally {
                         setShowDisposition(false)

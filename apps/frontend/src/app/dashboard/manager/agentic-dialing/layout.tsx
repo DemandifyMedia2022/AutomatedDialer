@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { AgentSidebar } from "../../agent/components/AgentSidebar"
+import { ManagerSidebar } from "../components/ManagerSidebar"
 import { Separator } from "@/components/ui/separator"
 import {
   SidebarInset,
@@ -20,7 +20,7 @@ import {
 export default function AgenticDialingLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
-      <AgentSidebar />
+      <ManagerSidebar />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
           <div className="flex items-center gap-2 px-4 w-full">
@@ -33,7 +33,7 @@ export default function AgenticDialingLayout({ children }: { children: React.Rea
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="/dashboard/agent">Agent</BreadcrumbLink>
+                  <BreadcrumbLink href="/dashboard/manager">Manager</BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem>

@@ -182,13 +182,14 @@ export default function FollowUpCalls() {
         const allCalls = data.items || data.calls || []
         
         console.log('Total calls returned:', allCalls.length)
-        console.log('Sample calls with full data:', allCalls.slice(0, 3).map((call: FollowUpCall) => ({
+        console.log('Sample calls with full data:', allCalls.slice(0, 5).map((call: FollowUpCall) => ({
           id: call.id,
           disposition: call.disposition,
           remarks: call.remarks,
           sip_status: call.sip_status,
           hangup_cause: call.hangup_cause,
-          follow_up: call.follow_up
+          follow_up: call.follow_up,
+          status: call.status
         })))
         
         // Log all unique dispositions to see what we're working with
@@ -199,45 +200,107 @@ export default function FollowUpCalls() {
         const uniqueRemarks = [...new Set(allCalls.map((call: FollowUpCall) => call.remarks).filter(Boolean))]
         console.log('Unique remarks found:', uniqueRemarks)
         
-        // Filter calls to show only Busy, Not Answered, Disconnected, and Follow-Ups
+        // Log all unique statuses to see what we're working with
+        const uniqueStatuses = [...new Set(allCalls.map((call: FollowUpCall) => call.status).filter(Boolean))]
+        console.log('Unique statuses found:', uniqueStatuses)
+        
+        // Log some sample full call objects to understand the data structure
+        console.log('Full sample call data:', allCalls.slice(0, 3))
+        
+        // Filter calls to show only these four specific types: Not Answered, Call Failed, Follow Ups, Busy
+        // Exclude VM-Operator, DNC, Invalid Country, VM-RPC and similar unwanted types
         const filteredCalls = allCalls.filter((call: FollowUpCall) => {
+          // Check multiple fields for the call status
           const remarks = (call.remarks || '').toLowerCase().trim()
-          const disposition = (call.disposition || '').toUpperCase().trim()
+          const disposition = (call.disposition || '').toLowerCase().trim()
+          const status = (call.status || '').toLowerCase().trim()
+          const hangupCause = (call.hangup_cause || '').toLowerCase().trim()
+          const sipReason = (call.sip_reason || '').toLowerCase().trim()
           
-          // Check for NO ANSWER in remarks or disposition
-          const hasNoAnswer = remarks.includes('no answer') || 
-                            remarks.includes('no-answer') ||
-                            remarks.includes('noanswer') ||
-                            disposition.includes('NO ANSWER') || 
-                            disposition.includes('NO-ANSWER') ||
-                            disposition.includes('NOANSWER')
+          // Combine all text fields for comprehensive search
+          const allText = `${remarks} ${disposition} ${status} ${hangupCause} ${sipReason}`
           
-          // Check for BUSY in remarks or disposition
-          const hasBusy = remarks.includes('busy') || 
-                        disposition.includes('BUSY')
+          // EXCLUDE unwanted call types
+          const hasVMOperator = allText.includes('vm-operator') || 
+                               allText.includes('vm operator') ||
+                               allText.includes('voicemail')
           
-          // Check for DISCONNECTED in remarks or disposition
-          const hasDisconnected = remarks.includes('disconnected') ||
-                                remarks.includes('disconnect') ||
-                                disposition.includes('DISCONNECTED') ||
-                                disposition.includes('DISCONNECT')
+          const hasDNC = allText.includes('dnc') || 
+                        allText.includes('do not call') ||
+                        allText.includes('donotcall')
           
-          // Check for Follow-up in remarks or disposition
-          const hasFollowUp = remarks.includes('follow-up') || 
-                            remarks.includes('follow up') ||
-                            remarks.includes('followup') ||
-                            disposition.includes('FOLLOW-UP') || 
-                            disposition.includes('FOLLOW UP') ||
-                            disposition.includes('FOLLOWUP')
+          const hasInvalidCountry = allText.includes('invalid country') || 
+                                   allText.includes('invalid-country') ||
+                                   allText.includes('invalidcountry')
           
-          // Exclude Lead calls
-          const isLeadCall = remarks.includes('lead') || 
-                           disposition.includes('LEAD') ||
-                           disposition.includes('LEAD CALL')
+          const hasVMRPC = allText.includes('vm-rpc') || 
+                          allText.includes('vm rpc') ||
+                          allText.includes('vmrpc')
           
-          const shouldInclude = (hasNoAnswer || hasBusy || hasDisconnected || hasFollowUp) && !isLeadCall
+          const hasVM = allText.includes('vm-') || 
+                       allText.startsWith('vm ') ||
+                       (allText.includes('vm') && allText.length < 10)
           
-          return shouldInclude
+          const hasSystemMessage = allText.includes('system') || 
+                                  allText.includes('error') ||
+                                  allText.includes('invalid') ||
+                                  allText.includes('unavailable')
+          
+          // If any unwanted patterns found, exclude this call
+          if (hasVMOperator || hasDNC || hasInvalidCountry || hasVMRPC || hasVM || hasSystemMessage) {
+            console.log('Excluding call:', {
+              id: call.id,
+              remarks: call.remarks,
+              reason: hasVMOperator ? 'VM-Operator' : hasDNC ? 'DNC' : hasInvalidCountry ? 'Invalid Country' : hasVMRPC ? 'VM-RPC' : hasVM ? 'VM' : 'System Message'
+            })
+            return false
+          }
+          
+          // Check for NO ANSWER patterns
+          const hasNoAnswer = allText.includes('no answer') || 
+                            allText.includes('no-answer') ||
+                            allText.includes('noanswer') ||
+                            allText.includes('not answered') ||
+                            call.sip_status === 600 ||
+                            call.sip_status === 408 ||
+                            call.sip_status === 480
+          
+          // Check for BUSY patterns
+          const hasBusy = allText.includes('busy') || 
+                         call.sip_status === 486 ||
+                         call.sip_status === 603 ||
+                         hangupCause.includes('busy')
+          
+          // Check for CALL FAILED patterns
+          const hasCallFailed = allText.includes('call failed') || 
+                              allText.includes('callfailed') ||
+                              allText.includes('failed') ||
+                              disposition.includes('call failed') ||
+                              sipReason.includes('failed') ||
+                              call.sip_status === 500 ||
+                              call.sip_status === 503
+          
+          // Check for Follow-up patterns
+          const hasFollowUp = allText.includes('follow-up') || 
+                            allText.includes('follow up') ||
+                            allText.includes('followup') ||
+                            allText.includes('follow ups') ||
+                            call.follow_up === true
+          
+          // Log matching calls for debugging
+          const isMatch = hasNoAnswer || hasBusy || hasCallFailed || hasFollowUp
+          if (isMatch) {
+            console.log('Match found:', {
+              id: call.id,
+              remarks: call.remarks,
+              disposition: call.disposition,
+              status: call.status,
+              sip_status: call.sip_status,
+              reason: hasNoAnswer ? 'NO ANSWER' : hasBusy ? 'BUSY' : hasCallFailed ? 'CALL FAILED' : 'FOLLOW UP'
+            })
+          }
+          
+          return isMatch
         })
         
         console.log('Filtered calls count:', filteredCalls.length)
@@ -396,14 +459,19 @@ export default function FollowUpCalls() {
         if (token) headers['Authorization'] = `Bearer ${token}`
       }
 
-      console.log('Scheduling call with params:', { id, scheduleDateTime })
+      console.log('Scheduling call with params:', { id, scheduleDateTime, idType: typeof id })
       console.log('API_BASE:', API_BASE)
-      console.log('Request URL:', `${API_BASE}/api/calls/${id}`)
+      
+      // Ensure ID is properly formatted
+      const callId = String(id).trim()
+      const requestUrl = `${API_BASE}/api/calls/${callId}`
+      
+      console.log('Request URL:', requestUrl)
       console.log('Headers:', headers)
-      console.log('Credentials:', credentials)
+      console.log('Request body:', { schedule_call: scheduleDateTime })
 
       // Update the call with schedule datetime
-      const response = await fetch(`${API_BASE}/api/calls/${id}`, {
+      const response = await fetch(requestUrl, {
         method: 'PATCH',
         headers,
         credentials,
@@ -411,15 +479,25 @@ export default function FollowUpCalls() {
       })
 
       console.log('Response status:', response.status)
-      console.log('Response headers:', response.headers)
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()))
 
       if (!response.ok) {
         const errorText = await response.text()
         console.error('Error response:', errorText)
-        throw new Error(`Failed to schedule call: ${response.status} ${errorText}`)
+        
+        // Try to parse error as JSON
+        let errorData
+        try {
+          errorData = JSON.parse(errorText)
+        } catch {
+          errorData = { message: errorText }
+        }
+        
+        throw new Error(`Failed to schedule call: ${response.status} - ${errorData.message || errorText}`)
       }
 
-      console.log('Call scheduled successfully')
+      const responseData = await response.json()
+      console.log('Call scheduled successfully:', responseData)
       
       // Update the local state
       setFollowUps(prev => prev.map(call => 
@@ -442,7 +520,7 @@ export default function FollowUpCalls() {
       toast({
         variant: "destructive",
         title: "Failed to Schedule Call",
-        description: "Please try again or contact support if the issue persists.",
+        description: error instanceof Error ? error.message : "Please try again or contact support if the issue persists.",
       })
     }
   }
@@ -671,7 +749,7 @@ export default function FollowUpCalls() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-bold">Pending Follow-up Calls</h1>
-                <p className="text-muted-foreground">View Busy, Not Answered, Disconnected, and Follow-up calls (excluding Lead calls)</p>
+                <p className="text-muted-foreground">View Not Answered, Call Failed, Follow Ups, and Busy call records</p>
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">

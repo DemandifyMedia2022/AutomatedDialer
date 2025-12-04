@@ -164,7 +164,14 @@ export default function LiveCallsPage() {
 
     // Local duration ticker for rows with startTime
     timerRef.current = setInterval(() => { setItems(prev => [...prev]) }, 1000)
-    return () => { mounted = false }
+    // Fallback polling: refresh live calls snapshot periodically in case socket updates are missed
+    const poll = setInterval(() => {
+      fetch(`${BACKEND}/api/live-calls`, { credentials: 'include' })
+        .then(r => r.ok ? r.json() : null)
+        .then(j => { if (mounted && Array.isArray(j?.items)) setItems(j.items) })
+        .catch(() => {})
+    }, 5000)
+    return () => { mounted = false; try { clearInterval(poll) } catch {}; }
   }, [])
 
   const fetchSipConfig = useCallback(async () => {

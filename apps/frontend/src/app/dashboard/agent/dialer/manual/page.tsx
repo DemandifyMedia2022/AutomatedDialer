@@ -55,6 +55,7 @@ declare global {
 }
 
 const API_PREFIX = `${API_BASE}/api`
+const DIAL_PREFIX = process.env.NEXT_PUBLIC_DIAL_PREFIX || ''
 
 const dmFieldKeys = [
   'unique_id',
@@ -167,7 +168,14 @@ export default function ManualDialerPage() {
   const [docsLoading, setDocsLoading] = useState(false)
   const [docQuery, setDocQuery] = useState("")
   const [previewDoc, setPreviewDoc] = useState<any | null>(null)
-  const [selectedCampaign, setSelectedCampaign] = useState<string | undefined>(undefined)
+  const [selectedCampaign, setSelectedCampaign] = useState<string | undefined>(() => {
+    if (typeof window === "undefined") return undefined
+    try {
+      return localStorage.getItem("manual_dialer_campaign") || undefined
+    } catch {
+      return undefined
+    }
+  })
   const { campaigns, loading: campaignsLoading } = useCampaigns()
 
   // Draggable in-call popup position
@@ -202,11 +210,6 @@ export default function ManualDialerPage() {
   const wantRemoteRecordingRef = useRef<boolean>(false)
   const currentCallIdRef = useRef<number | null>(null)
 
-  // Ringback tone helpers
-  const ringGainRef = useRef<GainNode | null>(null)
-  const ringOsc1Ref = useRef<OscillatorNode | null>(null)
-  const ringOsc2Ref = useRef<OscillatorNode | null>(null)
-  const ringTimerRef = useRef<number | null>(null)
   // Busy tone helpers
   const busyGainRef = useRef<GainNode | null>(null)
   const busyOsc1Ref = useRef<OscillatorNode | null>(null)
@@ -220,17 +223,19 @@ export default function ManualDialerPage() {
   const [disposition, setDisposition] = useState("")
   const [pendingUploadExtra, setPendingUploadExtra] = useState<any>(null)
   const [dmForm, setDmForm] = useState<DmFormState>(() => buildDefaultDmFormState(selectedCampaign))
+
+  const resetDmForm = () => {
+    setDmForm(buildDefaultDmFormState(selectedCampaign))
+  }
+
+  const updateDmField = (field: string, value: string) => {
+    setDmForm(prev => ({ ...prev, [field]: value }))
+  }
+
   const [dmSaving, setDmSaving] = useState(false)
   const [dmMessage, setDmMessage] = useState<string | null>(null)
   const [currentSection, setCurrentSection] = useState(0)
   const canEditDmForm = status.startsWith("In Call") || status === "Call Ended" || showDisposition
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("manual_dialer_campaign")
-      if (saved) setSelectedCampaign(saved)
-    } catch {}
-  }, [])
 
   useEffect(() => {
     try {
@@ -377,7 +382,7 @@ export default function ManualDialerPage() {
   const ensureSocket = useCallback(() => {
     if (socketRef.current) return socketRef.current
     try {
-      const opts: any = { transports: ["websocket"] }
+      const opts: any = { transports: ["polling", "websocket"], path: "/socket.io" }
       if (USE_AUTH_COOKIE) {
         opts.withCredentials = true
       } else {
@@ -385,6 +390,7 @@ export default function ManualDialerPage() {
         if (t) opts.auth = { token: t }
       }
       const s = io(API_BASE, opts)
+
       s.on("transcription:segment", (payload: any) => {
         try {
           if (!payload || payload.sessionId !== liveSessionIdRef.current || !payload.segment) return
@@ -601,7 +607,7 @@ export default function ManualDialerPage() {
   }, [])
 
   const sendPhase = useCallback(async (
-    phase: 'dialing' | 'ringing' | 'connected' | 'ended',
+    phase: 'dialing' | 'ringing' | 'connecting' | 'connected' | 'ended',
     extra?: Partial<{ source: string; destination: string; direction: string }>
   ) => {
     try {
@@ -620,6 +626,25 @@ export default function ManualDialerPage() {
         headers,
         credentials,
         body: JSON.stringify({ phase, callId, ...extra })
+      }).catch(() => { })
+    } catch { }
+  }, [])
+
+  const setPresenceStatus = useCallback(async (to: 'AVAILABLE' | 'ON_CALL') => {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+        const csrf = getCsrfTokenFromCookies(); if (csrf) headers['X-CSRF-Token'] = csrf
+      } else {
+        const t = getToken(); if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      await fetch(`${API_PREFIX}/presence/status`, {
+        method: 'POST',
+        headers,
+        credentials,
+        body: JSON.stringify({ status: to })
       }).catch(() => { })
     } catch { }
   }, [])
@@ -673,19 +698,24 @@ export default function ManualDialerPage() {
           const pc: RTCPeerConnection = (session as any).connection
           if (pc) attachRemoteAudio(pc)
         } catch {}
+        try {
+          const dest = lastDialDestinationRef.current || `${countryCode}${number}`
+          void sendPhase('connected', { source: ext, destination: dest || '', direction: 'OUT' }).catch(() => {})
+        } catch {}
       })
 
       session.on("progress", () => {
         setStatus("Ringing");
-        startRingback()
+        // Attach remote audio to hear the original ringing sound from PBX
+        try { const pc: RTCPeerConnection = (session as any).connection; if (pc) attachRemoteAudio(pc) } catch {}
         const dest = lastDialDestinationRef.current || `${countryCode}${number}`
         try { sendPhase('ringing', { source: ext, destination: dest || '', direction: 'OUT' }) } catch {}
       })
       session.on("accepted", async () => {
-        stopRingback()
         setStatus("In Call")
         callStartRef.current = Date.now()
         hasAnsweredRef.current = true
+
         if (timerRef.current) window.clearInterval(timerRef.current)
         timerRef.current = window.setInterval(() => {
           setStatus((s) => (s.startsWith("In Call") ? `In Call ${elapsed()}` : s))
@@ -696,8 +726,14 @@ export default function ManualDialerPage() {
           ensureSocket()
           await createLiveSession()
         } catch {}
+        try {
+          const dest = lastDialDestinationRef.current || `${countryCode}${number}`
+          await sendPhase('connecting', { source: ext, destination: dest || '', direction: 'OUT' })
+        } catch {}
+        try { await setPresenceStatus('ON_CALL') } catch {}
         // Ensure popup is visible and centered on screen when call is active
         setShowPopup(true)
+
         try {
           const w = window.innerWidth
           const h = window.innerHeight
@@ -707,7 +743,6 @@ export default function ManualDialerPage() {
         } catch {}
       })
       session.on("failed", async (e: any) => {
-        stopRingback()
         const code = Number(e?.response?.status_code || 0)
         const reason = e?.response?.reason_phrase || String(e?.cause || '')
         const reasonL = String(reason).toLowerCase()
@@ -729,9 +764,9 @@ export default function ManualDialerPage() {
           setShowDisposition(true)
         }
         try { await sendPhase('ended') } catch {}
+        try { await setPresenceStatus('AVAILABLE') } catch {}
       })
       session.on("ended", async () => {
-        stopRingback()
         setStatus("Call Ended")
         clearTimer()
         setShowPopup(false)
@@ -740,6 +775,7 @@ export default function ManualDialerPage() {
           setShowDisposition(true)
         }
         try { await sendPhase('ended') } catch {}
+        try { await setPresenceStatus('AVAILABLE') } catch {}
       })
 
       // Incoming call handling
@@ -881,49 +917,7 @@ export default function ManualDialerPage() {
     try { await audioCtxRef.current?.resume() } catch {}
   }
 
-  const startRingback = async () => {
-    try {
-      await ensureAudioCtx()
-      const ctx = audioCtxRef.current
-      if (!ctx) return
-      stopRingback()
-      const gain = ctx.createGain()
-      const osc1 = ctx.createOscillator()
-      const osc2 = ctx.createOscillator()
-      // US ringback approx: 440Hz + 480Hz with 2s on, 4s off
-      osc1.frequency.value = 440
-      osc2.frequency.value = 480
-      osc1.connect(gain)
-      osc2.connect(gain)
-      gain.connect(ctx.destination)
-      gain.gain.value = 0
-      osc1.start()
-      osc2.start()
-      ringGainRef.current = gain
-      ringOsc1Ref.current = osc1
-      ringOsc2Ref.current = osc2
-      let on = false
-      const tick = () => {
-        on = !on
-        if (ringGainRef.current) ringGainRef.current.gain.value = on ? 0.1 : 0
-        const next = on ? 2000 : 4000
-        ringTimerRef.current = window.setTimeout(tick, next)
-      }
-      tick()
-    } catch {}
-  }
-
-  const stopRingback = () => {
-    if (ringTimerRef.current) { window.clearTimeout(ringTimerRef.current); ringTimerRef.current = null }
-    try { ringOsc1Ref.current?.stop() } catch {}
-    try { ringOsc2Ref.current?.stop() } catch {}
-    try { ringOsc1Ref.current?.disconnect() } catch {}
-    try { ringOsc2Ref.current?.disconnect() } catch {}
-    try { ringGainRef.current?.disconnect() } catch {}
-    ringOsc1Ref.current = null
-    ringOsc2Ref.current = null
-    ringGainRef.current = null
-  }
+  // Removed synthetic ringback tone generation - now using actual media stream
 
   // Play a local busy tone to the agent on reject/busy
   const startBusyTone = async () => {
@@ -969,63 +963,8 @@ export default function ManualDialerPage() {
     busyGainRef.current = null
   }
 
-  const placeCall = async () => {
-    setError(null)
-    if (!uaRef.current) return setError("UA not ready")
-    if (!number) return setError("Enter a number")
-
-    const eventHandlers = {}
-
-    const options = {
-      eventHandlers,
-      mediaConstraints: { audio: true, video: false },
-      pcConfig: { rtcpMuxPolicy: "require" },
-      rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
-    }
-
-    try {
-      // reset per-call state
-      hasAnsweredRef.current = false
-      uploadedOnceRef.current = false
-      dialStartRef.current = Date.now()
-      await ensureAudioCtx()
-      const dialNum = `${countryCode}${number}`
-      lastDialDestinationRef.current = dialNum || null
-      // Track and broadcast live call phase
-      currentCallIdRef.current = Date.now()
-      try { await sendPhase('dialing', { source: ext, destination: dialNum, direction: 'OUT' }) } catch {}
-      // Show popup immediately when dialing and center it
-      setShowPopup(true)
-      try {
-        const w = window.innerWidth
-        const h = window.innerHeight
-        const px = Math.max(8, Math.floor(w / 2 - 180))
-        const py = Math.max(60, Math.floor(h / 2 - 120))
-        setPopupPos({ x: px, y: py })
-      } catch {}
-      // For many SIP servers, the user part should not include '+'
-      const sipUser = dialNum.replace(/^\+/, '')
-      uaRef.current.call(numberToSipUri(sipUser, ext), options)
-      localStorage.setItem("lastDialedNumber", dialNum)
-      try { localStorage.setItem('dial_num', number) } catch {}
-      // Optimistically show in recent history
-      setCallHistory((prev) => [{ destination: dialNum, end_time: null }, ...prev].slice(0, 5))
-    } catch (e: any) {
-      setError(e?.message || "Call start error")
-    }
-  }
-
-  const updateDmField = (key: DmFormKey, value: string) => {
-    setDmForm((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }))
-  }
-
-  const resetDmForm = () => {
-    setDmForm(buildDefaultDmFormState(selectedCampaign))
-    setDmMessage(null)
-  }
-
   const serializeDmPayload = () => {
-    const payload: Record<string, string | null> = {}
+    const payload: any = {}
     for (const key of extendedDmKeys) {
       const raw = (dmForm[key] || '').trim()
       payload[key] = raw.length ? raw : null
@@ -1232,11 +1171,45 @@ export default function ManualDialerPage() {
 
   const hangup = async () => {
     try { sessionRef.current?.terminate() } catch {}
-    stopRingback()
     setShowPopup(false)
     if (!uploadedOnceRef.current) {
       setPendingUploadExtra({})
       setShowDisposition(true)
+    }
+    try { await sendPhase('ended') } catch {}
+    try { await setPresenceStatus('AVAILABLE') } catch {}
+  }
+
+  const placeCall = async () => {
+    setError(null)
+    if (!uaRef.current) { setError("UA not ready"); return }
+    if (!number) { setError("Empty number"); return }
+    
+    const destination = `${countryCode}${number}`
+    const options = {
+      eventHandlers: {},
+      mediaConstraints: { audio: true, video: false },
+      pcConfig: { rtcpMuxPolicy: "require" },
+      rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
+    }
+    try {
+      hasAnsweredRef.current = false
+      uploadedOnceRef.current = false
+      dialStartRef.current = Date.now()
+      await ensureAudioCtx()
+      lastDialDestinationRef.current = destination || null
+      setShowPopup(true)
+      try { 
+        const w = window.innerWidth; 
+        const h = window.innerHeight; 
+        const px = Math.max(8, Math.floor(w / 2 - 180)); 
+        const py = Math.max(60, Math.floor(h / 2 - 120)); 
+        setPopupPos({ x: px, y: py }) 
+      } catch {}
+      try { await sendPhase('dialing', { source: ext, destination, direction: 'OUT' }) } catch {}
+      uaRef.current.call(numberToSipUri(destination, ext), options)
+    } catch (e: any) {
+      setError(e?.message || "Call start error")
     }
   }
 
@@ -1779,7 +1752,7 @@ export default function ManualDialerPage() {
                     </div>
                     <div className="flex items-center gap-2 ml-2 shrink-0">
                       {h.disposition ? (
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                           h.disposition === 'Answered' ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/20' :
                           h.disposition === 'Busy' ? 'bg-orange-500/10 text-orange-700 border border-orange-500/20' :
                           h.disposition === 'No Answer' ? 'bg-slate-500/10 text-slate-700 border border-slate-500/20' :
@@ -2056,7 +2029,9 @@ export default function ManualDialerPage() {
                     )
                   })()}
                 </div>
-                <div className="text-xs text-muted-foreground font-medium">Drag to move</div>
+                <div className="text-xs font-medium px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-700 border border-blue-500/20">
+                  Drag to move
+                </div>
               </div>
               <div className="px-5 pt-4 pb-5">
                 <div className="text-center text-xl font-bold tracking-wide text-foreground">{number || lastDialedNumber || "Unknown"}</div>
@@ -2281,9 +2256,18 @@ export default function ManualDialerPage() {
       </SidebarInset>
     </SidebarProvider>
   )
-}
 
-function numberToSipUri(num: string, _ext: string) {
-  if (num.startsWith("sip:")) return num
-  return num
+  function numberToSipUri(num: string, ext: string) {
+    if (num.startsWith("sip:")) return num
+    const domain = sipDomainRef.current || 'pbx2.telxio.com.sg'
+    // sanitize: trim, remove spaces/dashes
+    let n = String(num).trim().replace(/[\s-]/g, '')
+    // If E.164 with leading '+', many Asterisk/Telxio dialplans expect digits only.
+    // Use ;user=phone hint so PBX treats it as a telephone number.
+    const isE164 = n.startsWith('+')
+    if (isE164) n = n.slice(1)
+    // Optional outbound route prefix (e.g., 9 or 00) configured via env
+    if (DIAL_PREFIX) n = `${DIAL_PREFIX}${n}`
+    return `sip:${n}@${domain};user=phone`
+  }
 }

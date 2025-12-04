@@ -7,6 +7,8 @@ let io: Server | null = null
 
 export function initWs(server: HttpServer) {
   io = new Server(server, {
+    path: '/socket.io',
+    transports: ['websocket', 'polling'],
     cors: {
       origin: env.CORS_ORIGIN,
       credentials: env.USE_AUTH_COOKIE,
