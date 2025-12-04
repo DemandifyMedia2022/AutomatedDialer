@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getStatus } from '@/lib/agenticApi'
+import { getStatus } from '@/lib/enhancedAgenticApi'
 import type { ApiStatus } from '@/types/agentic'
 
 export function useApiStatus() {

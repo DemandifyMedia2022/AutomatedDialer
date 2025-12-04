@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApiStatus } from '@/hooks/agentic/useApiStatus'
-import { endCall, setAutoNext, stopAll } from '@/lib/agenticApi'
+import { endCall, setAutoNext, stopAll } from '@/lib/enhancedAgenticApi'
 import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'

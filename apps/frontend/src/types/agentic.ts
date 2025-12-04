@@ -9,13 +9,14 @@ export interface Lead {
 }
 
 export interface ApiStatus {
-  status: 'idle' | 'calling' | 'ended' | string
+  status: 'idle' | 'calling' | 'ended' | 'dialing' | 'ringing' | 'connected' | string
   running: boolean
   lead_index: number | null
   campaign: string | null
   campaign_label: string | null
   auto_next: boolean
   lead: Lead | null
+  livekit_call_id?: string // Add LiveKit call ID
 }
 
 export interface Campaign {
