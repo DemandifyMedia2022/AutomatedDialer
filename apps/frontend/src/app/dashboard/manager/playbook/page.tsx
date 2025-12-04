@@ -31,7 +31,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { FileText, Eye, Trash2, Upload, Search, AlertCircle, BookOpen, File, Edit } from 'lucide-react'
+import { FileText, Eye, Trash2, Upload, Search, AlertCircle, BookOpen, File, Edit, CheckCircle, XCircle } from 'lucide-react'
 
 export default function PlaybookListPage() {
   const [items, setItems] = React.useState<any[]>([])
@@ -115,6 +115,32 @@ export default function PlaybookListPage() {
       default:
         return 'bg-muted text-muted-foreground border-border'
     }
+  }
+
+  const getStatusBadge = (status: string) => {
+    const isActive = status?.toLowerCase() === 'active'
+    return (
+      <Badge 
+        variant="outline" 
+        className={`text-xs ${
+          isActive 
+            ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30' 
+            : 'bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/30'
+        }`}
+      >
+        {isActive ? (
+          <>
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Active
+          </>
+        ) : (
+          <>
+            <XCircle className="h-3 w-3 mr-1" />
+            Inactive
+          </>
+        )}
+      </Badge>
+    )
   }
 
   return (
@@ -223,6 +249,7 @@ export default function PlaybookListPage() {
                       <Badge variant="outline" className="text-xs">
                         {String(d.visibility || 'org').toUpperCase()}
                       </Badge>
+                      {getStatusBadge(d.status || 'active')}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="pb-3 flex-1">
@@ -303,6 +330,7 @@ export default function PlaybookListPage() {
                     <Badge variant="outline" className="text-xs">
                       {String(previewItem.visibility || 'org').toUpperCase()}
                     </Badge>
+                    {getStatusBadge(previewItem.status || 'active')}
                   </>
                 )}
               </SheetDescription>

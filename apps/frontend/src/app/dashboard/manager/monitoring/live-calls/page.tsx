@@ -15,7 +15,7 @@ import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Headphones, Mic, Users } from "lucide-react"
+import { Headphones, Mic, Users, CheckCircle, XCircle } from "lucide-react"
 
 type Me = { id: number; role: string; username: string | null; email: string | null }
 type LiveCall = {
@@ -53,27 +53,27 @@ function StatusBadge({ status }: { status: string }) {
     const s = String(status || '').toUpperCase()
     // Match Track Agent pills: mint for Active/Available, soft red for Offline
     if (s === 'ON_CALL' || s === 'CONNECTED' || s === 'AVAILABLE') {
-      return `${base} bg-emerald-100 text-emerald-700 border-emerald-200`
+      return `${base} bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-500/30`
     }
     if (s === 'OFFLINE') {
-      return `${base} bg-red-100 text-red-700 border-red-200`
+      return `${base} bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-500/30`
     }
     if (s === 'BREAK') {
-      return `${base} bg-indigo-100 text-indigo-700 border-indigo-200`
+      return `${base} bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-500/30`
     }
     if (s === 'IDLE') {
-      return `${base} bg-yellow-100 text-yellow-700 border-yellow-200`
+      return `${base} bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-500/30`
     }
     if (s === 'DIALING') {
-      return `${base} bg-blue-100 text-blue-700 border-blue-200`
+      return `${base} bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-500/30`
     }
     if (s === 'RINGING') {
-      return `${base} bg-indigo-100 text-indigo-700 border-indigo-200`
+      return `${base} bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-500/30`
     }
     if (s === 'CONNECTING') {
-      return `${base} bg-purple-100 text-purple-700 border-purple-200`
+      return `${base} bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-500/30`
     }
-    return `${base} bg-gray-100 text-gray-700 border-gray-200`
+    return `${base} bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-900/30 dark:text-gray-400 dark:border-gray-500/30`
   }, [status])
 
   const label = useMemo(() => {
@@ -81,7 +81,22 @@ function StatusBadge({ status }: { status: string }) {
     return raw.replace(/\b\w/g, (c) => c.toUpperCase())
   }, [status])
 
-  return <span className={cls}>{label}</span>
+  const isOnline = useMemo(() => {
+    const s = String(status || '').toUpperCase()
+    return s === 'ON_CALL' || s === 'CONNECTED' || s === 'AVAILABLE'
+  }, [status])
+
+  const isOffline = useMemo(() => {
+    return String(status || '').toUpperCase() === 'OFFLINE'
+  }, [status])
+
+  return (
+    <span className={cls}>
+      {isOnline && <CheckCircle className="mr-1 h-3 w-3" />}
+      {isOffline && <XCircle className="mr-1 h-3 w-3" />}
+      {label}
+    </span>
+  )
 }
 
 export default function LiveCallsPage() {

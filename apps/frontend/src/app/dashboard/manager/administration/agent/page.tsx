@@ -15,7 +15,7 @@ import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { ChevronDownIcon, PlusIcon, RefreshCcw, Search as SearchIcon } from "lucide-react"
+import { ChevronDownIcon, PlusIcon, RefreshCcw, Search as SearchIcon, CheckCircle, XCircle } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { type DateRange } from "react-day-picker"
 
@@ -353,16 +353,22 @@ export default function AgentPage() {
                   ) : visible.length === 0 ? (
                     <tr><td className="py-8 text-center text-muted-foreground" colSpan={5}>No users found</td></tr>
                   ) : (
-                    visible.map((u, i) => (
+                    visible.map((u) => (
                       <tr key={u.id} className="border-b hover:bg-muted/30 even:bg-muted/5">
                         <td className="py-2.5 pr-4">{u.username ?? '-'}</td>
                         <td className="py-2.5 pr-4">{u.extension ?? '-'}</td>
                         <td className="py-2.5 pr-4">
                           {u.status ? (
                             u.status.toLowerCase() === 'active' ? (
-                              <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Active</span>
+                              <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                <CheckCircle className="mr-1 h-3 w-3" />
+                                Active
+                              </span>
                             ) : u.status.toLowerCase() === 'inactive' ? (
-                              <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Inactive</span>
+                              <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                <XCircle className="mr-1 h-3 w-3" />
+                                Inactive
+                              </span>
                             ) : (
                               <span>{u.status}</span>
                             )

@@ -24,6 +24,7 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
   const [description, setDescription] = React.useState('')
   const [type, setType] = React.useState('guide')
   const [visibility, setVisibility] = React.useState('org')
+  const [status, setStatus] = React.useState('active')
   const [tags, setTags] = React.useState('')
   const [text, setText] = React.useState('')
   const [file, setFile] = React.useState<File | null>(null)
@@ -54,6 +55,7 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
         setDescription(data.description || '')
         setType(data.type || 'guide')
         setVisibility(data.visibility || 'org')
+        setStatus(data.status || 'active')
         setTags(data.tags_csv || '')
         setText(data.content_richtext || '')
         setExistingFileUrl(data.file_url || null)
@@ -121,12 +123,13 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
         form.append('title', title)
         form.append('description', description)
         form.append('visibility', visibility)
+        form.append('status', status)
         form.append('tags_csv', tags)
         if (text.trim()) form.append('content_richtext', text.trim())
         form.append('file', file)
         res = await fetch(`${API_BASE}/api/documents/${params.id}`, { method: 'PUT', body: form, credentials, headers })
       } else {
-        const body = JSON.stringify({ type, title, description, visibility, tags_csv: tags, content_richtext: text.trim() })
+        const body = JSON.stringify({ type, title, description, visibility, status, tags_csv: tags, content_richtext: text.trim() })
         res = await fetch(`${API_BASE}/api/documents/${params.id}`, { method: 'PUT', credentials, headers: { ...headers, 'Content-Type': 'application/json' }, body })
       }
 
@@ -248,8 +251,8 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
                   />
                 </div>
 
-                {/* Type, Visibility, Tags */}
-                <div className="grid sm:grid-cols-3 gap-4">
+                {/* Type, Visibility, Status, Tags */}
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="type">Type</Label>
                     <Select value={type} onValueChange={setType} disabled={saving}>
@@ -275,6 +278,18 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
                         <SelectItem value="private">Private</SelectItem>
                         <SelectItem value="org">Organization</SelectItem>
                         <SelectItem value="public">Public</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="status">Status</Label>
+                    <Select value={status} onValueChange={setStatus} disabled={saving}>
+                      <SelectTrigger id="status">
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

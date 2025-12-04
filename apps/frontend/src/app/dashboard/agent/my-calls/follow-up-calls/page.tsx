@@ -58,16 +58,28 @@ export default function FollowUpCalls() {
   const [scheduleCall, setScheduleCall] = useState<FollowUpCall | null>(null)
   const [scheduleDateTime, setScheduleDateTime] = useState("")
   const [showScheduleDialog, setShowScheduleDialog] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [isScheduling, setIsScheduling] = useState(false)
   const notificationIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const notifiedCallsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    testApiConnection()
     fetchFollowUps()
   }, [dateRange])
-
-  // Notification system for scheduled calls
+  
+  // Debounced search
   useEffect(() => {
-    // Check for scheduled calls every 10 minutes (600,000 milliseconds)
+    const timer = setTimeout(() => {
+      if (searchTerm) {
+        fetchFollowUps()
+      }
+    }, 500)
+    
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
+  // Notification system for scheduled calls with deduplication
+  useEffect(() => {
     const checkScheduledCalls = () => {
       const now = new Date()
       const scheduledCalls = followUps.filter(call => 
@@ -76,13 +88,22 @@ export default function FollowUpCalls() {
       )
 
       if (scheduledCalls.length > 0) {
+        let newNotifications = 0
+        
         scheduledCalls.forEach(call => {
           const scheduledTime = new Date(call.schedule_call!)
           const timeUntilCall = scheduledTime.getTime() - now.getTime()
           const minutesUntilCall = Math.floor(timeUntilCall / (1000 * 60))
+          
+          // Create unique key for this notification window
+          const notificationKey = `${call.id}-${Math.floor(minutesUntilCall / 5)}`
 
           // Show notification for calls scheduled in the next 30 minutes
-          if (minutesUntilCall <= 30 && minutesUntilCall > 0) {
+          // Only notify once per 5-minute window to avoid spam
+          if (minutesUntilCall <= 30 && minutesUntilCall > 0 && !notifiedCallsRef.current.has(notificationKey)) {
+            notifiedCallsRef.current.add(notificationKey)
+            newNotifications++
+            
             toast({
               title: "Upcoming Scheduled Call",
               description: `Call with ${call.destination || 'Unknown'} scheduled in ${minutesUntilCall} minutes`,
@@ -101,22 +122,26 @@ export default function FollowUpCalls() {
             })
           }
         })
-
-        // Also show a summary notification if there are multiple scheduled calls
-        if (scheduledCalls.length > 1) {
-          toast({
-            title: "Scheduled Calls Reminder",
-            description: `You have ${scheduledCalls.length} scheduled calls upcoming`,
-          })
-        }
       }
+      
+      // Clean up old notification keys (older than 1 hour)
+      const oneHourAgo = Date.now() - 60 * 60 * 1000
+      notifiedCallsRef.current.forEach(key => {
+        const parts = key.split('-')
+        if (parts.length > 1) {
+          const timestamp = parseInt(parts[parts.length - 1])
+          if (timestamp < oneHourAgo) {
+            notifiedCallsRef.current.delete(key)
+          }
+        }
+      })
     }
 
     // Initial check
     checkScheduledCalls()
 
-    // Set up interval to check every 10 minutes
-    notificationIntervalRef.current = setInterval(checkScheduledCalls, 10 * 60 * 1000)
+    // Set up interval to check every 5 minutes (more frequent but with deduplication)
+    notificationIntervalRef.current = setInterval(checkScheduledCalls, 5 * 60 * 1000)
 
     // Cleanup interval on unmount
     return () => {
@@ -159,7 +184,7 @@ export default function FollowUpCalls() {
         if (token) headers['Authorization'] = `Bearer ${token}`
       }
 
-      // Build query parameters - get all calls in date range, filter on client side
+      // Build query parameters
       const params = new URLSearchParams()
       
       if (dateRange?.from) {
@@ -181,198 +206,63 @@ export default function FollowUpCalls() {
         const data = await response.json()
         const allCalls = data.items || data.calls || []
         
-        console.log('Total calls returned:', allCalls.length)
-        console.log('Sample calls with full data:', allCalls.slice(0, 5).map((call: FollowUpCall) => ({
-          id: call.id,
-          disposition: call.disposition,
-          remarks: call.remarks,
-          sip_status: call.sip_status,
-          hangup_cause: call.hangup_cause,
-          follow_up: call.follow_up,
-          status: call.status
-        })))
-        
-        // Log all unique dispositions to see what we're working with
-        const uniqueDispositions = [...new Set(allCalls.map((call: FollowUpCall) => call.disposition).filter(Boolean))]
-        console.log('Unique dispositions found:', uniqueDispositions)
-        
-        // Log all unique remarks to see what we're working with
-        const uniqueRemarks = [...new Set(allCalls.map((call: FollowUpCall) => call.remarks).filter(Boolean))]
-        console.log('Unique remarks found:', uniqueRemarks)
-        
-        // Log all unique statuses to see what we're working with
-        const uniqueStatuses = [...new Set(allCalls.map((call: FollowUpCall) => call.status).filter(Boolean))]
-        console.log('Unique statuses found:', uniqueStatuses)
-        
-        // Log some sample full call objects to understand the data structure
-        console.log('Full sample call data:', allCalls.slice(0, 3))
-        
-        // Filter calls to show only these four specific types: Not Answered, Call Failed, Follow Ups, Busy
-        // Exclude VM-Operator, DNC, Invalid Country, VM-RPC and similar unwanted types
+        // Filter calls - improved logic with deduplication
+        const seenCallIds = new Set<number | string>()
         const filteredCalls = allCalls.filter((call: FollowUpCall) => {
-          // Check multiple fields for the call status
+          // Deduplicate by call ID
+          if (seenCallIds.has(call.id)) {
+            return false
+          }
+          
           const remarks = (call.remarks || '').toLowerCase().trim()
           const disposition = (call.disposition || '').toLowerCase().trim()
           const status = (call.status || '').toLowerCase().trim()
           const hangupCause = (call.hangup_cause || '').toLowerCase().trim()
           const sipReason = (call.sip_reason || '').toLowerCase().trim()
           
-          // Combine all text fields for comprehensive search
-          const allText = `${remarks} ${disposition} ${status} ${hangupCause} ${sipReason}`
+          const allText = `${remarks} ${disposition} ${status} ${hangupCause} ${sipReason}`.toLowerCase()
           
-          // EXCLUDE unwanted call types
-          const hasVMOperator = allText.includes('vm-operator') || 
-                               allText.includes('vm operator') ||
-                               allText.includes('voicemail')
+          // EXCLUDE unwanted call types (case-insensitive)
+          const excludePatterns = [
+            'vm-operator', 'vm operator', 'voicemail',
+            'dnc', 'do not call', 'donotcall',
+            'invalid country', 'invalid-country',
+            'vm-rpc', 'vm rpc', 'vmrpc',
+            'invalid number', 'invalid job', 'invalid industry', 'invalid emp'
+          ]
           
-          const hasDNC = allText.includes('dnc') || 
-                        allText.includes('do not call') ||
-                        allText.includes('donotcall')
-          
-          const hasInvalidCountry = allText.includes('invalid country') || 
-                                   allText.includes('invalid-country') ||
-                                   allText.includes('invalidcountry')
-          
-          const hasVMRPC = allText.includes('vm-rpc') || 
-                          allText.includes('vm rpc') ||
-                          allText.includes('vmrpc')
-          
-          const hasVM = allText.includes('vm-') || 
-                       allText.startsWith('vm ') ||
-                       (allText.includes('vm') && allText.length < 10)
-          
-          const hasSystemMessage = allText.includes('system') || 
-                                  allText.includes('error') ||
-                                  allText.includes('invalid') ||
-                                  allText.includes('unavailable')
-          
-          // If any unwanted patterns found, exclude this call
-          if (hasVMOperator || hasDNC || hasInvalidCountry || hasVMRPC || hasVM || hasSystemMessage) {
-            console.log('Excluding call:', {
-              id: call.id,
-              remarks: call.remarks,
-              reason: hasVMOperator ? 'VM-Operator' : hasDNC ? 'DNC' : hasInvalidCountry ? 'Invalid Country' : hasVMRPC ? 'VM-RPC' : hasVM ? 'VM' : 'System Message'
-            })
+          if (excludePatterns.some(pattern => allText.includes(pattern))) {
             return false
           }
           
-          // Check for NO ANSWER patterns
+          // INCLUDE follow-up worthy calls
           const hasNoAnswer = allText.includes('no answer') || 
                             allText.includes('no-answer') ||
-                            allText.includes('noanswer') ||
                             allText.includes('not answered') ||
-                            call.sip_status === 600 ||
-                            call.sip_status === 408 ||
-                            call.sip_status === 480
+                            [600, 408, 480].includes(call.sip_status || 0)
           
-          // Check for BUSY patterns
           const hasBusy = allText.includes('busy') || 
-                         call.sip_status === 486 ||
-                         call.sip_status === 603 ||
-                         hangupCause.includes('busy')
+                         [486, 603].includes(call.sip_status || 0)
           
-          // Check for CALL FAILED patterns
           const hasCallFailed = allText.includes('call failed') || 
-                              allText.includes('callfailed') ||
                               allText.includes('failed') ||
-                              disposition.includes('call failed') ||
-                              sipReason.includes('failed') ||
-                              call.sip_status === 500 ||
-                              call.sip_status === 503
+                              [500, 503].includes(call.sip_status || 0)
           
-          // Check for Follow-up patterns
           const hasFollowUp = allText.includes('follow-up') || 
                             allText.includes('follow up') ||
                             allText.includes('followup') ||
-                            allText.includes('follow ups') ||
                             call.follow_up === true
           
-          // Log matching calls for debugging
           const isMatch = hasNoAnswer || hasBusy || hasCallFailed || hasFollowUp
+          
           if (isMatch) {
-            console.log('Match found:', {
-              id: call.id,
-              remarks: call.remarks,
-              disposition: call.disposition,
-              status: call.status,
-              sip_status: call.sip_status,
-              reason: hasNoAnswer ? 'NO ANSWER' : hasBusy ? 'BUSY' : hasCallFailed ? 'CALL FAILED' : 'FOLLOW UP'
-            })
+            seenCallIds.add(call.id)
           }
           
           return isMatch
         })
         
-        console.log('Filtered calls count:', filteredCalls.length)
         setFollowUps(filteredCalls)
-        
-        // TODO: Uncomment the filtering logic once we confirm data is flowing
-        /*
-        // Filter calls on client side to include:
-        // 1. Calls with disposition containing "NO ANSWER" or "NO ANSWER"
-        // 2. Calls with disposition containing "BUSY"
-        // 3. Calls with disposition containing "FOLLOW-UP"
-        // 4. Calls with follow_up flag set to true
-        // 5. Calls with SIP status indicating busy/no answer (486, 600, 603)
-        const filteredCalls = allCalls.filter((call: any) => {
-          const disposition = (call.disposition || '').toUpperCase().trim()
-          const status = (call.status || '').toLowerCase().trim()
-          const remarks = (call.remarks || '').toLowerCase().trim()
-          const sipStatus = call.sip_status
-          const hangupCause = (call.hangup_cause || '').toLowerCase().trim()
-          const sipReason = (call.sip_reason || '').toLowerCase().trim()
-          const followUpFlag = call.follow_up === true
-          
-          // Check for NO ANSWER variations
-          const hasNoAnswer = disposition.includes('NO ANSWER') || 
-                            disposition.includes('NO-ANSWER') ||
-                            disposition.includes('NOANSWER') ||
-                            disposition.includes('ANSWERED') === false ||
-                            sipStatus === 600 ||
-                            hangupCause.includes('no answer') ||
-                            sipReason.includes('no answer')
-          
-          // Check for BUSY variations
-          const hasBusy = disposition.includes('BUSY') || 
-                         sipStatus === 486 || 
-                         sipStatus === 603 ||
-                         hangupCause.includes('busy') ||
-                         sipReason.includes('busy')
-          
-          // Check for FOLLOW-UP variations
-          const hasFollowUp = disposition.includes('FOLLOW-UP') || 
-                            disposition.includes('FOLLOW UP') ||
-                            disposition.includes('FOLLOWUP') ||
-                            remarks.includes('follow-up') ||
-                            remarks.includes('follow up') ||
-                            followUpFlag
-          
-          const shouldInclude = hasNoAnswer || hasBusy || hasFollowUp
-          
-          if (shouldInclude) {
-            console.log('Including call:', {
-              id: call.id,
-              disposition: call.disposition,
-              sip_status: call.sip_status,
-              hangup_cause: call.hangup_cause,
-              follow_up: call.follow_up,
-              reason: hasNoAnswer ? 'NO ANSWER' : hasBusy ? 'BUSY' : 'FOLLOW-UP'
-            })
-          }
-          
-          return shouldInclude
-        })
-        
-        console.log('Filtered calls count:', filteredCalls.length)
-        
-        // If no specific matches found, show all calls for debugging
-        if (filteredCalls.length === 0 && allCalls.length > 0) {
-          console.log('No specific matches found, showing all calls for debugging')
-          setFollowUps(allCalls.slice(0, 10)) // Show first 10 calls for debugging
-        } else {
-          setFollowUps(filteredCalls)
-        }
-        */
       }
     } catch (error) {
       console.error('Failed to fetch follow-ups:', error)
@@ -382,6 +272,14 @@ export default function FollowUpCalls() {
   }
 
   const updateFollowUpStatus = async (id: number | string, disposition: string, notes?: string) => {
+    if (isUpdating) return
+    
+    setIsUpdating(true)
+    
+    // Optimistic update
+    const previousFollowUps = [...followUps]
+    setFollowUps(prev => prev.filter(call => call.id !== id))
+    
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       let credentials: RequestCredentials = 'omit'
@@ -393,7 +291,6 @@ export default function FollowUpCalls() {
         if (token) headers['Authorization'] = `Bearer ${token}`
       }
 
-      // Update the call with follow-up notes and completed status
       const response = await fetch(`${API_BASE}/api/calls/${id}`, {
         method: 'PATCH',
         headers,
@@ -408,46 +305,69 @@ export default function FollowUpCalls() {
       if (!response.ok) {
         throw new Error(`Failed to update follow-up: ${response.statusText}`)
       }
-
-      console.log('Follow-up updated successfully:', { id, disposition, notes })
       
-      fetchFollowUps()
       setSelectedFollowUp(null)
       setNotes("")
       setDisposition("")
       
-      // Show success notification
       toast({
         title: "Follow-up Completed",
-        description: "The follow-up call has been marked as completed with notes.",
+        description: "The follow-up call has been marked as completed.",
       })
     } catch (error) {
-      console.error('Failed to update follow-up:', error)
+      // Rollback on error
+      setFollowUps(previousFollowUps)
+      
       toast({
         variant: "destructive",
         title: "Failed to Update Follow-up",
-        description: "Please try again or contact support if the issue persists.",
+        description: error instanceof Error ? error.message : "Please try again.",
       })
+    } finally {
+      setIsUpdating(false)
     }
   }
 
-  const testApiConnection = async () => {
-    try {
-      console.log('Testing API connection to:', API_BASE)
-      const response = await fetch(`${API_BASE}/api/health`)
-      console.log('Health check status:', response.status)
-      if (response.ok) {
-        const data = await response.json()
-        console.log('Health check data:', data)
-      } else {
-        console.log('Health check failed:', response.status)
-      }
-    } catch (error) {
-      console.error('API connection test failed:', error)
-    }
-  }
+
 
   const scheduleCallForFollowUp = async (id: number | string, scheduleDateTime: string) => {
+    if (isScheduling) return
+    
+    // Validate schedule time
+    const scheduledDate = new Date(scheduleDateTime)
+    const now = new Date()
+    
+    if (scheduledDate <= now) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Schedule Time",
+        description: "Please select a future date and time.",
+      })
+      return
+    }
+    
+    // Check if scheduling too far in future (more than 90 days)
+    const maxFutureDate = new Date()
+    maxFutureDate.setDate(maxFutureDate.getDate() + 90)
+    
+    if (scheduledDate > maxFutureDate) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Schedule Time",
+        description: "Cannot schedule more than 90 days in advance.",
+      })
+      return
+    }
+    
+    setIsScheduling(true)
+    
+    // Optimistic update
+    const previousFollowUps = [...followUps]
+    setFollowUps(prev => prev.map(call => 
+      call.id === id 
+        ? { ...call, schedule_call: scheduleDateTime }
+        : call
+    ))
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       let credentials: RequestCredentials = 'omit'
@@ -459,18 +379,9 @@ export default function FollowUpCalls() {
         if (token) headers['Authorization'] = `Bearer ${token}`
       }
 
-      console.log('Scheduling call with params:', { id, scheduleDateTime, idType: typeof id })
-      console.log('API_BASE:', API_BASE)
-      
-      // Ensure ID is properly formatted
       const callId = String(id).trim()
       const requestUrl = `${API_BASE}/api/calls/${callId}`
-      
-      console.log('Request URL:', requestUrl)
-      console.log('Headers:', headers)
-      console.log('Request body:', { schedule_call: scheduleDateTime })
 
-      // Update the call with schedule datetime
       const response = await fetch(requestUrl, {
         method: 'PATCH',
         headers,
@@ -478,50 +389,36 @@ export default function FollowUpCalls() {
         body: JSON.stringify({ schedule_call: scheduleDateTime })
       })
 
-      console.log('Response status:', response.status)
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()))
-
       if (!response.ok) {
         const errorText = await response.text()
-        console.error('Error response:', errorText)
-        
-        // Try to parse error as JSON
         let errorData
         try {
           errorData = JSON.parse(errorText)
         } catch {
           errorData = { message: errorText }
         }
-        
-        throw new Error(`Failed to schedule call: ${response.status} - ${errorData.message || errorText}`)
+        throw new Error(errorData.message || `Failed to schedule call: ${response.status}`)
       }
-
-      const responseData = await response.json()
-      console.log('Call scheduled successfully:', responseData)
-      
-      // Update the local state
-      setFollowUps(prev => prev.map(call => 
-        call.id === id 
-          ? { ...call, schedule_call: scheduleDateTime }
-          : call
-      ))
 
       setShowScheduleDialog(false)
       setScheduleCall(null)
       setScheduleDateTime("")
       
-      // Show success notification
       toast({
         title: "Call Scheduled Successfully!",
         description: `Follow-up call scheduled for ${format(new Date(scheduleDateTime), "PPP 'at' p")}`,
       })
     } catch (error) {
-      console.error('Failed to schedule call:', error)
+      // Rollback on error
+      setFollowUps(previousFollowUps)
+      
       toast({
         variant: "destructive",
         title: "Failed to Schedule Call",
-        description: error instanceof Error ? error.message : "Please try again or contact support if the issue persists.",
+        description: error instanceof Error ? error.message : "Please try again.",
       })
+    } finally {
+      setIsScheduling(false)
     }
   }
 
@@ -784,21 +681,41 @@ export default function FollowUpCalls() {
                     </div>
                     
                     <div className="w-full lg:w-auto">
-                      <label className="text-sm font-medium mb-2 block">Date Range (Disabled)</label>
+                      <label className="text-sm font-medium mb-2 block">Date Range</label>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
-                            disabled
                             className={cn(
-                              "w-full lg:w-[280px] justify-start text-left font-normal opacity-50 cursor-not-allowed",
+                              "w-full lg:w-[280px] justify-start text-left font-normal",
                               !dateRange && "text-muted-foreground"
                             )}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
-                            <span>Date filter temporarily disabled</span>
+                            {dateRange?.from ? (
+                              dateRange.to ? (
+                                <>
+                                  {format(dateRange.from, "LLL dd, y")} -{" "}
+                                  {format(dateRange.to, "LLL dd, y")}
+                                </>
+                              ) : (
+                                format(dateRange.from, "LLL dd, y")
+                              )
+                            ) : (
+                              <span>Pick a date range</span>
+                            )}
                           </Button>
                         </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            initialFocus
+                            mode="range"
+                            defaultMonth={dateRange?.from}
+                            selected={dateRange}
+                            onSelect={setDateRange}
+                            numberOfMonths={2}
+                          />
+                        </PopoverContent>
                       </Popover>
                     </div>
 
@@ -930,10 +847,11 @@ export default function FollowUpCalls() {
                                 setSelectedFollowUp(call)
                                 setShowScheduleDialog(true)
                               }}
+                              disabled={isScheduling}
                               className="text-blue-600 border-blue-200 hover:bg-blue-50"
                             >
                               <CalendarIcon className="w-4 h-4 mr-2" />
-                              Schedule
+                              {isScheduling ? 'Scheduling...' : 'Schedule'}
                             </Button>
                             <Dialog>
                               <DialogTrigger asChild>
@@ -941,10 +859,11 @@ export default function FollowUpCalls() {
                                   variant="default" 
                                   size="sm"
                                   onClick={() => setSelectedFollowUp(call)}
+                                  disabled={isUpdating}
                                   className="bg-green-600 hover:bg-green-700"
                                 >
                                   <CheckCircle className="w-4 h-4 mr-2" />
-                                  Complete
+                                  {isUpdating ? 'Updating...' : 'Complete'}
                                 </Button>
                               </DialogTrigger>
                               <DialogContent>
@@ -1004,15 +923,13 @@ export default function FollowUpCalls() {
                                     </Button>
                                     <Button 
                                       onClick={() => {
-                                        if (selectedFollowUp) {
+                                        if (selectedFollowUp && disposition) {
                                           updateFollowUpStatus(selectedFollowUp.id, disposition, notes)
-                                          setSelectedFollowUp(null)
-                                          setNotes('')
-                                          setDisposition('')
                                         }
                                       }}
+                                      disabled={!disposition || isUpdating}
                                     >
-                                      Mark as Completed
+                                      {isUpdating ? 'Updating...' : 'Mark as Completed'}
                                     </Button>
                                   </div>
                                 </div>
@@ -1110,9 +1027,9 @@ export default function FollowUpCalls() {
                       scheduleCallForFollowUp(selectedFollowUp.id, scheduleDateTime)
                     }
                   }}
-                  disabled={!scheduleDateTime}
+                  disabled={!scheduleDateTime || isScheduling}
                 >
-                  Schedule Call
+                  {isScheduling ? 'Scheduling...' : 'Schedule Call'}
                 </Button>
               </div>
             </div>
