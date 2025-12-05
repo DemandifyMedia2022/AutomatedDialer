@@ -88,8 +88,8 @@ const callsHandler = async (req: any, res: any, next: any) => {
       ? `${env.PUBLIC_BASE_URL}/uploads/${file.filename}`
       : b.recording_url || null
 
-    try { console.log('[calls] incoming body', b) } catch {}
-    try { console.log('[calls] file', !!file, 'recording_url', recording_url) } catch {}
+    try { console.log('[calls] incoming body', b) } catch { }
+    try { console.log('[calls] file', !!file, 'recording_url', recording_url) } catch { }
 
     // Fallback: if username not provided, use authenticated user's name
     let usernameVal = b.username || null
@@ -97,7 +97,7 @@ const callsHandler = async (req: any, res: any, next: any) => {
       try {
         const u = await db.users.findUnique({ where: { id: req.user.userId }, select: { username: true } })
         usernameVal = u?.username || null
-      } catch {}
+      } catch { }
     }
 
     // Fallback: if extension not provided, use authenticated user's assigned extension
@@ -106,7 +106,7 @@ const callsHandler = async (req: any, res: any, next: any) => {
       try {
         const u = await db.users.findUnique({ where: { id: req.user.userId }, select: { extension: true } })
         extensionVal = u?.extension || null
-      } catch {}
+      } catch { }
     }
 
     // Normalize times/duration
@@ -159,10 +159,10 @@ const callsHandler = async (req: any, res: any, next: any) => {
     } as any
 
     const saved = await (db as any).calls.create({ data })
-    try { console.log('[calls] saved id', saved?.id) } catch {}
+    try { console.log('[calls] saved id', saved?.id) } catch { }
     res.status(201).json(saved)
   } catch (err) {
-    try { console.error('[calls] error', err) } catch {}
+    try { console.error('[calls] error', err) } catch { }
     next(err)
   }
 }
@@ -310,7 +310,7 @@ router.patch('/:id', requireAuth, requireRoles(['agent', 'manager', 'superadmin'
   try {
     const callId = req.params.id
     const userId = req.user?.userId
-    
+
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
     if (!callId) return res.status(400).json({ success: false, message: 'Call ID is required' })
 
@@ -323,7 +323,7 @@ router.patch('/:id', requireAuth, requireRoles(['agent', 'manager', 'superadmin'
 
     // Build where clause to find the call
     const where: any = { id: BigInt(callId) }
-    
+
     // If agent, only allow updating their own calls
     if (userRole === 'agent') {
       where.OR = []
@@ -354,20 +354,20 @@ router.patch('/:id', requireAuth, requireRoles(['agent', 'manager', 'superadmin'
     }
 
     const updateData = parsed.data as any
-    
+
     // Validate schedule_call is in the future
     if (updateData.schedule_call) {
       const scheduledDate = new Date(updateData.schedule_call)
       const now = new Date()
-      
+
       if (scheduledDate <= now) {
         return res.status(400).json({ success: false, message: 'Schedule time must be in the future' })
       }
-      
+
       // Check if scheduling too far in future (more than 90 days)
       const maxFutureDate = new Date()
       maxFutureDate.setDate(maxFutureDate.getDate() + 90)
-      
+
       if (scheduledDate > maxFutureDate) {
         return res.status(400).json({ success: false, message: 'Cannot schedule more than 90 days in advance' })
       }

@@ -18,7 +18,8 @@ import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from '@/lib/auth'
 import { Save, AlertCircle, CheckCircle, Loader2, FileText, X, Upload } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
-export default function PlaybookEditPage({ params }: { params: { id: string } }) {
+export default function PlaybookEditPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = React.use(params)
   const router = useRouter()
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
@@ -48,7 +49,7 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
           const t = getToken()
           if (t) headers['Authorization'] = `Bearer ${t}`
         }
-        const res = await fetch(`${API_BASE}/api/documents/${params.id}`, { headers, credentials })
+        const res = await fetch(`${API_BASE}/api/documents/${id}`, { headers, credentials })
         if (!res.ok) throw new Error('Failed to load playbook')
         const data = await res.json()
         setTitle(data.title || '')
@@ -66,7 +67,7 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
       }
     }
     fetchPlaybook()
-  }, [params.id])
+  }, [id])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null
@@ -127,16 +128,16 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
         form.append('tags_csv', tags)
         if (text.trim()) form.append('content_richtext', text.trim())
         form.append('file', file)
-        res = await fetch(`${API_BASE}/api/documents/${params.id}`, { method: 'PUT', body: form, credentials, headers })
+        res = await fetch(`${API_BASE}/api/documents/${id}`, { method: 'PUT', body: form, credentials, headers })
       } else {
         const body = JSON.stringify({ type, title, description, visibility, status, tags_csv: tags, content_richtext: text.trim() })
-        res = await fetch(`${API_BASE}/api/documents/${params.id}`, { method: 'PUT', credentials, headers: { ...headers, 'Content-Type': 'application/json' }, body })
+        res = await fetch(`${API_BASE}/api/documents/${id}`, { method: 'PUT', credentials, headers: { ...headers, 'Content-Type': 'application/json' }, body })
       }
 
       if (!res.ok) throw new Error(`Save failed: ${res.status}`)
-      
+
       setOk('Playbook updated successfully!')
-      
+
       // Redirect after 1.5 seconds
       setTimeout(() => {
         router.push('/dashboard/manager/playbook')
@@ -189,7 +190,7 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-          
+
           {ok && (
             <Alert className="border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
               <CheckCircle className="h-4 w-4" />
@@ -229,11 +230,11 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
                 {/* Title */}
                 <div className="space-y-2">
                   <Label htmlFor="title">Title *</Label>
-                  <Input 
+                  <Input
                     id="title"
-                    value={title} 
-                    onChange={(e) => setTitle(e.target.value)} 
-                    placeholder="Enter playbook title" 
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Enter playbook title"
                     disabled={saving}
                   />
                 </div>
@@ -241,10 +242,10 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
                 {/* Description */}
                 <div className="space-y-2">
                   <Label htmlFor="description">Description</Label>
-                  <Textarea 
+                  <Textarea
                     id="description"
-                    value={description} 
-                    onChange={(e) => setDescription(e.target.value)} 
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
                     placeholder="Provide a brief description of this playbook"
                     rows={3}
                     disabled={saving}
@@ -295,10 +296,10 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="tags">Tags</Label>
-                    <Input 
+                    <Input
                       id="tags"
-                      value={tags} 
-                      onChange={(e) => setTags(e.target.value)} 
+                      value={tags}
+                      onChange={(e) => setTags(e.target.value)}
                       placeholder="sales, pitch, cold-call"
                       disabled={saving}
                     />
@@ -332,37 +333,35 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
                   <Label htmlFor="file">{existingFileUrl ? 'Replace File (optional)' : 'Upload File (optional)'}</Label>
                   <div className="space-y-3">
                     {!file ? (
-                      <div 
-                        className={`border-2 border-dashed rounded-lg p-8 text-center transition-all ${
-                          isDragging 
-                            ? 'border-primary bg-primary/5 scale-[1.02]' 
-                            : 'border-muted-foreground/25 hover:border-primary/50'
-                        }`}
+                      <div
+                        className={`border-2 border-dashed rounded-lg p-8 text-center transition-all ${isDragging
+                          ? 'border-primary bg-primary/5 scale-[1.02]'
+                          : 'border-muted-foreground/25 hover:border-primary/50'
+                          }`}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
                       >
-                        <Upload className={`h-8 w-8 mx-auto mb-2 transition-colors ${
-                          isDragging ? 'text-primary' : 'text-muted-foreground'
-                        }`} />
+                        <Upload className={`h-8 w-8 mx-auto mb-2 transition-colors ${isDragging ? 'text-primary' : 'text-muted-foreground'
+                          }`} />
                         <p className="text-sm text-muted-foreground mb-2">
                           {isDragging ? 'Drop file here' : 'Click to upload or drag and drop'}
                         </p>
                         <p className="text-xs text-muted-foreground mb-4">
                           PDF, DOC, DOCX, TXT (max 10MB)
                         </p>
-                        <Input 
+                        <Input
                           ref={fileInputRef}
                           id="file"
-                          type="file" 
+                          type="file"
                           onChange={handleFileChange}
                           className="hidden"
                           disabled={saving}
                           accept=".pdf,.doc,.docx,.txt"
                         />
-                        <Button 
-                          type="button" 
-                          variant="outline" 
+                        <Button
+                          type="button"
+                          variant="outline"
                           onClick={() => fileInputRef.current?.click()}
                           disabled={saving}
                         >
@@ -379,9 +378,9 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
                               <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
                             </div>
                           </div>
-                          <Button 
+                          <Button
                             type="button"
-                            variant="ghost" 
+                            variant="ghost"
                             size="sm"
                             onClick={removeFile}
                             disabled={saving}
@@ -397,10 +396,10 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
                 {/* Text Content */}
                 <div className="space-y-2">
                   <Label htmlFor="text">Content</Label>
-                  <Textarea 
+                  <Textarea
                     id="text"
-                    value={text} 
-                    onChange={(e) => setText(e.target.value)} 
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
                     placeholder="Paste your playbook content here..."
                     rows={8}
                     disabled={saving}
@@ -414,16 +413,16 @@ export default function PlaybookEditPage({ params }: { params: { id: string } })
                     * Required fields
                   </p>
                   <div className="flex gap-2">
-                    <Button 
+                    <Button
                       type="button"
-                      variant="outline" 
+                      variant="outline"
                       onClick={() => router.push('/dashboard/manager/playbook')}
                       disabled={saving}
                     >
                       Cancel
                     </Button>
-                    <Button 
-                      onClick={submit} 
+                    <Button
+                      onClick={submit}
                       disabled={!title.trim() || saving}
                     >
                       {saving ? (
