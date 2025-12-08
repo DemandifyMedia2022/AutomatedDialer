@@ -82,17 +82,15 @@ export function useJSSIPForAgentic() {
     try {
       console.log('[JSSIP] Getting SIP credentials...')
       
-      // For manager role, we need to get credentials differently
-      // Try manager endpoint first, then fallback to agent endpoint
-      let response
-      try {
-        response = await fetch('/api/managers/me/credentials')
-      } catch {
-        // Fallback to agent endpoint
-        response = await fetch('/api/agents/me/credentials')
-      }
+      // Try to get SIP credentials from the agents endpoint
+      const response = await fetch('/api/agents/me/credentials')
+      
+      console.log('[JSSIP] Credentials response status:', response.status)
       
       if (!response.ok) {
+        const errorText = await response.text()
+        console.log('[JSSIP] Credentials error response:', errorText)
+        
         if (response.status === 401) {
           throw new Error('Not authenticated. Please log in first.')
         } else if (response.status === 404) {
@@ -107,6 +105,8 @@ export function useJSSIPForAgentic() {
                 'Content-Type': 'application/json'
               }
             })
+            
+            console.log('[JSSIP] User auth response status:', userResponse.status)
             
             if (!userResponse.ok) {
               console.log('[JSSIP] User auth endpoint failed, using manual credentials')
@@ -156,13 +156,7 @@ export function useJSSIPForAgentic() {
             
           } catch (autoLoginError) {
             console.error('[JSSIP] Auto-login failed:', autoLoginError)
-            console.log('[JSSIP] Falling back to manual credentials')
-            // Use manual credentials as fallback
-            const testData = {
-              extensionId: '1033201',
-              password: '691867b65b089'
-            }
-            return await initializeJSSIPWithCredentials(testData)
+            throw new Error('No SIP credentials available. Please ensure you have an extension assigned in the system.')
           }
         }
         throw new Error(`Failed to get SIP credentials: ${response.status}`)
@@ -225,6 +219,14 @@ export function useJSSIPForAgentic() {
         iceServers: stunServer ? [{ urls: stunServer }] : undefined,
       }
 
+      console.log('[JSSIP] Attempting registration with:', {
+        uri: configuration.uri,
+        domain: domain,
+        wssUrl: wssUrl,
+        extensionId: data.extensionId,
+        password: data.password ? '[REDACTED]' : '[MISSING]'
+      })
+
       // Enable debug logging
       window.JsSIP.debug.enable("JsSIP:*")
 
@@ -271,7 +273,24 @@ export function useJSSIPForAgentic() {
 
       ua.on("registrationFailed", (e: any) => {
         console.error('[JSSIP] Registration failed:', e)
-        const errorMsg = `Registration failed: ${e?.cause || "Unknown error"} (Code: ${e?.response?.status_code || 'N/A'})`
+        console.error('[JSSIP] Response details:', {
+          status_code: e?.response?.status_code,
+          reason_phrase: e?.response?.reason_phrase,
+          cause: e?.cause,
+          message: e?.message
+        })
+        
+        let errorMsg = `Registration failed: ${e?.cause || "Unknown error"}`
+        
+        // Add specific guidance for common errors
+        if (e?.response?.status_code === 403) {
+          errorMsg = "Authentication failed (403 Forbidden). Check SIP credentials in database or contact administrator."
+        } else if (e?.response?.status_code === 404) {
+          errorMsg = "Extension not found (404). Verify extension exists in PBX."
+        } else if (e?.response?.status_code) {
+          errorMsg = `Registration failed: ${e?.response?.reason_phrase || "Unknown"} (${e?.response?.status_code})`
+        }
+        
         setState(prev => ({ 
           ...prev, 
           status: 'Registration Failed', 

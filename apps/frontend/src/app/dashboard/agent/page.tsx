@@ -75,7 +75,13 @@ export default function Page() {
         const t = getToken()
         if (t) headers['Authorization'] = `Bearer ${t}`
       }
-      const res = await fetch(`${API_BASE}/api/analytics/agent`, { headers, credentials })
+      
+      // Get today's date range (start of day to end of day)
+      const today = new Date()
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+      
+      const res = await fetch(`${API_BASE}/api/analytics/agent?from=${startOfDay.toISOString()}&to=${endOfDay.toISOString()}`, { headers, credentials })
       if (res.ok) {
         const json = await res.json()
         setData((prev) => ({ ...(prev || json), ...json }))
@@ -119,173 +125,150 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Optimized data fetching with proper daily filtering
   useEffect(() => {
-    let stop: (() => void) | null = null
-    const apply = (j: Partial<MetricResponse>) => {
-      setData((prev) => ({
-        callsDialed: j.callsDialed ?? prev?.callsDialed ?? 0,
-        answered: j.answered ?? prev?.answered ?? 0,
-        voicemail: j.voicemail ?? prev?.voicemail ?? 0,
-        unanswered: j.unanswered ?? prev?.unanswered ?? 0,
-        conversations: j.conversations ?? prev?.conversations ?? 0,
-        connectRate: j.connectRate ?? prev?.connectRate ?? 0,
-        conversationRate: j.conversationRate ?? prev?.conversationRate ?? 0,
-        dispositions: prev?.dispositions ?? [],
-        leaderboard: prev?.leaderboard ?? [],
-      }))
+    const getTodayDateRange = () => {
+      const today = new Date()
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+      return { startOfDay, endOfDay }
     }
-    const fetchOnce = async () => {
-      try {
-        const headers: Record<string, string> = {}
-        let credentials: RequestCredentials = 'omit'
-        if (USE_AUTH_COOKIE) {
-          credentials = 'include'
-        } else {
-          const t = getToken()
-          if (t) headers['Authorization'] = `Bearer ${t}`
-        }
-        const res = await fetch(`${API_BASE}/api/analytics/agent`, { headers, credentials })
-        if (res.ok) {
-          const j = await res.json()
-          apply(j)
-        }
-      } catch { }
-    }
-    const start = async () => {
-      await fetchOnce()
+
+    const fetchWithAuth = async (url: string) => {
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = 'omit'
       if (USE_AUTH_COOKIE) {
-        const es = new EventSource(`${API_BASE}/api/analytics/agent/stream`, { withCredentials: true })
-        es.onmessage = (ev) => {
-          try { apply(JSON.parse(ev.data)) } catch { }
-        }
-        es.onerror = () => { }
-        stop = () => { try { es.close() } catch { } }
+        credentials = 'include'
       } else {
-        const id = window.setInterval(fetchOnce, 3000)
-        stop = () => { window.clearInterval(id) }
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      return fetch(url, { headers, credentials })
+    }
+
+    // Main analytics data fetcher
+    const fetchAnalyticsData = async () => {
+      try {
+        const { startOfDay, endOfDay } = getTodayDateRange()
+        const dateParams = `from=${startOfDay.toISOString()}&to=${endOfDay.toISOString()}`
+
+        // Fetch all analytics data in parallel
+        const [analyticsRes, leaderboardRes, dispositionsRes] = await Promise.all([
+          fetchWithAuth(`${API_BASE}/api/analytics/agent?${dateParams}`),
+          fetchWithAuth(`${API_BASE}/api/analytics/leaderboard?${dateParams}`),
+          fetchWithAuth(`${API_BASE}/api/analytics/agent/dispositions?${dateParams}&remarks=lead`)
+        ])
+
+        // Process analytics data
+        if (analyticsRes.ok) {
+          const analytics = await analyticsRes.json()
+          setData(prev => ({
+            ...(prev || {}),
+            ...analytics,
+            dispositions: prev?.dispositions || [],
+            leaderboard: prev?.leaderboard || []
+          }))
+        }
+
+        // Process leaderboard data
+        if (leaderboardRes.ok) {
+          const leaderboardData = await leaderboardRes.json()
+          setData(prev => ({
+            ...(prev || {}),
+            leaderboard: leaderboardData?.items || []
+          }))
+        }
+
+        // Process dispositions data
+        if (dispositionsRes.ok) {
+          const dispositionsData = await dispositionsRes.json()
+          setData(prev => ({
+            ...(prev || {}),
+            dispositions: dispositionsData?.items || []
+          }))
+        }
+      } catch (error) {
+        console.error('Error fetching analytics data:', error)
       }
     }
-    start()
-    return () => { if (stop) stop() }
-  }, [])
 
-  useEffect(() => {
-    let stop: (() => void) | null = null
-    const apply = (items: { name: string; count: number }[]) => {
-      setData((prev) => {
-        const base: MetricResponse = prev || {
-          callsDialed: 0,
-          answered: 0,
-          voicemail: 0,
-          unanswered: 0,
-          conversations: 0,
-          connectRate: 0,
-          conversationRate: 0,
-          dispositions: [],
-          leaderboard: [],
+    // Initial fetch
+    fetchAnalyticsData()
+
+    // Set up real-time updates
+    let cleanup: (() => void) | null = null
+
+    if (USE_AUTH_COOKIE) {
+      // Use EventSource for real-time updates
+      const { startOfDay, endOfDay } = getTodayDateRange()
+      const dateParams = `from=${startOfDay.toISOString()}&to=${endOfDay.toISOString()}`
+
+      const analyticsEventSource = new EventSource(`${API_BASE}/api/analytics/agent/stream?${dateParams}`, { withCredentials: true })
+      const leaderboardEventSource = new EventSource(`${API_BASE}/api/analytics/leaderboard/stream?${dateParams}`, { withCredentials: true })
+      const dispositionsEventSource = new EventSource(`${API_BASE}/api/analytics/agent/dispositions/stream?${dateParams}`, { withCredentials: true })
+
+      analyticsEventSource.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data)
+          setData(prev => ({
+            ...(prev || {}),
+            ...data,
+            dispositions: prev?.dispositions || [],
+            leaderboard: prev?.leaderboard || []
+          }))
+        } catch (error) {
+          console.error('Error parsing analytics stream data:', error)
         }
-        return { ...base, leaderboard: items }
-      })
-    }
-    const fetchOnce = async () => {
-      try {
-        const headers: Record<string, string> = {}
-        let credentials: RequestCredentials = 'omit'
-        if (USE_AUTH_COOKIE) {
-          credentials = 'include'
-        } else {
-          const t = getToken()
-          if (t) headers['Authorization'] = `Bearer ${t}`
-        }
-        const res = await fetch(`${API_BASE}/api/analytics/leaderboard`, { headers, credentials })
-        if (res.ok) {
-          const j = await res.json()
-          const items = (j?.items || []) as { name: string; count: number }[]
-          apply(items)
-        }
-      } catch { }
-    }
-    const start = async () => {
-      await fetchOnce()
-      if (USE_AUTH_COOKIE) {
-        const es = new EventSource(`${API_BASE}/api/analytics/leaderboard/stream`, { withCredentials: true })
-        es.onmessage = (ev) => {
-          try {
-            const j = JSON.parse(ev.data)
-            const items = (j?.items || []) as { name: string; count: number }[]
-            apply(items)
-          } catch { }
-        }
-        es.onerror = () => { }
-        stop = () => { try { es.close() } catch { } }
-      } else {
-        const id = window.setInterval(fetchOnce, 3000)
-        stop = () => { window.clearInterval(id) }
       }
-    }
-    start()
-    return () => { if (stop) stop() }
-  }, [])
 
-  useEffect(() => {
-    let stop: (() => void) | null = null
-    const apply = (items: { name: string; count: number }[]) => {
-      setData((prev) => {
-        const base: MetricResponse = prev || {
-          callsDialed: 0,
-          answered: 0,
-          voicemail: 0,
-          unanswered: 0,
-          conversations: 0,
-          connectRate: 0,
-          conversationRate: 0,
-          dispositions: [],
-          leaderboard: [],
+      leaderboardEventSource.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data)
+          setData(prev => ({
+            ...(prev || {}),
+            leaderboard: data?.items || []
+          }))
+        } catch (error) {
+          console.error('Error parsing leaderboard stream data:', error)
         }
-        return { ...base, dispositions: items }
-      })
-    }
-    const fetchOnce = async () => {
-      try {
-        const headers: Record<string, string> = {}
-        let credentials: RequestCredentials = 'omit'
-        if (USE_AUTH_COOKIE) {
-          credentials = 'include'
-        } else {
-          const t = getToken()
-          if (t) headers['Authorization'] = `Bearer ${t}`
-        }
-        const res = await fetch(`${API_BASE}/api/analytics/agent/dispositions`, { headers, credentials })
-        if (res.ok) {
-          const j = await res.json()
-          const items = (j?.items || []) as { name: string; count: number }[]
-          apply(items)
-        }
-      } catch { }
-    }
-    const start = async () => {
-      await fetchOnce()
-      if (USE_AUTH_COOKIE) {
-        const es = new EventSource(`${API_BASE}/api/analytics/agent/dispositions/stream`, { withCredentials: true })
-        es.onmessage = (ev) => {
-          try {
-            const j = JSON.parse(ev.data)
-            const items = (j?.items || []) as { name: string; count: number }[]
-            apply(items)
-          } catch { }
-        }
-        es.onerror = () => { }
-        stop = () => { try { es.close() } catch { } }
-      } else {
-        const id = window.setInterval(fetchOnce, 3000)
-        stop = () => { window.clearInterval(id) }
       }
+
+      dispositionsEventSource.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data)
+          setData(prev => ({
+            ...(prev || {}),
+            dispositions: data?.items || []
+          }))
+        } catch (error) {
+          console.error('Error parsing dispositions stream data:', error)
+        }
+      }
+
+      const handleEventSourceError = (source: EventSource) => {
+        source.onerror = () => {
+          console.warn('EventSource error, falling back to polling')
+          source.close()
+        }
+      }
+
+      handleEventSourceError(analyticsEventSource)
+      handleEventSourceError(leaderboardEventSource)
+      handleEventSourceError(dispositionsEventSource)
+
+      cleanup = () => {
+        analyticsEventSource.close()
+        leaderboardEventSource.close()
+        dispositionsEventSource.close()
+      }
+    } else {
+      // Fallback to polling
+      const pollInterval = setInterval(fetchAnalyticsData, 3000)
+      cleanup = () => clearInterval(pollInterval)
     }
-    start()
-    return () => { if (stop) stop() }
+
+    return cleanup
   }, [])
-
-
 
   return (
     <SidebarProvider>
@@ -417,7 +400,12 @@ export default function Page() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Leaderboard</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Leaderboard</CardTitle>
+                  <div className="text-sm text-muted-foreground">
+                    {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -457,7 +445,7 @@ export default function Page() {
                           </div>
                         </div>
                         <span className="text-sm font-semibold tabular-nums px-2.5 py-1 rounded-full bg-green-500/10 dark:bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/20 dark:border-green-500/30">
-                          {row.count} leads
+                          {row.count} today
                         </span>
                       </div>
                     ))
@@ -665,3 +653,4 @@ function DispositionRadar({ dispositions }: { dispositions: { name: string; coun
     </div>
   )
 }
+

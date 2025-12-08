@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { PhoneCall, ListCheck, Users, Settings2, Phone, Bot } from "lucide-react"
+import { PhoneCall, ListCheck, Users, Settings2, Phone, Bot, TrendingUp } from "lucide-react"
 import { NavMain } from "@/components/layout/nav-main"
 import { NavUser } from "@/components/layout/nav-user"
 import {
@@ -37,6 +37,7 @@ const data = {
       items: [
         { title: "Manual", url: "/dashboard/agent/dialer/manual" },
         { title: "Automated", url: "/dashboard/agent/dialer/automated" },
+        { title: "Predictive", url: "/dashboard/agent/dialer/predictive" },
       ],
     },
     {
