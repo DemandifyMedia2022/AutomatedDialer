@@ -349,6 +349,26 @@ router.post('/audit/:uniqueId', ...upsertMiddlewares, async (req: any, res: any,
       data: updateData
     })
 
+    // Also update the f_qa_status in the calls table if qa_status was provided
+    if (qa_status !== undefined) {
+      try {
+        // Find the corresponding call record using unique_id
+        const callRecord = await (db as any).calls.findFirst({
+          where: { unique_id: uniqueId }
+        })
+
+        if (callRecord) {
+          await (db as any).calls.update({
+            where: { id: callRecord.id },
+            data: { f_qa_status: qa_status }
+          })
+        }
+      } catch (error) {
+        console.error('Error updating calls.f_qa_status:', error)
+        // Don't fail the request if calls update fails, just log the error
+      }
+    }
+
     // Also create/update a qa_call_review entry to ensure the call appears in the leads list
     const callId = existingForm.f_lead ? Number(existingForm.f_lead) : null
     

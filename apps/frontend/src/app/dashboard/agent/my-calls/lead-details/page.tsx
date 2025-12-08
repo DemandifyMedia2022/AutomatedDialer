@@ -27,7 +27,7 @@ type LeadRow = {
   remarks: string | null
   recording_url?: string | null
   recording_filename?: string | null
-  qa_status?: string | null
+  f_qa_status?: string | null
 }
 
 const LeadDetailsPage = () => {
@@ -35,6 +35,7 @@ const LeadDetailsPage = () => {
   const [page, setPage] = React.useState(1)
   const [pageSize] = React.useState(20)
   const [total, setTotal] = React.useState(0)
+  const [qualifiedCount, setQualifiedCount] = React.useState(0)
   const [loading, setLoading] = React.useState(false)
 
   const [dest, setDest] = React.useState("")
@@ -207,6 +208,11 @@ const LeadDetailsPage = () => {
           console.log(`Row ${index}: ID=${row.id}, unique_id=${row.unique_id}, qa_status=${row.qa_status}`)
         })
         
+        // Calculate qualified leads count
+        const qualified = rows.filter(row => 
+          row.f_qa_status && row.f_qa_status.toLowerCase() === 'qualified'
+        ).length
+        
         setItems(rows.map(r => {
           console.log('Processing row:', r) // Debug log
           return {
@@ -222,11 +228,11 @@ const LeadDetailsPage = () => {
             // Use the recording URL from the API response
             recording_url: r.recording_url || r.recording || null,
             recording_filename: r.recording_filename || `recording-${r.id}.mp3`,
-            // Add QA status from the joined dm_form table
-            qa_status: r.qa_status ?? null
+            f_qa_status: r.f_qa_status ?? null
           }
         }))
         setTotal(Number(data?.total || rows.length))
+        setQualifiedCount(qualified)
         setPage(Number(data?.page || p))
       } else {
         setItems([])
@@ -321,6 +327,17 @@ const LeadDetailsPage = () => {
               </div>
             </div>
 
+            <div className="mt-4 mb-2">
+              <div className="flex items-center gap-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+                  <span className="text-green-800 font-medium">Qualified Leads: {qualifiedCount}</span>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Total Leads: {total}
+                </div>
+              </div>
+            </div>
+
             <div className="mt-4 overflow-x-auto rounded-lg border">
               <table className="min-w-full text-sm">
                 <thead className="bg-muted sticky top-0 z-10">
@@ -356,19 +373,14 @@ const LeadDetailsPage = () => {
                       <td className="px-4 py-3">{fmtDur(row.call_duration)}</td>
                       <td className="px-4 py-3">{row.remarks || "-"}</td>
                       <td className="px-4 py-3">
-                        {row.qa_status ? (
-                          <>
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              row.qa_status.toLowerCase() === 'approved' ? 'bg-green-100 text-green-800' :
-                              row.qa_status.toLowerCase() === 'rejected' ? 'bg-red-100 text-red-800' :
-                              row.qa_status.toLowerCase() === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
-                              {row.qa_status}
-                            </span>
-                            {/* Debug: Show raw value */}
-                            <span className="ml-1 text-xs text-gray-500">({row.qa_status})</span>
-                          </>
+                        {row.f_qa_status ? (
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            row.f_qa_status.toLowerCase() === 'qualified' ? 'bg-green-100 text-green-800' :
+                            row.f_qa_status.toLowerCase() === 'disqualified' ? 'bg-red-100 text-red-800' :
+                            'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {row.f_qa_status}
+                          </span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}

@@ -267,6 +267,56 @@ router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'qa', 'super
   }
 })
 
+// Debug endpoint to check calls.f_qa_status directly
+router.get('/debug-calls-qa', async (req: any, res: any, next: any) => {
+  try {
+    // Check if calls table has any f_qa_status data
+    const callsWithQa = await (db as any).$queryRaw(`
+      SELECT 
+        id,
+        unique_id,
+        destination,
+        remarks,
+        f_qa_status
+      FROM calls 
+      WHERE remarks = 'Lead' AND f_qa_status IS NOT NULL AND f_qa_status != ''
+      ORDER BY start_time DESC
+      LIMIT 5
+    `)
+    
+    // Check all leads regardless of QA status
+    const allLeads = await (db as any).$queryRaw(`
+      SELECT 
+        id,
+        unique_id,
+        destination,
+        remarks,
+        f_qa_status,
+        start_time
+      FROM calls 
+      WHERE remarks = 'Lead'
+      ORDER BY start_time DESC
+      LIMIT 5
+    `)
+    
+    console.log('Calls with QA status:', callsWithQa)
+    console.log('All leads (first 5):', allLeads)
+    
+    res.json({ 
+      success: true, 
+      callsWithQa,
+      allLeads,
+      message: callsWithQa.length > 0 ? 'Found calls with QA status' : 'No calls with QA status found'
+    })
+  } catch (e: any) {
+    console.error('Debug calls QA error:', e)
+    res.status(500).json({ 
+      success: false, 
+      error: e?.message || 'Unknown error occurred'
+    })
+  }
+})
+
 // Simple test to check if QA data exists
 router.get('/test-qa-data', async (req: any, res: any, next: any) => {
   try {
@@ -365,9 +415,8 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     const sql = `
       SELECT 
         c.*,
-        COALESCE(dm.f_qa_status, NULL) as qa_status
+        c.f_qa_status
       FROM calls c
-      LEFT JOIN dm_form dm ON TRIM(c.unique_id) = TRIM(dm.unique_id)
       WHERE ${whereClause}
       ORDER BY c.start_time DESC
       LIMIT ${pageSize} OFFSET ${skip}
