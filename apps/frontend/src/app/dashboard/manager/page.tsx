@@ -25,6 +25,18 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { io, Socket } from "socket.io-client"
 
+type CallRow = {
+  id: number | string
+  extension?: string | null
+  username?: string | null
+  destination?: string | null
+  start_time?: string
+  call_duration?: number | null
+  disposition?: string | null
+  recording_url?: string | null
+  unique_id?: string | null
+}
+
 function AreaChart({ data, maxXTicks = 6 }: { data: { label: string; value: number }[]; maxXTicks?: number }) {
   const [hover, setHover] = useState<{ x: number; y: number; label: string; value: number } | null>(null)
   const values = data.map(d => d.value)
@@ -193,12 +205,65 @@ export default function Page() {
   const [series, setSeries] = useState<{ label: string; value: number }[]>([])
   const [range, setRange] = useState<'daily' | 'monthly'>('daily')
   const [isConnected, setIsConnected] = useState(false)
+  const [managerMetrics, setManagerMetrics] = useState<{ avgCallsDialed: number; avgCallsAnswered: number; totalCallsDialed: number; totalCallsAnswered: number; avgCampaignTime: number } | null>(null)
 
   const loadSummary = () => {
     return fetch(`${API_BASE}/api/presence/manager/summary`, { credentials: 'include' })
       .then(r => r.json())
       .then(d => { if (d?.success) setSummary(d) })
       .catch(() => { })
+  }
+
+  // Load manager analytics with daily filtering
+  const loadManagerMetrics = () => {
+    const getTodayDateRange = () => {
+      const today = new Date()
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+      return { startOfDay, endOfDay }
+    }
+
+    const { startOfDay, endOfDay } = getTodayDateRange()
+    const dateParams = `from=${startOfDay.toISOString()}&to=${endOfDay.toISOString()}`
+
+    // Fetch total calls data for today
+    return fetch(`${API_BASE}/api/calls?${dateParams}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => {
+        if (d?.success && d?.items) {
+          const calls: CallRow[] = d.items
+          const totalCallsDialed = calls.length
+          const totalCallsAnswered = calls.filter(call => call.disposition === 'ANSWERED').length
+          
+          // Calculate average campaign time (in minutes) from answered calls
+          const answeredCalls = calls.filter(call => call.disposition === 'ANSWERED' && call.call_duration)
+          const totalCallDuration = answeredCalls.reduce((sum, call) => sum + (call.call_duration || 0), 0)
+          const avgCampaignTime = answeredCalls.length > 0 ? Math.round(totalCallDuration / answeredCalls.length / 60) : 0
+          
+          const activeAgents = summary?.available || 1
+          
+          const avgCallsDialed = activeAgents > 0 ? Math.round(totalCallsDialed / activeAgents) : 0
+          const avgCallsAnswered = activeAgents > 0 ? Math.round(totalCallsAnswered / activeAgents) : 0
+          
+          setManagerMetrics({
+            avgCallsDialed,
+            avgCallsAnswered,
+            totalCallsDialed,
+            totalCallsAnswered,
+            avgCampaignTime
+          })
+        }
+      })
+      .catch(() => {
+        // Fallback values
+        setManagerMetrics({
+          avgCallsDialed: 0,
+          avgCallsAnswered: 0,
+          totalCallsDialed: 0,
+          totalCallsAnswered: 0,
+          avgCampaignTime: 0
+        })
+      })
   }
 
   useEffect(() => {
@@ -228,9 +293,19 @@ export default function Page() {
     }
   }, [])
 
-  // Leaderboard: pull from analytics leaderboard API (leads-based)
+  // Leaderboard: pull from analytics leaderboard API with daily filtering
   const loadLeaders = () => {
-    return fetch(`${API_BASE}/api/analytics/leaderboard`, { credentials: 'include' })
+    const getTodayDateRange = () => {
+      const today = new Date()
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+      return { startOfDay, endOfDay }
+    }
+
+    const { startOfDay, endOfDay } = getTodayDateRange()
+    const dateParams = `from=${startOfDay.toISOString()}&to=${endOfDay.toISOString()}`
+
+    return fetch(`${API_BASE}/api/analytics/leaderboard?${dateParams}`, { credentials: 'include' })
       .then(r => r.json())
       .then(d => {
         const items = (d?.items || []) as { name: string; count: number }[]
@@ -262,10 +337,28 @@ export default function Page() {
 
   const metrics = useMemo(() => ({
     activeAgents: summary?.available ?? 0,
-    avgCallsDialed: 56,
-    avgCallsAnswered: 38,
-    avgCampaignTime: '12m',
-  }), [summary])
+    avgCallsDialed: managerMetrics?.avgCallsDialed ?? 0,
+    avgCallsAnswered: managerMetrics?.avgCallsAnswered ?? 0,
+    avgCampaignTime: managerMetrics?.avgCampaignTime ?? 0,
+  }), [summary, managerMetrics])
+
+  // Load manager metrics when summary is available
+  useEffect(() => {
+    if (summary) {
+      loadManagerMetrics()
+    }
+  }, [summary])
+
+  // Set up real-time updates for manager metrics
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (summary) {
+        loadManagerMetrics()
+      }
+    }, 10000) // Update every 10 seconds
+
+    return () => clearInterval(interval)
+  }, [summary])
 
   // Fetch calls series for selected range
   const loadSeries = () => {
@@ -336,21 +429,21 @@ export default function Page() {
             <MetricCard
               title="Avg Calls Dialed/Agent"
               description="Today"
-              value={56}
+              value={metrics.avgCallsDialed}
               icon={<PhoneCall className="size-4" />}
               tone="blue"
             />
             <MetricCard
               title="Avg Calls Answered"
               description="Today"
-              value={38}
+              value={metrics.avgCallsAnswered}
               icon={<PhoneIncoming className="size-4" />}
               tone="violet"
             />
             <MetricCard
               title="Avg Campaign Time"
               description="Minutes"
-              value="12m"
+              value={`${metrics.avgCampaignTime}m`}
               icon={<Timer className="size-4" />}
               tone="amber"
             />
