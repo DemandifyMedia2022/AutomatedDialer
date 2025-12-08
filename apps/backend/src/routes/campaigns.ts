@@ -4,9 +4,31 @@ import { requireAuth, requireRoles } from '../middlewares/auth';
 
 const router = Router();
 
+// Helper to expire old campaigns
+const cleanupExpiredCampaigns = async () => {
+  try {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    // If a campaign is 'active' but its end_date is strictly before today (meaning it ended yesterday or earlier),
+    // mark it inactive.
+    // Assumes end_date is stored as YYYY-MM-DDT00:00:00.
+    await (db as any).campaigns.updateMany({
+      where: {
+        status: 'active',
+        end_date: { lt: startOfToday }
+      },
+      data: { status: 'inactive' }
+    });
+  } catch (e) {
+    console.error("Failed to cleanup expired campaigns", e);
+  }
+};
+
 // List campaigns (Manager+, QA)
 router.get('/', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), async (_req, res, next) => {
   try {
+    await cleanupExpiredCampaigns();
     const items = await (db as any).campaigns.findMany({
       orderBy: { id: 'desc' },
     });
@@ -19,6 +41,7 @@ router.get('/', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), asyn
 // List only active campaigns (Agent+)
 router.get('/active', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (_req, res, next) => {
   try {
+    await cleanupExpiredCampaigns();
     const items = await (db as any).campaigns.findMany({
       where: { status: 'active' },
       orderBy: { id: 'desc' },
@@ -32,6 +55,7 @@ router.get('/active', requireAuth, requireRoles(['agent', 'manager', 'superadmin
 // List only inactive campaigns (Agent+)
 router.get('/inactive', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (_req, res, next) => {
   try {
+    await cleanupExpiredCampaigns();
     const items = await (db as any).campaigns.findMany({
       where: { status: 'inactive' },
       orderBy: { id: 'desc' },
@@ -80,20 +104,16 @@ router.put('/:id', requireAuth, requireRoles(['manager', 'superadmin']), async (
     }
 
     const b = req.body || {};
-    const start_date = b.start_date ? new Date(b.start_date) : null;
-    const end_date = b.end_date ? new Date(b.end_date) : null;
+    const data: any = { updated_at: new Date() };
 
-    const data = {
-      campaign_id: b.campaign_id != null ? Number(b.campaign_id) : null,
-      campaign_name: b.campaign_name ?? null,
-      start_date,
-      end_date,
-      allocations: b.allocations ?? null,
-      assigned_to: b.assigned_to ?? null,
-      status: b.status ?? null,
-      method: b.method ?? null,
-      updated_at: new Date(),
-    } as any;
+    if (b.campaign_id !== undefined) data.campaign_id = b.campaign_id != null ? Number(b.campaign_id) : null;
+    if (b.campaign_name !== undefined) data.campaign_name = b.campaign_name;
+    if (b.start_date !== undefined) data.start_date = b.start_date ? new Date(b.start_date) : null;
+    if (b.end_date !== undefined) data.end_date = b.end_date ? new Date(b.end_date) : null;
+    if (b.allocations !== undefined) data.allocations = b.allocations;
+    if (b.assigned_to !== undefined) data.assigned_to = b.assigned_to;
+    if (b.status !== undefined) data.status = b.status;
+    if (b.method !== undefined) data.method = b.method;
 
     const updated = await (db as any).campaigns.update({ where: { id }, data });
     res.json({ success: true, item: updated });

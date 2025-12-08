@@ -37,7 +37,6 @@ const data = {
       items: [
         { title: "Manual", url: "/dashboard/agent/dialer/manual" },
         { title: "Automated", url: "/dashboard/agent/dialer/automated" },
-        { title: "Predictive", url: "/dashboard/agent/dialer/predictive" },
       ],
     },
     {
@@ -76,12 +75,12 @@ export function AgentSidebar({ ...props }: React.ComponentProps<typeof Sidebar>)
   const displayUser = {
     name: user?.email
       ? user.email
-          .split("@")[0]
-          .replace(/[._-]+/g, " ")
-          .split(" ")
-          .filter(Boolean)
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-          .join(" ")
+        .split("@")[0]
+        .replace(/[._-]+/g, " ")
+        .split(" ")
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ")
       : data.user.name,
     email: user?.email || data.user.email,
     avatar: "",
