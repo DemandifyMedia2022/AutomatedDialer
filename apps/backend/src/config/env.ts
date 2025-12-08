@@ -3,8 +3,16 @@ import type { SignOptions } from 'jsonwebtoken';
 
 dotenv.config();
 
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const JWT_SECRET = process.env.JWT_SECRET || '';
+
+// Enforce strong JWT_SECRET in production
+if (NODE_ENV === 'production' && !JWT_SECRET) {
+  throw new Error('JWT_SECRET must be set in production environment.');
+}
+
 export const env = {
-  NODE_ENV: process.env.NODE_ENV || 'development',
+  NODE_ENV,
   PORT: parseInt(process.env.PORT || '4000', 10),
   DATABASE_URL: process.env.DATABASE_URL ,
   SIP_WSS_URL: process.env.SIP_WSS_URL ,
@@ -12,7 +20,7 @@ export const env = {
   STUN_SERVER: process.env.STUN_SERVER ,
   PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL ,
   RECORDINGS_DIR: process.env.RECORDINGS_DIR || 'uploads/recordings',
-  JWT_SECRET: process.env.JWT_SECRET || '',
+  JWT_SECRET,
   JWT_EXPIRES_IN: (process.env.JWT_EXPIRES_IN || '20m') as SignOptions['expiresIn'],
   CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:3000',
   AUTH_COOKIE_NAME: process.env.AUTH_COOKIE_NAME || 'ad_auth',

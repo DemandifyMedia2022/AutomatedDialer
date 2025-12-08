@@ -27,6 +27,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ ext: strin
   const url = `${baseUrl}/set_extension_details/${encodeURIComponent(accountId)}/${encodeURIComponent(planId)}/${encodeURIComponent(ext)}`;
 
   try {
+    // Use the correct format as per the curl example
     const res = await fetch(url, {
       method: "POST",
       headers: {
@@ -43,6 +44,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ ext: strin
 
     const text = await res.text();
     const data = (() => { try { return JSON.parse(text); } catch { return { raw: text }; } })();
+    
+    console.log(`Telxio extension update ${ext} response:`, {
+      status: res.status,
+      ok: res.ok,
+      data: data,
+      dataPayload
+    });
+    
+    // Log detailed error information for debugging
+    if (!res.ok) {
+      console.error('Telxio extension update failed:', {
+        extension: ext,
+        accountId,
+        planId,
+        status: res.status,
+        statusText: res.statusText,
+        response: text,
+        parsed: data,
+        dataPayload
+      });
+    }
+    
     if (!res.ok) {
       return NextResponse.json({ ok: true, data: { accountId, planId, extension: ext, applied: dataPayload || {} }, meta: { softBypass: true, status: res.status, upstream: data } });
     }
@@ -50,7 +73,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ ext: strin
     // Follow-up: verify by re-fetching extension details to get the latest callerid with small retries
     const verifyUrl = `${baseUrl}/get_extension_details/${encodeURIComponent(accountId)}/${encodeURIComponent(planId)}/${encodeURIComponent(ext)}`;
     const headersVerify: Record<string, string> = {
-      "Content-Type": "application/json",
       Authorization: authHeader,
       ...(cookie ? { Cookie: cookie } : {}),
     };
@@ -61,15 +83,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ ext: strin
       try {
         if (attempt > 0) await sleep(300 * (attempt + 1));
         const verifyRes = await fetch(verifyUrl, {
-          method: "POST",
+          method: "GET",  // Use GET as per the curl example
           headers: headersVerify,
-          body: public_key && private_key
-            ? JSON.stringify({ account_id: accountId, public_key, private_key })
-            : "{}",
         });
         const verifyText = await verifyRes.text();
         verify = (() => { try { return JSON.parse(verifyText); } catch { return { raw: verifyText }; } })();
         verifiedCallerId = verify?.data?.extension?.callerid ?? null;
+        console.log(`Verification attempt ${attempt + 1} for extension ${ext}:`, {
+          status: verifyRes.status,
+          verifiedCallerId
+        });
         // If we see the desired callerid applied (or any non-null), break
         if (verifiedCallerId != null) break;
       } catch {}

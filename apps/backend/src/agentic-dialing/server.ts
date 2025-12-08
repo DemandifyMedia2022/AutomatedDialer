@@ -132,6 +132,9 @@ app.post('/start_call', (req, res) => {
     activeCampaign = campaign || '';
 
     // Spawn agent process
+    /*
+    // SECURITY: This block is disabled due to critical RCE vulnerability (shell: true) and lack of auth.
+    // Agentic dialing is in beta and not launched.
     const env = { ...process.env };
     env.LEAD_INDEX = (leadIndex + 1).toString();
     env.RUN_SINGLE_CALL = '1';
@@ -166,6 +169,8 @@ app.post('/start_call', (req, res) => {
     });
 
     res.json({ ok: true, message: 'Agent spawned', leadIndex, campaign });
+    */
+    res.status(503).json({ error: 'Agentic dialing is currently disabled for security reasons.' });
 });
 
 app.post('/end_call', (req, res) => {

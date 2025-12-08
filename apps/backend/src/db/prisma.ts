@@ -3,13 +3,13 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-let prisma: PrismaClient | null = null;
+let prismaInstance: PrismaClient | null = null;
 
 export function getPrisma() {
-  if (!prisma) {
-    prisma = new PrismaClient();
+  if (!prismaInstance) {
+    prismaInstance = new PrismaClient();
   }
-  return prisma;
+  return prismaInstance;
 }
 
 export const db = getPrisma();
