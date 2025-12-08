@@ -82,7 +82,7 @@ const isExpired = (token?: string | null): boolean => {
 let inflight: Promise<string> | null = null;
 
 // call /token once, cache the promise while it’s running
-// eslint-disable-next-line require-await
+ 
 export const getValidToken = async ({
   assistantId,
 }: {

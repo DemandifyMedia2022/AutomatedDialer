@@ -267,6 +267,50 @@ router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'qa', 'super
   }
 })
 
+// Simple test to check if QA data exists
+router.get('/test-qa-data', async (req: any, res: any, next: any) => {
+  try {
+    // Check if dm_form has any QA status data
+    const qaData = await (db as any).$queryRaw(`
+      SELECT COUNT(*) as count, unique_id, f_qa_status 
+      FROM dm_form 
+      WHERE f_qa_status IS NOT NULL AND f_qa_status != ''
+      GROUP BY unique_id, f_qa_status
+      LIMIT 5
+    `)
+    
+    // Check if calls have matching unique_ids
+    const callsWithQa = await (db as any).$queryRaw(`
+      SELECT 
+        c.id,
+        c.unique_id,
+        c.destination,
+        c.remarks,
+        dm.f_qa_status
+      FROM calls c
+      INNER JOIN dm_form dm ON c.unique_id = dm.unique_id
+      WHERE c.remarks = 'Lead' AND dm.f_qa_status IS NOT NULL
+      LIMIT 5
+    `)
+    
+    console.log('QA Data exists:', qaData)
+    console.log('Calls with QA:', callsWithQa)
+    
+    res.json({ 
+      success: true, 
+      qaData,
+      callsWithQa,
+      message: qaData.length > 0 ? 'QA data found' : 'No QA data found'
+    })
+  } catch (e: any) {
+    console.error('Test error:', e)
+    res.status(500).json({ 
+      success: false, 
+      error: e.message 
+    })
+  }
+})
+
 // Calls for logged-in user
 router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => {
   try {
@@ -342,50 +386,6 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     res.json({ success: true, page, pageSize, total, items })
   } catch (e: any) {
     next(e)
-  }
-})
-
-// Simple test to check if QA data exists
-router.get('/test-qa-data', async (req: any, res: any, next: any) => {
-  try {
-    // Check if dm_form has any QA status data
-    const qaData = await (db as any).$queryRaw(`
-      SELECT COUNT(*) as count, unique_id, f_qa_status 
-      FROM dm_form 
-      WHERE f_qa_status IS NOT NULL AND f_qa_status != ''
-      GROUP BY unique_id, f_qa_status
-      LIMIT 5
-    `)
-    
-    // Check if calls have matching unique_ids
-    const callsWithQa = await (db as any).$queryRaw(`
-      SELECT 
-        c.id,
-        c.unique_id,
-        c.destination,
-        c.remarks,
-        dm.f_qa_status
-      FROM calls c
-      INNER JOIN dm_form dm ON c.unique_id = dm.unique_id
-      WHERE c.remarks = 'Lead' AND dm.f_qa_status IS NOT NULL
-      LIMIT 5
-    `)
-    
-    console.log('QA Data exists:', qaData)
-    console.log('Calls with QA:', callsWithQa)
-    
-    res.json({ 
-      success: true, 
-      qaData,
-      callsWithQa,
-      message: qaData.length > 0 ? 'QA data found' : 'No QA data found'
-    })
-  } catch (e: any) {
-    console.error('Test error:', e)
-    res.status(500).json({ 
-      success: false, 
-      error: e.message 
-    })
   }
 })
 

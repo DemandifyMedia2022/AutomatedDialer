@@ -567,7 +567,7 @@ export default function FollowUpCalls() {
   }
 
   const sortedAndFilteredFollowUps = useMemo(() => {
-    let filtered = followUps.filter(call => {
+    const filtered = followUps.filter(call => {
       const matchesSearch = !searchTerm || 
         (call.destination && call.destination.includes(searchTerm)) ||
         (call.username && call.username.toLowerCase().includes(searchTerm.toLowerCase()))

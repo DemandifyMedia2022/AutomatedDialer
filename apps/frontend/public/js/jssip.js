@@ -16205,13 +16205,13 @@ module.exports = /*#__PURE__*/function () {
       this._warn = debug["default"]("".concat(APP_NAME, ":WARN"));
       this._error = debug["default"]("".concat(APP_NAME, ":ERROR"));
     }
-    /* eslint-disable no-console */
+     
 
 
     this._debug.log = console.info.bind(console);
     this._warn.log = console.warn.bind(console);
     this._error.log = console.error.bind(console);
-    /* eslint-enable no-console */
+     
   }
 
   _createClass(Logger, [{
@@ -24518,13 +24518,13 @@ module.exports = /*#__PURE__*/function (_EventEmitter) {
 
 
       if (method === JsSIP_C.INVITE) {
-        /* eslint-disable no-new */
+         
         new Transactions.InviteServerTransaction(this, this._transport, request);
-        /* eslint-enable no-new */
+         
       } else if (method !== JsSIP_C.ACK && method !== JsSIP_C.CANCEL) {
-        /* eslint-disable no-new */
+         
         new Transactions.NonInviteServerTransaction(this, this._transport, request);
-        /* eslint-enable no-new */
+         
       }
       /* RFC3261 12.2.2
        * Requests that do not change in any way the state of a dialog may be
@@ -26828,7 +26828,7 @@ exports.colors = [
  * TODO: add a `localStorage` variable to explicitly enable/disable colors
  */
 
-// eslint-disable-next-line complexity
+ 
 function useColors() {
 	// NB: In an Electron preload script, document will be defined but not fully
 	// initialized. Since we know we're in Chrome, we'll just detect this case

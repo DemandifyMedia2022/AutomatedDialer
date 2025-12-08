@@ -74,7 +74,7 @@ export default function CampaignsPage() {
 
   const getStatusBadge = (status: string | null) => {
     if (!status) return null
-    
+
     const statusLower = status.toLowerCase()
     if (statusLower === 'active') {
       return (
@@ -102,7 +102,7 @@ export default function CampaignsPage() {
     const totalCampaigns = items.length
     const totalAllocations = items.reduce((sum, c) => sum + (parseInt(c.allocations || '0') || 0), 0)
     const activeCampaigns = items.filter(c => c.status?.toLowerCase() === 'active').length
-    
+
     return { totalCampaigns, totalAllocations, activeCampaigns }
   }
 
@@ -273,9 +273,9 @@ export default function CampaignsPage() {
                       )}
                     </CardContent>
                     <CardFooter className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        className="flex-1 gap-2"
+                      <Button
+                        size="sm"
+                        className="w-full gap-2"
                         onClick={() => {
                           setSelectedCampaign(campaign)
                           setDialingDialogOpen(true)
@@ -283,9 +283,6 @@ export default function CampaignsPage() {
                       >
                         <Play className="h-3 w-3" />
                         Start Dialing
-                      </Button>
-                      <Button size="sm" variant="outline">
-                        View Details
                       </Button>
                     </CardFooter>
                   </Card>

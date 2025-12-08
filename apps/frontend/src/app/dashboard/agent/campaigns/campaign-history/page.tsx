@@ -69,7 +69,7 @@ export default function CampaignHistoryPage() {
 
   const getStatusBadge = (status: string | null) => {
     if (!status) return null
-    
+
     const statusLower = status.toLowerCase()
     if (statusLower === 'active') {
       return (
@@ -96,7 +96,7 @@ export default function CampaignHistoryPage() {
   const calculateMetrics = () => {
     const totalCampaigns = items.length
     const totalAllocations = items.reduce((sum, c) => sum + (parseInt(c.allocations || '0') || 0), 0)
-    
+
     return { totalCampaigns, totalAllocations }
   }
 
@@ -249,11 +249,7 @@ export default function CampaignHistoryPage() {
                         </div>
                       )}
                     </CardContent>
-                    <CardFooter>
-                      <Button size="sm" variant="outline" className="w-full">
-                        View Details
-                      </Button>
-                    </CardFooter>
+
                   </Card>
                 ))}
               </div>

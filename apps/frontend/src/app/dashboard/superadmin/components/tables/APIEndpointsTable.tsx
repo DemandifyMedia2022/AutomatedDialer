@@ -40,8 +40,8 @@ export function APIEndpointsTable({ metrics, isLoading }: APIEndpointsTableProps
     const sorted = [...filteredMetrics]
     
     sorted.sort((a, b) => {
-      let aValue: number | string = a[sortField]
-      let bValue: number | string = b[sortField]
+      const aValue: number | string = a[sortField]
+      const bValue: number | string = b[sortField]
       
       if (typeof aValue === 'string' && typeof bValue === 'string') {
         return sortDirection === 'asc'

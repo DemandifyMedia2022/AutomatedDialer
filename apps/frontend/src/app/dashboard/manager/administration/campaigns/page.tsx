@@ -159,7 +159,7 @@ export default function CampaignsPage() {
     'agent-mike',
   ]
 
-  const filteredAgents = availableAgents.filter((a) => 
+  const filteredAgents = availableAgents.filter((a) =>
     a.toLowerCase().includes((form.assigned_to || '').toLowerCase())
   )
 
@@ -322,10 +322,10 @@ export default function CampaignsPage() {
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-[220px] p-1" align="start">
-                              <Input 
-                                value={form.assigned_to} 
-                                onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))} 
-                                placeholder="Search or type..." 
+                              <Input
+                                value={form.assigned_to}
+                                onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))}
+                                placeholder="Search or type..."
                                 className="h-9 mb-1"
                               />
                               <div className="h-px bg-border my-1" />
@@ -363,10 +363,10 @@ export default function CampaignsPage() {
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-[220px] p-1" align="start">
-                              <button type="button" className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm" onClick={() => { setForm((f)=>({...f, status: ''})); setStatusOpen(false) }}>Clear</button>
+                              <button type="button" className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm" onClick={() => { setForm((f) => ({ ...f, status: '' })); setStatusOpen(false) }}>Clear</button>
                               <div className="h-px bg-border my-1" />
-                              <button type="button" className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm" onClick={() => { setForm((f)=>({...f, status: 'active'})); setStatusOpen(false) }}>Active</button>
-                              <button type="button" className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm" onClick={() => { setForm((f)=>({...f, status: 'inactive'})); setStatusOpen(false) }}>Inactive</button>
+                              <button type="button" className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm" onClick={() => { setForm((f) => ({ ...f, status: 'active' })); setStatusOpen(false) }}>Active</button>
+                              <button type="button" className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm" onClick={() => { setForm((f) => ({ ...f, status: 'inactive' })); setStatusOpen(false) }}>Inactive</button>
                             </PopoverContent>
                           </Popover>
                         </div>
@@ -413,9 +413,9 @@ export default function CampaignsPage() {
                             <Check className="mr-2 size-4" />
                             Save Campaign
                           </Button>
-                          <Button 
-                            type="button" 
-                            variant="outline" 
+                          <Button
+                            type="button"
+                            variant="outline"
                             onClick={() => {
                               setOpen(false)
                               setEditingId(null)
@@ -513,128 +513,161 @@ export default function CampaignsPage() {
             <CardContent className="p-4">
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
-                <thead className="sticky top-0 z-10">
-                  <tr className="text-left border-b bg-muted/50">
-                    <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">#</th>
-                    <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Campaign ID</th>
-                    <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Name</th>
-                    <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Start</th>
-                    <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">End</th>
-                    <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Allocations</th>
-                    <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Assigned To</th>
-                    <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Status</th>
-                    <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Method</th>
-                    <th className="py-3 pr-0 text-right font-semibold text-sm text-muted-foreground">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr><td className="py-12 text-center text-muted-foreground" colSpan={10}>
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                        <span>Loading campaigns...</span>
-                      </div>
-                    </td></tr>
-                  ) : items.length === 0 ? (
-                    <tr><td className="py-12 text-center text-muted-foreground" colSpan={10}>
-                      <div className="flex flex-col items-center gap-2">
-                        <Target className="size-12 opacity-20" />
-                        <span className="font-medium">No campaigns yet</span>
-                        <span className="text-xs">Click "Add Campaign" to create your first campaign</span>
-                      </div>
-                    </td></tr>
-                  ) : (
-                    items.map((c) => (
-                      <tr key={c.id} className="border-b hover:bg-muted/50 transition-colors duration-150">
-                        <td className="py-3 pr-4 font-medium text-muted-foreground">{String( (items.findIndex(x=>x.id===c.id)) + 1 )}</td>
-                        <td className="py-3 pr-4 font-medium">{c.campaign_id ?? '-'}</td>
-                        <td className="py-3 pr-4 font-medium">{c.campaign_name ?? '-'}</td>
-                        <td className="py-3 pr-4 text-muted-foreground">{c.start_date ? new Date(c.start_date).toLocaleDateString('en-GB') : '-'}</td>
-                        <td className="py-3 pr-4 text-muted-foreground">{c.end_date ? new Date(c.end_date).toLocaleDateString('en-GB') : '-'}</td>
-                        <td className="py-3 pr-4">{c.allocations ?? '-'}</td>
-                        <td className="py-3 pr-4">
-                          {c.assigned_to ? (
-                            <Badge variant="outline" className="font-normal">
-                              <UsersIcon className="size-3 mr-1" />
-                              {c.assigned_to}
-                            </Badge>
-                          ) : (
-                            '-'
-                          )}
-                        </td>
-                        <td className="py-2.5 pr-4">
-                          {c.status ? (
-                            <Badge 
-                              variant={c.status.toLowerCase() === 'active' ? 'default' : 'secondary'}
-                              className={
-                                c.status.toLowerCase() === 'active'
-                                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 dark:bg-emerald-500/15 dark:border-emerald-500/30'
-                                  : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 dark:bg-amber-500/15 dark:border-amber-500/30'
-                              }
-                            >
-                              {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
-                            </Badge>
-                          ) : (
-                            '-'
-                          )}
-                        </td>
-                        <td className="py-3 pr-4">
-                          {c.method ? (
-                            <div className="flex flex-wrap gap-1">
-                              {c.method.split(',').slice(0, 2).map((m, idx) => (
-                                <Badge key={idx} variant="secondary" className="text-xs">
-                                  {m.trim()}
-                                </Badge>
-                              ))}
-                              {c.method.split(',').length > 2 && (
-                                <Badge variant="secondary" className="text-xs">
-                                  +{c.method.split(',').length - 2}
-                                </Badge>
-                              )}
-                            </div>
-                          ) : (
-                            '-'
-                          )}
-                        </td>
-                        <td className="py-3 pr-0 text-right">
-                          <DropdownMenu.Root>
-                            <DropdownMenu.Trigger asChild>
-                              <Button variant="ghost" size="icon" aria-label="More" className="hover:bg-muted">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
-                              </Button>
-                            </DropdownMenu.Trigger>
-                            <DropdownMenu.Portal>
-                              <DropdownMenu.Content align="end" sideOffset={4} className="min-w-[160px] rounded-md border bg-background p-1 shadow-md z-50">
-                                <DropdownMenu.Item className="px-3 py-2 rounded hover:bg-muted cursor-pointer flex items-center gap-2 text-sm" onSelect={() => {
-                                  setEditingId(c.id)
-                                  setForm({
-                                    campaign_id: c.campaign_id != null ? String(c.campaign_id) : "",
-                                    campaign_name: c.campaign_name || "",
-                                    start_date: formatDateInput(c.start_date),
-                                    end_date: formatDateInput(c.end_date),
-                                    allocations: c.allocations || "",
-                                    assigned_to: c.assigned_to || "",
-                                    status: c.status || "",
-                                    method: c.method ? c.method.split(',').map(s => s.trim()).filter(Boolean) : [],
-                                  })
-                                  setOpen(true)
-                                }}>
-                                  <Pencil className="size-4" />
-                                  Edit
-                                </DropdownMenu.Item>
-                                <DropdownMenu.Item className="px-3 py-2 rounded hover:bg-destructive/10 text-destructive cursor-pointer flex items-center gap-2 text-sm" onSelect={() => onDelete(c.id)}>
-                                  <Trash2 className="size-4" />
-                                  Delete
-                                </DropdownMenu.Item>
-                              </DropdownMenu.Content>
-                            </DropdownMenu.Portal>
-                          </DropdownMenu.Root>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                  <thead className="sticky top-0 z-10">
+                    <tr className="text-left border-b bg-muted/50">
+                      <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">#</th>
+                      <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Campaign ID</th>
+                      <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Name</th>
+                      <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Start</th>
+                      <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">End</th>
+                      <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Allocations</th>
+                      <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Assigned To</th>
+                      <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Status</th>
+                      <th className="py-3 pr-4 font-semibold text-sm text-muted-foreground">Method</th>
+                      <th className="py-3 pr-0 text-right font-semibold text-sm text-muted-foreground">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr><td className="py-12 text-center text-muted-foreground" colSpan={10}>
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                          <span>Loading campaigns...</span>
+                        </div>
+                      </td></tr>
+                    ) : items.length === 0 ? (
+                      <tr><td className="py-12 text-center text-muted-foreground" colSpan={10}>
+                        <div className="flex flex-col items-center gap-2">
+                          <Target className="size-12 opacity-20" />
+                          <span className="font-medium">No campaigns yet</span>
+                          <span className="text-xs">Click "Add Campaign" to create your first campaign</span>
+                        </div>
+                      </td></tr>
+                    ) : (
+                      items.map((c) => (
+                        <tr key={c.id} className="border-b hover:bg-muted/50 transition-colors duration-150">
+                          <td className="py-3 pr-4 font-medium text-muted-foreground">{String((items.findIndex(x => x.id === c.id)) + 1)}</td>
+                          <td className="py-3 pr-4 font-medium">{c.campaign_id ?? '-'}</td>
+                          <td className="py-3 pr-4 font-medium">{c.campaign_name ?? '-'}</td>
+                          <td className="py-3 pr-4 text-muted-foreground">{c.start_date ? new Date(c.start_date).toLocaleDateString('en-GB') : '-'}</td>
+                          <td className="py-3 pr-4 text-muted-foreground">{c.end_date ? new Date(c.end_date).toLocaleDateString('en-GB') : '-'}</td>
+                          <td className="py-3 pr-4">{c.allocations ?? '-'}</td>
+                          <td className="py-3 pr-4">
+                            {c.assigned_to ? (
+                              <Badge variant="outline" className="font-normal">
+                                <UsersIcon className="size-3 mr-1" />
+                                {c.assigned_to}
+                              </Badge>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td className="py-2.5 pr-4">
+                            {c.status ? (
+                              <Badge
+                                variant={c.status.toLowerCase() === 'active' ? 'default' : 'secondary'}
+                                className={
+                                  c.status.toLowerCase() === 'active'
+                                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 dark:bg-emerald-500/15 dark:border-emerald-500/30'
+                                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 dark:bg-amber-500/15 dark:border-amber-500/30'
+                                }
+                              >
+                                {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
+                              </Badge>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td className="py-3 pr-4">
+                            {c.method ? (
+                              <div className="flex flex-wrap gap-1">
+                                {c.method.split(',').slice(0, 2).map((m, idx) => (
+                                  <Badge key={idx} variant="secondary" className="text-xs">
+                                    {m.trim()}
+                                  </Badge>
+                                ))}
+                                {c.method.split(',').length > 2 && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    +{c.method.split(',').length - 2}
+                                  </Badge>
+                                )}
+                              </div>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td className="py-3 pr-0 text-right">
+                            <DropdownMenu.Root>
+                              <DropdownMenu.Trigger asChild>
+                                <Button variant="ghost" size="icon" aria-label="More" className="hover:bg-muted">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" /></svg>
+                                </Button>
+                              </DropdownMenu.Trigger>
+                              <DropdownMenu.Portal>
+                                <DropdownMenu.Content align="end" sideOffset={4} className="min-w-[160px] rounded-md border bg-background p-1 shadow-md z-50">
+                                  <DropdownMenu.Item className="px-3 py-2 rounded hover:bg-muted cursor-pointer flex items-center gap-2 text-sm" onSelect={() => {
+                                    setEditingId(c.id)
+                                    setForm({
+                                      campaign_id: c.campaign_id != null ? String(c.campaign_id) : "",
+                                      campaign_name: c.campaign_name || "",
+                                      start_date: formatDateInput(c.start_date),
+                                      end_date: formatDateInput(c.end_date),
+                                      allocations: c.allocations || "",
+                                      assigned_to: c.assigned_to || "",
+                                      status: c.status || "",
+                                      method: c.method ? c.method.split(',').map(s => s.trim()).filter(Boolean) : [],
+                                    })
+                                    setOpen(true)
+                                  }}>
+                                    <Pencil className="size-4" />
+                                    Edit
+                                  </DropdownMenu.Item>
+                                  <DropdownMenu.Item className="px-3 py-2 rounded hover:bg-muted cursor-pointer flex items-center gap-2 text-sm" onSelect={() => {
+                                    setEditingId(c.id)
+                                    setForm({
+                                      campaign_id: c.campaign_id != null ? String(c.campaign_id) : "",
+                                      campaign_name: c.campaign_name || "",
+                                      start_date: formatDateInput(c.start_date),
+                                      end_date: formatDateInput(c.end_date),
+                                      allocations: c.allocations || "",
+                                      assigned_to: c.assigned_to || "",
+                                      status: "active", // Auto-set to active for extension
+                                      method: c.method ? c.method.split(',').map(s => s.trim()).filter(Boolean) : [],
+                                    })
+                                    setOpen(true)
+                                  }}>
+                                    <CalendarIcon className="size-4" />
+                                    Extend
+                                  </DropdownMenu.Item>
+                                  {c.status?.toLowerCase() === 'active' && (
+                                    <DropdownMenu.Item className="px-3 py-2 rounded hover:bg-muted cursor-pointer flex items-center gap-2 text-sm text-amber-600" onSelect={async () => {
+                                      if (!confirm('End this campaign now?')) return
+                                      try {
+                                        const res = await fetch(`${API_PREFIX}/campaigns/${c.id}`, {
+                                          method: 'PUT',
+                                          headers,
+                                          body: JSON.stringify({ status: 'inactive' })
+                                        })
+                                        if (res.ok) await fetchItems()
+                                      } catch { }
+                                    }}>
+                                      <AlertCircle className="size-4" />
+                                      End Campaign
+                                    </DropdownMenu.Item>
+                                  )}
+                                  <DropdownMenu.Item className="px-3 py-2 rounded hover:bg-destructive/10 text-destructive cursor-pointer flex items-center gap-2 text-sm" onSelect={() => onDelete(c.id)}>
+                                    <Trash2 className="size-4" />
+                                    Delete
+                                  </DropdownMenu.Item>
+                                </DropdownMenu.Content>
+                              </DropdownMenu.Portal>
+                            </DropdownMenu.Root>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>
