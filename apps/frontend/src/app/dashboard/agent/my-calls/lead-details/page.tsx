@@ -27,6 +27,7 @@ type LeadRow = {
   remarks: string | null
   recording_url?: string | null
   recording_filename?: string | null
+  qa_status?: string | null
 }
 
 const LeadDetailsPage = () => {
@@ -199,6 +200,13 @@ const LeadDetailsPage = () => {
         // Ensure we only keep rows where remarks is exactly 'Lead'
         rows = rows.filter(row => row.remarks === 'Lead')
         console.log('Filtered Rows:', rows) // Debug log
+        console.log('Sample QA Status:', rows[0]?.qa_status) // Debug QA status specifically
+        
+        // Log each row's QA status
+        rows.forEach((row, index) => {
+          console.log(`Row ${index}: ID=${row.id}, unique_id=${row.unique_id}, qa_status=${row.qa_status}`)
+        })
+        
         setItems(rows.map(r => {
           console.log('Processing row:', r) // Debug log
           return {
@@ -213,7 +221,9 @@ const LeadDetailsPage = () => {
             remarks: r.remarks ?? null,
             // Use the recording URL from the API response
             recording_url: r.recording_url || r.recording || null,
-            recording_filename: r.recording_filename || `recording-${r.id}.mp3`
+            recording_filename: r.recording_filename || `recording-${r.id}.mp3`,
+            // Add QA status from the joined dm_form table
+            qa_status: r.qa_status ?? null
           }
         }))
         setTotal(Number(data?.total || rows.length))
@@ -323,13 +333,14 @@ const LeadDetailsPage = () => {
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">End Time (UTC)</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Call Duration</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Remarks</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">QA Status</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Recording</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {items.length === 0 && (
                     <tr>
-                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={7}>
+                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={9}>
                         {loading ? "Loading…" : "No records"}
                       </td>
                     </tr>
@@ -344,6 +355,24 @@ const LeadDetailsPage = () => {
                       <td className="px-4 py-3">{toUtc(row.end_time)}</td>
                       <td className="px-4 py-3">{fmtDur(row.call_duration)}</td>
                       <td className="px-4 py-3">{row.remarks || "-"}</td>
+                      <td className="px-4 py-3">
+                        {row.qa_status ? (
+                          <>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              row.qa_status.toLowerCase() === 'approved' ? 'bg-green-100 text-green-800' :
+                              row.qa_status.toLowerCase() === 'rejected' ? 'bg-red-100 text-red-800' :
+                              row.qa_status.toLowerCase() === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {row.qa_status}
+                            </span>
+                            {/* Debug: Show raw value */}
+                            <span className="ml-1 text-xs text-gray-500">({row.qa_status})</span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         {row.recording_url ? (
                           <CompactAudio src={row.recording_url} name={row.id} />

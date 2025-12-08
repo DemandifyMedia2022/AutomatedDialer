@@ -262,7 +262,7 @@ router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'qa', 'super
       id: typeof r.id === 'bigint' ? Number(r.id) : r.id,
     }))
     res.json({ success: true, page, pageSize, total: Number(total), items: safeItems })
-  } catch (e) {
+  } catch (e: any) {
     next(e)
   }
 })
@@ -300,13 +300,175 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     const qDir = (req.query.direction || '').toString().trim()
     if (qDir) where.AND.push({ direction: qDir })
 
+    // Build the WHERE clause manually for the raw query
+    let whereClause = '('
+    const conditions = []
+    if (username) conditions.push(`c.username = '${username}'`)
+    if (usermail) conditions.push(`c.useremail = '${usermail}'`)
+    if (extension) conditions.push(`c.extension = '${extension}'`)
+    if (conditions.length === 0) conditions.push('1=0')
+    whereClause += conditions.join(' OR ') + ')'
+    
+    if (from || to) {
+      whereClause += ` AND (c.start_time >= '${from || '1970-01-01'}' AND c.start_time <= '${to || new Date().toISOString()}')`
+    }
+    if (qDest) whereClause += ` AND c.destination LIKE '%${qDest}%'`
+    if (qExt) whereClause += ` AND c.extension = '${qExt}'`
+    if (qStatus) whereClause += ` AND c.disposition = '${qStatus}'`
+    if (qDir) whereClause += ` AND c.direction = '${qDir}'`
+
+    // Debug: Log the actual SQL being executed
+    const sql = `
+      SELECT 
+        c.*,
+        COALESCE(dm.f_qa_status, NULL) as qa_status
+      FROM calls c
+      LEFT JOIN dm_form dm ON TRIM(c.unique_id) = TRIM(dm.unique_id)
+      WHERE ${whereClause}
+      ORDER BY c.start_time DESC
+      LIMIT ${pageSize} OFFSET ${skip}
+    `
+    console.log('Executing SQL:', sql)
+    console.log('Where clause:', whereClause)
+
     const [total, items] = await Promise.all([
       (db as any).calls.count({ where }),
-      (db as any).calls.findMany({ where, orderBy: { start_time: 'desc' }, skip, take: pageSize }),
+      (db as any).$queryRaw(sql),
     ])
 
+    console.log('Query results:', items?.slice(0, 2)) // Log first 2 results for debugging
+    console.log('Sample QA status from DB:', items?.[0]?.qa_status) // Check QA status specifically
+
     res.json({ success: true, page, pageSize, total, items })
+  } catch (e: any) {
+    next(e)
+  }
+})
+
+// Simple test to check if QA data exists
+router.get('/test-qa-data', async (req: any, res: any, next: any) => {
+  try {
+    // Check if dm_form has any QA status data
+    const qaData = await (db as any).$queryRaw(`
+      SELECT COUNT(*) as count, unique_id, f_qa_status 
+      FROM dm_form 
+      WHERE f_qa_status IS NOT NULL AND f_qa_status != ''
+      GROUP BY unique_id, f_qa_status
+      LIMIT 5
+    `)
+    
+    // Check if calls have matching unique_ids
+    const callsWithQa = await (db as any).$queryRaw(`
+      SELECT 
+        c.id,
+        c.unique_id,
+        c.destination,
+        c.remarks,
+        dm.f_qa_status
+      FROM calls c
+      INNER JOIN dm_form dm ON c.unique_id = dm.unique_id
+      WHERE c.remarks = 'Lead' AND dm.f_qa_status IS NOT NULL
+      LIMIT 5
+    `)
+    
+    console.log('QA Data exists:', qaData)
+    console.log('Calls with QA:', callsWithQa)
+    
+    res.json({ 
+      success: true, 
+      qaData,
+      callsWithQa,
+      message: qaData.length > 0 ? 'QA data found' : 'No QA data found'
+    })
+  } catch (e: any) {
+    console.error('Test error:', e)
+    res.status(500).json({ 
+      success: false, 
+      error: e.message 
+    })
+  }
+})
+
+// Public debug endpoint (no auth required) to test the join
+router.get('/debug-qa-join', async (req: any, res: any, next: any) => {
+  try {
+    // Test basic join without filters
+    const results = await (db as any).$queryRaw(`
+      SELECT 
+        c.id as call_id,
+        c.unique_id as call_unique_id,
+        c.destination,
+        c.remarks,
+        dm.unique_id as dm_unique_id,
+        dm.f_qa_status,
+        CASE WHEN TRIM(c.unique_id) = TRIM(dm.unique_id) THEN 'MATCH' ELSE 'NO MATCH' END as match_status
+      FROM calls c
+      LEFT JOIN dm_form dm ON TRIM(c.unique_id) = TRIM(dm.unique_id)
+      WHERE c.remarks = 'Lead'
+      ORDER BY c.start_time DESC
+      LIMIT 3
+    `)
+    
+    res.json({ 
+      success: true, 
+      results,
+      count: results.length
+    })
+  } catch (e: any) {
+    console.error('Debug join error:', e)
+    res.status(500).json({ 
+      success: false, 
+      error: e?.message || 'Unknown error occurred'
+    })
+  }
+})
+
+// Test endpoint to verify QA status join
+router.get('/calls/test-qa', requireAuth, async (req: any, res: any, next: any) => {
+  try {
+    // First check if dm_form has any QA status data
+    const dmFormData = await (db as any).$queryRaw(`
+      SELECT unique_id, f_qa_status 
+      FROM dm_form 
+      WHERE f_qa_status IS NOT NULL AND f_qa_status != ''
+      LIMIT 5
+    `)
+    
+    // Then check calls with unique_ids
+    const callsData = await (db as any).$queryRaw(`
+      SELECT id, unique_id, destination, remarks
+      FROM calls 
+      WHERE remarks = 'Lead' AND unique_id IS NOT NULL
+      LIMIT 5
+    `)
+    
+    // Finally test the join
+    const joinResults = await (db as any).$queryRaw(`
+      SELECT 
+        c.id as call_id,
+        c.unique_id,
+        c.destination,
+        dm.f_qa_status
+      FROM calls c
+      LEFT JOIN dm_form dm ON c.unique_id = dm.unique_id
+      WHERE c.remarks = 'Lead'
+      ORDER BY c.start_time DESC
+      LIMIT 5
+    `)
+    
+    console.log('DM Form data:', dmFormData)
+    console.log('Calls data:', callsData)
+    console.log('Join results:', joinResults)
+    
+    res.json({ 
+      success: true, 
+      dmFormData,
+      callsData,
+      joinResults,
+      message: dmFormData.length > 0 ? 'DM Form has QA data' : 'No QA data found in DM Form'
+    })
   } catch (e) {
+    console.error('Test QA join error:', e)
     next(e)
   }
 })
@@ -332,7 +494,7 @@ router.post('/calls/phase', requireAuth, async (req: any, res: any, next: any) =
     await updateLiveCallPhase(req, phase, callId)
 
     res.json({ success: true })
-  } catch (e) {
+  } catch (e: any) {
     next(e)
   }
 })

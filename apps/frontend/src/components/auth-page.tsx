@@ -250,6 +250,7 @@ export function AuthPage() {
 										name="email"
 										placeholder="m@example.com or DM-AB-0001"
 										type="text"
+										autoComplete="username"
 										required
 									/>
 									<InputGroupAddon>
@@ -277,6 +278,7 @@ export function AuthPage() {
 										name="password"
 										placeholder="Enter your password"
 										type="password"
+										autoComplete="current-password"
 										required
 									/>
 									<InputGroupAddon>
@@ -357,7 +359,7 @@ export function AuthPage() {
 						<form onSubmit={submitReset} className="flex flex-col gap-4">
 							<Field>
 								<FieldLabel htmlFor="fp-newpass">New password</FieldLabel>
-								<Input id="fp-newpass" type="password" required value={fpPassword} onChange={(e) => setFpPassword(e.target.value)} />
+								<Input id="fp-newpass" type="password" autoComplete="new-password" required value={fpPassword} onChange={(e) => setFpPassword(e.target.value)} />
 							</Field>
 							{fpMessage ? <p className="text-destructive text-sm">{fpMessage}</p> : null}
 							<div className="flex gap-2">
