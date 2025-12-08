@@ -33,7 +33,7 @@ import { transcribeCallRecordingForCall } from '../services/transcriptionService
 const router = Router();
 
 // Start background sweepers (idempotent)
-try { startLiveCallsSweeper() } catch {}
+try { startLiveCallsSweeper() } catch { }
 
 router.get('/health', health);
 router.use('/auth', auth);

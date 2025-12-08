@@ -24,7 +24,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage })
 
 // List documents (agents see org/public; managers see all)
-router.get('/', requireAuth, requireRoles(['agent','manager','superadmin']), async (req: any, res: any, next: any) => {
+router.get('/', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1)
     const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize || '20'), 10) || 20))
@@ -56,8 +56,78 @@ router.get('/', requireAuth, requireRoles(['agent','manager','superadmin']), asy
   } catch (e) { next(e) }
 })
 
+// Get single document
+router.get('/:id', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
+  try {
+    const id = parseInt(String(req.params.id || ''), 10)
+    if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ success: false, message: 'Invalid id' })
+
+    const pool = getPool()
+    const [rows]: any = await pool.query(
+      `SELECT id, type, title, description, file_url, file_mime, file_size_bytes, content_richtext,
+              version, tags_csv, created_by, visibility, created_at, updated_at
+       FROM documents WHERE id = ?`,
+      [id]
+    )
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Not found' })
+    res.json(rows[0])
+  } catch (e) { next(e) }
+})
+
+// Update document
+const updateMiddlewares: any[] = [requireAuth, requireRoles(['manager', 'superadmin'])]
+if (env.USE_AUTH_COOKIE) updateMiddlewares.push(csrfProtect)
+
+router.put('/:id', ...updateMiddlewares, upload.single('file'), async (req: any, res: any, next: any) => {
+  try {
+    const id = parseInt(String(req.params.id || ''), 10)
+    if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ success: false, message: 'Invalid id' })
+
+    const parsed = CreateDocSchema.partial().safeParse(req.body || {})
+    if (!parsed.success) return res.status(400).json({ success: false, message: 'Invalid payload', issues: parsed.error.flatten() })
+    const b = parsed.data
+
+    const pool = getPool()
+    // Check existence
+    const [existing]: any = await pool.query('SELECT id FROM documents WHERE id = ?', [id])
+    if (!existing.length) return res.status(404).json({ success: false, message: 'Not found' })
+
+    const updates: string[] = []
+    const params: any[] = []
+
+    if (b.type) { updates.push('type = ?'); params.push(b.type) }
+    if (b.title) { updates.push('title = ?'); params.push(b.title) }
+    if (b.description !== undefined) { updates.push('description = ?'); params.push(b.description) }
+    if (b.visibility) { updates.push('visibility = ?'); params.push(b.visibility) }
+    if (b.tags_csv !== undefined) { updates.push('tags_csv = ?'); params.push(b.tags_csv) }
+    if (b.content_richtext !== undefined) { updates.push('content_richtext = ?'); params.push(b.content_richtext) }
+
+    const file = req.file
+    if (file) {
+      const file_url = `${env.PUBLIC_BASE_URL}/uploads/${file.filename}`
+      updates.push('file_url = ?', 'file_mime = ?', 'file_size_bytes = ?')
+      params.push(file_url, file.mimetype, Number(file.size || 0))
+    }
+
+    if (updates.length === 0) return res.json({ success: true, message: 'No changes' })
+
+    updates.push('version = version + 1')
+
+    params.push(id)
+    await pool.query(`UPDATE documents SET ${updates.join(', ')} WHERE id = ?`, params)
+
+    const [rows]: any = await pool.query(
+      `SELECT id, type, title, description, file_url, file_mime, file_size_bytes, content_richtext,
+              version, tags_csv, created_by, visibility, created_at, updated_at
+       FROM documents WHERE id = ?`,
+      [id]
+    )
+    res.json(rows[0])
+  } catch (e) { next(e) }
+})
+
 // Delete document
-const deleteMiddlewares: any[] = [requireAuth, requireRoles(['manager','superadmin'])]
+const deleteMiddlewares: any[] = [requireAuth, requireRoles(['manager', 'superadmin'])]
 if (env.USE_AUTH_COOKIE) deleteMiddlewares.push(csrfProtect)
 
 router.delete('/:id', ...deleteMiddlewares, async (req: any, res: any, next: any) => {
@@ -74,15 +144,15 @@ router.delete('/:id', ...deleteMiddlewares, async (req: any, res: any, next: any
 })
 
 const CreateDocSchema = z.object({
-  type: z.enum(['template','guide','playbook','snippet','other']).default('guide'),
+  type: z.enum(['template', 'guide', 'playbook', 'snippet', 'other']).default('guide'),
   title: z.string().min(1),
   description: z.string().default(''),
-  visibility: z.enum(['private','org','public']).default('org'),
+  visibility: z.enum(['private', 'org', 'public']).default('org'),
   tags_csv: z.string().default(''),
   content_richtext: z.string().optional().nullable(),
 })
 
-const createMiddlewares: any[] = [requireAuth, requireRoles(['manager','superadmin'])]
+const createMiddlewares: any[] = [requireAuth, requireRoles(['manager', 'superadmin'])]
 if (env.USE_AUTH_COOKIE) createMiddlewares.push(csrfProtect)
 
 // Create document (either file upload or text-only)

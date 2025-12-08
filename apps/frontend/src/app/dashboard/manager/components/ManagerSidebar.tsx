@@ -29,7 +29,7 @@ const data = {
   navMain: [
     {
       title: "Monitoring",
-      url: "#", 
+      url: "#",
       icon: Users,
       items: [
         { title: "Track Agent", url: "/dashboard/manager/monitoring/track-agent" },
@@ -68,6 +68,7 @@ const data = {
       title: "Agentic Dialer",
       url: "/dashboard/manager/agentic-dialing",
       icon: Bot,
+      badge: "Beta",
       items: [
         { title: "Dialer", url: "/dashboard/manager/agentic-dialing" },
         { title: "Campaigns", url: "/dashboard/manager/agentic-dialing/campaigns" },
@@ -92,12 +93,12 @@ export function ManagerSidebar({ ...props }: React.ComponentProps<typeof Sidebar
   const displayUser = {
     name: user?.email
       ? user.email
-          .split("@")[0]
-          .replace(/[._-]+/g, " ")
-          .split(" ")
-          .filter(Boolean)
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-          .join(" ")
+        .split("@")[0]
+        .replace(/[._-]+/g, " ")
+        .split(" ")
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ")
       : data.user.name,
     email: user?.email || data.user.email,
     avatar: "",

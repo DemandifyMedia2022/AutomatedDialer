@@ -1,6 +1,7 @@
 "use client"
 
 import { ChevronRight, type LucideIcon } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 
 import {
   Collapsible,
@@ -26,6 +27,7 @@ export function NavMain({
     url: string
     icon?: LucideIcon
     isActive?: boolean
+    badge?: string
     items?: {
       title: string
       url: string
@@ -48,6 +50,11 @@ export function NavMain({
                 <SidebarMenuButton tooltip={item.title}>
                   {item.icon && <item.icon />}
                   <span>{item.title}</span>
+                  {item.badge && (
+                    <Badge variant="secondary" className="ml-2 text-[10px] h-5 px-1.5 min-w-0 shrink-0">
+                      {item.badge}
+                    </Badge>
+                  )}
                   <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                 </SidebarMenuButton>
               </CollapsibleTrigger>
