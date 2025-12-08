@@ -16,11 +16,41 @@ const baseDir = path.isAbsolute(env.RECORDINGS_DIR)
   : path.resolve(process.cwd(), 'uploads/sheets')
 if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir, { recursive: true })
 
+// Allowed sheet extensions
+const ALLOWED_EXTENSIONS = ['.csv', '.xlsx', '.xls']
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, baseDir),
-  filename: (_req, file, cb) => cb(null, file.originalname.replace(/[^A-Za-z0-9._-]/g, '_')),
+  filename: (_req, file, cb) => {
+    const originalName = file.originalname.replace(/[^A-Za-z0-9._-]/g, '_')
+    // Ensure we keep the extension
+    const ext = path.extname(originalName).toLowerCase()
+
+    // Safety check for extension
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      // If extension is not allowed (should be caught by fileFilter),
+      // but double check here. Append .csv as safe default if unclear.
+      return cb(null, `${originalName}.csv`)
+    }
+
+    cb(null, originalName)
+  },
 })
-const upload = multer({ storage })
+
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit
+  },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase()
+    if (ALLOWED_EXTENSIONS.includes(ext)) {
+      cb(null, true)
+    } else {
+      cb(new Error('Invalid file type. Only CSV and Excel files are allowed.'))
+    }
+  }
+})
 
 async function ensureTable() {
   const pool = getPool()

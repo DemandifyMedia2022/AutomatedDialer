@@ -15,15 +15,40 @@ const router = Router()
 const recordingsPath = path.isAbsolute(env.RECORDINGS_DIR)
   ? env.RECORDINGS_DIR
   : path.resolve(process.cwd(), env.RECORDINGS_DIR)
+
+// Allowed audio extensions
+const ALLOWED_EXTENSIONS = ['.webm', '.mp3', '.wav', '.ogg', '.m4a']
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, recordingsPath),
   filename: (_req, file, cb) => {
     const ts = Date.now()
-    const ext = path.extname(file.originalname) || '.webm'
+    const ext = path.extname(file.originalname).toLowerCase() || '.webm'
+
+    // Safety check for extension
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      // Fallback to .webm if invalid or unknown
+      return cb(null, `rec_${ts}.webm`)
+    }
+
     cb(null, `rec_${ts}${ext}`)
   },
 })
-const upload = multer({ storage })
+
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit
+  },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase()
+    if (ALLOWED_EXTENSIONS.includes(ext)) {
+      cb(null, true)
+    } else {
+      cb(new Error('Invalid file type'))
+    }
+  }
+})
 
 // Lightweight in-memory rate limiter for calls routes
 function makeLimiter({ windowMs, limit }: { windowMs: number; limit: number }) {
@@ -88,7 +113,14 @@ const callsHandler = async (req: any, res: any, next: any) => {
       ? `${env.PUBLIC_BASE_URL}/uploads/${file.filename}`
       : b.recording_url || null
 
-    try { console.log('[calls] incoming body', b) } catch { }
+    try {
+      // Redact sensitive info in logs
+      const safeBody = { ...b }
+      if (safeBody.prospect_name) safeBody.prospect_name = '***'
+      if (safeBody.prospect_email) safeBody.prospect_email = '***'
+      if (safeBody.destination) safeBody.destination = '***'
+      console.log('[calls] incoming body', safeBody)
+    } catch { }
     try { console.log('[calls] file', !!file, 'recording_url', recording_url) } catch { }
 
     // Fallback: if username not provided, use authenticated user's name
@@ -303,7 +335,7 @@ router.post('/calls/phase', requireAuth, async (req: any, res: any, next: any) =
   } catch (e) {
     next(e)
   }
-}) // <--- Added missing closing brace
+})
 
 // Update a call (for scheduling follow-ups)
 router.patch('/:id', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {

@@ -22,48 +22,59 @@ export async function setupSuperadmin(req: Request, res: Response) {
       return res.status(400).json({ success: false, message: 'Invalid payload', issues: parsed.error.flatten() });
     }
 
-    const totalUsers = await db.users.count();
-    if (totalUsers > 0) {
-      return res.status(403).json({ success: false, message: 'Already initialized' });
-    }
+    // Use a transaction to prevent race conditions during initial setup
+    const result = await db.$transaction(async (tx) => {
+      const totalUsers = await tx.users.count();
+      if (totalUsers > 0) {
+        return { success: false, message: 'Already initialized' };
+      }
 
-    const { username, usermail, password } = parsed.data;
+      const { username, usermail, password } = parsed.data;
 
-    const existing = await db.users.findFirst({ where: { usermail } });
-    if (existing) {
-      return res.status(409).json({ success: false, message: 'User already exists' });
-    }
+      // Note: check for existing usermail shouldn't be needed if totalUsers is 0,
+      // but good for safety if logic changes.
+      const existing = await tx.users.findFirst({ where: { usermail } });
+      if (existing) {
+        return { success: false, message: 'User already exists' };
+      }
 
-    const hash = await bcrypt.hash(password, 10);
+      const hash = await bcrypt.hash(password, 10);
 
-    // Generate unique_user_id as DM-<INITIALS>-#### using last serial per initials
-    const initFromName = (name: string) => name.split(/\s+/).filter(Boolean).map(w => w[0] || '').join('')
-    const rawInitials = (initFromName(username || '') || (usermail.split('@')[0] || ''))
-    const lettersOnly = rawInitials.replace(/[^A-Za-z]/g, '')
-    const initials = (lettersOnly || 'XX').slice(0, 2).toUpperCase()
-    const prefix = `DM-${initials}-`
-    const last = await db.users.findFirst({
-      where: { unique_user_id: { startsWith: prefix } },
-      select: { unique_user_id: true },
-      orderBy: { unique_user_id: 'desc' },
-    })
-    const lastNum = last?.unique_user_id?.match(/^(?:DM-[A-Z]{1,2}-)(\d{4})$/)?.[1]
-    const next = (lastNum ? parseInt(lastNum, 10) + 1 : 1)
-    const uniqueId = `${prefix}${String(next).padStart(4, '0')}`
+      // Generate unique_user_id as DM-<INITIALS>-#### using last serial per initials
+      const initFromName = (name: string) => name.split(/\s+/).filter(Boolean).map(w => w[0] || '').join('')
+      const rawInitials = (initFromName(username || '') || (usermail.split('@')[0] || ''))
+      const lettersOnly = rawInitials.replace(/[^A-Za-z]/g, '')
+      const initials = (lettersOnly || 'XX').slice(0, 2).toUpperCase()
+      const prefix = `DM-${initials}-`
+      const last = await tx.users.findFirst({
+        where: { unique_user_id: { startsWith: prefix } },
+        select: { unique_user_id: true },
+        orderBy: { unique_user_id: 'desc' },
+      })
+      const lastNum = last?.unique_user_id?.match(/^(?:DM-[A-Z]{1,2}-)(\d{4})$/)?.[1]
+      const next = (lastNum ? parseInt(lastNum, 10) + 1 : 1)
+      const uniqueId = `${prefix}${String(next).padStart(4, '0')}`
 
-    const user = await db.users.create({
-      data: {
-        role: 'superadmin',
-        unique_user_id: uniqueId,
-        username,
-        usermail,
-        password: hash,
-        status: 'active',
-      },
-      select: { id: true, role: true, username: true, usermail: true, created_at: true, unique_user_id: true },
+      const user = await tx.users.create({
+        data: {
+          role: 'superadmin',
+          unique_user_id: uniqueId,
+          username,
+          usermail,
+          password: hash,
+          status: 'active',
+        },
+        select: { id: true, role: true, username: true, usermail: true, created_at: true, unique_user_id: true },
+      });
+
+      return { success: true, user };
     });
 
-    return res.status(201).json({ success: true, user });
+    if (!result.success) {
+      return res.status(403).json(result);
+    }
+
+    return res.status(201).json(result);
   } catch (e: any) {
     return res.status(500).json({ success: false, message: e?.message || 'Setup failed' });
   }

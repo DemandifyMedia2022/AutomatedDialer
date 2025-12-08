@@ -22,7 +22,13 @@ export function createApp() {
     ? env.RECORDINGS_DIR
     : path.resolve(process.cwd(), env.RECORDINGS_DIR);
   fs.mkdirSync(recordingsPath, { recursive: true });
-  app.use('/uploads', express.static(recordingsPath));
+
+  // Serve uploads with Content-Disposition attachment to prevent XSS
+  app.use('/uploads', express.static(recordingsPath, {
+    setHeaders: (res, path) => {
+      res.setHeader('Content-Disposition', 'attachment');
+    }
+  }));
  
   // API metrics collection middleware (tracks performance for superadmin dashboard)
   app.use('/api', apiMetrics);
