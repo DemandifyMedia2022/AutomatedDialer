@@ -3,7 +3,7 @@
 import React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Download, Play, Pause, ChevronDownIcon } from "lucide-react"
+import { Download, Play, Pause, ChevronDownIcon, FileDown } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
@@ -254,6 +254,36 @@ const LeadDetailsPage = () => {
     setPage(1)
     fetchLeads(1)
   }
+  const exportToCSV = React.useCallback(() => {
+    const headers = ['ID', 'User', 'Destination', 'Start Time (UTC)', 'End Time (UTC)', 'Call Duration', 'Remarks', 'QA Status', 'Recording URL']
+    const csvData = items.map((row, idx) => [
+      (page - 1) * pageSize + idx + 1,
+      row.username || '-',
+      row.destination || '-',
+      toUtc(row.start_time),
+      toUtc(row.end_time),
+      fmtDur(row.call_duration),
+      row.remarks || '-',
+      row.f_qa_status || '-',
+      row.recording_url || '-'
+    ])
+    
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n')
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `lead-details-${new Date().toISOString().slice(0,10)}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }, [items, page, pageSize])
+
   const onReset = () => {
     setDest("")
     setFromDate("")
@@ -328,13 +358,23 @@ const LeadDetailsPage = () => {
             </div>
 
             <div className="mt-4 mb-2">
-              <div className="flex items-center gap-4">
-                <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2">
-                  <span className="text-green-800 font-medium">Qualified Leads: {qualifiedCount}</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+                    <span className="text-green-800 font-medium">Qualified Leads: {qualifiedCount}</span>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Total Leads: {total}
+                  </div>
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  Total Leads: {total}
-                </div>
+                <Button 
+                  onClick={exportToCSV} 
+                  disabled={items.length === 0}
+                  className="flex items-center gap-2"
+                >
+                  <FileDown className="h-4 w-4" />
+                  Export CSV
+                </Button>
               </div>
             </div>
 

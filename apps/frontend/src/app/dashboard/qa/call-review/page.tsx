@@ -1456,7 +1456,7 @@ export default function QaCallReviewPage() {
 
               <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
                 {selectedCampaign === "all" 
-                  ? "Click <strong>Review Lead</strong> to create a new audit. Each lead can only be audited once. Use <strong>Edit QA</strong> to modify existing audits."
+                  ? "Click Review Lead to create a new audit. Each lead can only be audited once. Use Edit QA to modify existing audits."
                   : `Campaign audit mode: Only not audited leads from ${selectedCampaign} are shown. Complete audits one by one - the system will automatically advance to the next lead.`}
               </div>
             </CardContent>
