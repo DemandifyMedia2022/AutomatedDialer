@@ -122,7 +122,7 @@ export default function Page() {
 
   useEffect(() => {
     fetchMetrics()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [])
 
   // Optimized data fetching with proper daily filtering
