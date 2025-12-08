@@ -1,4 +1,4 @@
-  "use client"
+"use client"
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Script from "next/script"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
@@ -187,8 +187,8 @@ export default function AutomatedDialerPage() {
   const filteredQueue = useMemo(() => {
     if (!queueSearch) return queue
     const lower = queueSearch.toLowerCase()
-    return queue.filter(p => 
-      p.phone.includes(lower) || 
+    return queue.filter(p =>
+      p.phone.includes(lower) ||
       (p.name && p.name.toLowerCase().includes(lower)) ||
       (p.company && p.company.toLowerCase().includes(lower))
     )
@@ -228,7 +228,7 @@ export default function AutomatedDialerPage() {
     try {
       if (!selectedCampaign) localStorage.removeItem("automated_dialer_campaign")
       else localStorage.setItem("automated_dialer_campaign", selectedCampaign)
-    } catch {}
+    } catch { }
   }, [selectedCampaign])
 
   useEffect(() => {
@@ -272,7 +272,7 @@ export default function AutomatedDialerPage() {
         }
       }
       queueHydratedRef.current = true
-    } catch {}
+    } catch { }
   }, [])
 
   useEffect(() => {
@@ -280,13 +280,13 @@ export default function AutomatedDialerPage() {
     try {
       if (queue.length) {
         localStorage.setItem('auto_queue_v1', JSON.stringify(queue))
-        localStorage.setItem('auto_current_index', String(currentIndexRef.current || 0))
+        localStorage.setItem('auto_current_index', String(currentIndex))
       } else {
         localStorage.removeItem('auto_queue_v1')
         localStorage.removeItem('auto_current_index')
       }
-    } catch {}
-  }, [queue])
+    } catch { }
+  }, [queue, currentIndex])
 
   // Dialog state for file upload
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -295,8 +295,8 @@ export default function AutomatedDialerPage() {
   // Dialer Sheets (server-managed, Option A)
   const [loadSheetsOpen, setLoadSheetsOpen] = useState(false)
   const [manageSheetsOpen, setManageSheetsOpen] = useState(false)
-  const [mySheets, setMySheets] = useState<Array<{ id:number; name:string; size:number; mtime:number }>>([])
-  const [allSheets, setAllSheets] = useState<Array<{ id:number; name:string; size:number; mtime:number; active?:boolean }>>([])
+  const [mySheets, setMySheets] = useState<Array<{ id: number; name: string; size: number; mtime: number }>>([])
+  const [allSheets, setAllSheets] = useState<Array<{ id: number; name: string; size: number; mtime: number; active?: boolean }>>([])
   const [assignAgentCsv, setAssignAgentCsv] = useState<string>("")
   const [activeAssignId, setActiveAssignId] = useState<number | null>(null)
   const [sheetUploading, setSheetUploading] = useState(false)
@@ -348,14 +348,14 @@ export default function AutomatedDialerPage() {
       let credentials: RequestCredentials = 'omit'
       if (USE_AUTH_COOKIE) { credentials = 'include'; const csrf = getCsrfTokenFromCookies(); if (csrf) headers['X-CSRF-Token'] = csrf }
       else { const t = getToken(); if (t) headers['Authorization'] = `Bearer ${t}` }
-      const qs = new URLSearchParams(); qs.set('limit','20'); if (currentPhone) qs.set('phone', currentPhone)
+      const qs = new URLSearchParams(); qs.set('limit', '20'); if (currentPhone) qs.set('phone', currentPhone)
       const res = await fetch(`${API_PREFIX}/notes?${qs.toString()}`, { headers, credentials })
       if (!res.ok) return
       const data = await res.json().catch(() => null) as any
       const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : [])
-      const mapped = items.map((n: any) => ({ id: String(n.id), text: String(n.body || ''), phone: n.phone_e164 || undefined, at: (n.created_at || new Date().toISOString()).slice(0,16).replace('T',' ') }))
+      const mapped = items.map((n: any) => ({ id: String(n.id), text: String(n.body || ''), phone: n.phone_e164 || undefined, at: (n.created_at || new Date().toISOString()).slice(0, 16).replace('T', ' ') }))
       setNotes(mapped)
-    } catch {}
+    } catch { }
   }, [currentPhone])
 
   useEffect(() => { fetchNotes() }, [fetchNotes])
@@ -367,13 +367,13 @@ export default function AutomatedDialerPage() {
       let credentials: RequestCredentials = 'omit'
       if (USE_AUTH_COOKIE) { credentials = 'include'; const csrf = getCsrfTokenFromCookies(); if (csrf) headers['X-CSRF-Token'] = csrf }
       else { const t = getToken(); if (t) headers['Authorization'] = `Bearer ${t}` }
-      const payload = { title: newNote.trim().slice(0,80), body: newNote.trim(), phone_e164: currentPhone, tags_csv: '' }
+      const payload = { title: newNote.trim().slice(0, 80), body: newNote.trim(), phone_e164: currentPhone, tags_csv: '' }
       const res = await fetch(`${API_PREFIX}/notes`, { method: 'POST', headers, credentials, body: JSON.stringify(payload) })
       if (!res.ok) throw new Error('Failed to save note')
       const saved = await res.json()
-      const mapped = { id: String(saved.id), text: String(saved.body || newNote.trim()), phone: saved.phone_e164 || currentPhone || undefined, at: (saved.created_at || new Date().toISOString()).slice(0,16).replace('T',' ') }
+      const mapped = { id: String(saved.id), text: String(saved.body || newNote.trim()), phone: saved.phone_e164 || currentPhone || undefined, at: (saved.created_at || new Date().toISOString()).slice(0, 16).replace('T', ' ') }
       setNotes((n) => [mapped, ...n]); setNewNote("")
-    } catch {}
+    } catch { }
   }
 
   const removeNote = async (id: string) => {
@@ -385,7 +385,7 @@ export default function AutomatedDialerPage() {
       const res = await fetch(`${API_PREFIX}/notes/${encodeURIComponent(id)}`, { method: 'DELETE', headers, credentials })
       if (!res.ok) throw new Error('Failed to delete note')
       setNotes((n) => n.filter((x) => x.id !== id))
-    } catch {}
+    } catch { }
   }
 
   const fetchDocs = useCallback(async () => {
@@ -422,7 +422,7 @@ export default function AutomatedDialerPage() {
           const seg = payload.segment
           if (!seg || typeof seg.text !== "string" || !seg.text.trim()) return
           setLiveSegments(prev => [...prev, { speaker: seg.speaker, text: seg.text }])
-        } catch {}
+        } catch { }
       })
       s.on("transcription:error", (_payload: any) => {
         // ignore in UI for now
@@ -435,7 +435,7 @@ export default function AutomatedDialerPage() {
           if (sessionRef.current) return
           if (!String(status).includes('Registered')) return
           await placeCallTo(ph)
-        } catch {}
+        } catch { }
       })
       socketRef.current = s
       return s
@@ -474,12 +474,12 @@ export default function AutomatedDialerPage() {
 
   // Ensure socket is connected to receive manager-triggered start_call events
   useEffect(() => {
-    try { ensureSocket() } catch {}
+    try { ensureSocket() } catch { }
   }, [ensureSocket])
 
   useEffect(() => {
     return () => {
-      try { socketRef.current?.disconnect() } catch {}
+      try { socketRef.current?.disconnect() } catch { }
       socketRef.current = null
     }
   }, [])
@@ -505,7 +505,7 @@ export default function AutomatedDialerPage() {
         credentials,
         body: JSON.stringify({ phase, callId, ...extra })
       }).catch(() => { })
-    } catch {}
+    } catch { }
   }, [])
 
   // ---- Dialer Sheets (Option A) helpers ----
@@ -526,9 +526,9 @@ export default function AutomatedDialerPage() {
       const { headers, credentials } = buildAuthHeaders()
       const res = await fetch(`${API_PREFIX}/dialer-sheets/my`, { headers, credentials })
       if (!res.ok) return setMySheets([])
-      const data = await res.json().catch(()=>null as any)
+      const data = await res.json().catch(() => null as any)
       const items = Array.isArray(data?.items) ? data.items : []
-      setMySheets(items.map((x:any)=>({ id:Number(x.id), name:String(x.name||''), size:Number(x.size||0), mtime:Number(x.mtime||0) })))
+      setMySheets(items.map((x: any) => ({ id: Number(x.id), name: String(x.name || ''), size: Number(x.size || 0), mtime: Number(x.mtime || 0) })))
     } catch { setMySheets([]) }
   }, [])
 
@@ -537,9 +537,9 @@ export default function AutomatedDialerPage() {
       const { headers, credentials } = buildAuthHeaders()
       const res = await fetch(`${API_PREFIX}/dialer-sheets`, { headers, credentials })
       if (!res.ok) return setAllSheets([])
-      const data = await res.json().catch(()=>null as any)
+      const data = await res.json().catch(() => null as any)
       const items = Array.isArray(data?.items) ? data.items : []
-      setAllSheets(items.map((x:any)=>({ id:Number(x.id), name:String(x.name||''), size:Number(x.size||0), mtime:Number(x.mtime||0), active: !!x.active })))
+      setAllSheets(items.map((x: any) => ({ id: Number(x.id), name: String(x.name || ''), size: Number(x.size || 0), mtime: Number(x.mtime || 0), active: !!x.active })))
     } catch { setAllSheets([]) }
   }, [])
 
@@ -554,7 +554,7 @@ export default function AutomatedDialerPage() {
   }
 
   const assignSheet = async (id: number, csv: string) => {
-    const ids = csv.split(/[,\s]+/).map(s=>Number(s)).filter(n=>Number.isFinite(n))
+    const ids = csv.split(/[,\s]+/).map(s => Number(s)).filter(n => Number.isFinite(n))
     const { headers, credentials } = buildAuthHeaders()
     headers['Content-Type'] = 'application/json'
     const res = await fetch(`${API_PREFIX}/dialer-sheets/${id}/assign`, { method: 'POST', headers, credentials, body: JSON.stringify({ agentIds: ids }) })
@@ -631,8 +631,8 @@ export default function AutomatedDialerPage() {
 
   const teardownUA = useCallback(() => {
     try {
-      if (sessionRef.current) { try { sessionRef.current.terminate() } catch {} }
-      if (uaRef.current) { try { uaRef.current.stop() } catch {} }
+      if (sessionRef.current) { try { sessionRef.current.terminate() } catch { } }
+      if (uaRef.current) { try { uaRef.current.stop() } catch { } }
     } finally {
       sessionRef.current = null
       uaRef.current = null
@@ -660,7 +660,7 @@ export default function AutomatedDialerPage() {
           const src = audioCtxRef.current.createMediaStreamSource(stream)
           src.connect(mixDestRef.current)
           remoteInMixRef.current = true
-        } catch {}
+        } catch { }
       }
       if (wantRemoteRecordingRef.current && !remoteRecorderRef.current) {
         try {
@@ -677,14 +677,14 @@ export default function AutomatedDialerPage() {
                       audioData: buf,
                       speaker: 'customer',
                     })
-                  } catch {}
-                }).catch(() => {})
+                  } catch { }
+                }).catch(() => { })
               }
             }
           }
           rec.start(3000) // Changed from 250 to 3000
           remoteRecorderRef.current = rec
-        } catch {}
+        } catch { }
       }
     }
     const setFromReceivers = () => {
@@ -702,7 +702,7 @@ export default function AutomatedDialerPage() {
               const src = audioCtxRef.current.createMediaStreamSource(stream)
               src.connect(mixDestRef.current)
               remoteInMixRef.current = true
-            } catch {}
+            } catch { }
           }
           if (wantRemoteRecordingRef.current && !remoteRecorderRef.current) {
             try {
@@ -719,17 +719,17 @@ export default function AutomatedDialerPage() {
                           audioData: buf,
                           speaker: 'customer',
                         })
-                      } catch {}
-                    }).catch(() => {})
+                      } catch { }
+                    }).catch(() => { })
                   }
                 }
               }
               rec.start(3000)
               remoteRecorderRef.current = rec
-            } catch {}
+            } catch { }
           }
         }
-      } catch {}
+      } catch { }
     }
     setFromReceivers()
     pc.addEventListener('connectionstatechange', setFromReceivers)
@@ -780,15 +780,15 @@ export default function AutomatedDialerPage() {
       })
 
       session.on("confirmed", () => {
-        try { const pc: RTCPeerConnection = (session as any).connection; if (pc) attachRemoteAudio(pc) } catch {}
+        try { const pc: RTCPeerConnection = (session as any).connection; if (pc) attachRemoteAudio(pc) } catch { }
       })
 
       session.on("progress", () => {
         setStatus("Ringing");
         // Attach remote audio to hear the original ringing sound from PBX
-        try { const pc: RTCPeerConnection = (session as any).connection; if (pc) attachRemoteAudio(pc) } catch {}
+        try { const pc: RTCPeerConnection = (session as any).connection; if (pc) attachRemoteAudio(pc) } catch { }
         const dest = lastDialDestinationRef.current || currentPhone
-        try { sendPhase('ringing', { source: ext, destination: dest || '', direction: 'OUT' }) } catch {}
+        try { sendPhase('ringing', { source: ext, destination: dest || '', direction: 'OUT' }) } catch { }
       })
       session.on("accepted", async () => {
         setStatus("In Call")
@@ -796,17 +796,17 @@ export default function AutomatedDialerPage() {
         hasAnsweredRef.current = true
         if (timerRef.current) window.clearInterval(timerRef.current)
         timerRef.current = window.setInterval(() => { setStatus((s) => (s.startsWith("In Call") ? `In Call ${elapsed()}` : s)) }, 1000)
-        try { await startRecording() } catch {}
+        try { await startRecording() } catch { }
         try {
           ensureSocket()
           await createLiveSession()
-        } catch {}
+        } catch { }
         try {
           const dest = lastDialDestinationRef.current || currentPhone
           await sendPhase('connected', { source: ext, destination: dest || '', direction: 'OUT' })
-        } catch {}
+        } catch { }
         setShowPopup(true)
-        try { const w = window.innerWidth; const h = window.innerHeight; const px = Math.max(8, Math.floor(w / 2 - 180)); const py = Math.max(60, Math.floor(h / 2 - 120)); setPopupPos({ x: px, y: py }) } catch {}
+        try { const w = window.innerWidth; const h = window.innerHeight; const px = Math.max(8, Math.floor(w / 2 - 180)); const py = Math.max(60, Math.floor(h / 2 - 120)); setPopupPos({ x: px, y: py }) } catch { }
       })
       session.on("failed", async (e: any) => {
         const code = Number(e?.response?.status_code || 0)
@@ -824,11 +824,11 @@ export default function AutomatedDialerPage() {
         // Keep popup visible to show final status
         setShowPopup(true)
         if (!uploadedOnceRef.current) {
-          if (isBusy) { try { await startBusyTone(); setTimeout(() => stopBusyTone(), 3000) } catch {} }
+          if (isBusy) { try { await startBusyTone(); setTimeout(() => stopBusyTone(), 3000) } catch { } }
           setPendingUploadExtra({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : undefined })
           setShowDisposition(true)
         }
-        try { await sendPhase('ended') } catch {}
+        try { await sendPhase('ended') } catch { }
         scheduleNext()
       })
       session.on("ended", async () => {
@@ -839,7 +839,7 @@ export default function AutomatedDialerPage() {
           setPendingUploadExtra({})
           setShowDisposition(true)
         }
-        try { await sendPhase('ended') } catch {}
+        try { await sendPhase('ended') } catch { }
         scheduleNext()
       })
     })
@@ -867,7 +867,7 @@ export default function AutomatedDialerPage() {
       const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
       if (Ctx) audioCtxRef.current = new Ctx()
     }
-    try { await audioCtxRef.current?.resume() } catch {}
+    try { await audioCtxRef.current?.resume() } catch { }
   }
 
   // Removed synthetic ringback tone generation - now using actual media stream
@@ -900,16 +900,16 @@ export default function AutomatedDialerPage() {
         busyTimerRef.current = window.setTimeout(tick, 500)
       }
       tick()
-    } catch {}
+    } catch { }
   }
 
   const stopBusyTone = () => {
     if (busyTimerRef.current) { window.clearTimeout(busyTimerRef.current); busyTimerRef.current = null }
-    try { busyOsc1Ref.current?.stop() } catch {}
-    try { busyOsc2Ref.current?.stop() } catch {}
-    try { busyOsc1Ref.current?.disconnect() } catch {}
-    try { busyOsc2Ref.current?.disconnect() } catch {}
-    try { busyGainRef.current?.disconnect() } catch {}
+    try { busyOsc1Ref.current?.stop() } catch { }
+    try { busyOsc2Ref.current?.stop() } catch { }
+    try { busyOsc1Ref.current?.disconnect() } catch { }
+    try { busyOsc2Ref.current?.disconnect() } catch { }
+    try { busyGainRef.current?.disconnect() } catch { }
     busyOsc1Ref.current = null
     busyOsc2Ref.current = null
     busyGainRef.current = null
@@ -938,7 +938,7 @@ export default function AutomatedDialerPage() {
           const src = ctx.createMediaStreamSource(ms)
           src.connect(dest)
           if (markRemote) remoteInMixRef.current = true
-        } catch {}
+        } catch { }
       }
       addStream(lastRemoteStreamRef.current, true)
       addStream(await getLocalMicStream())
@@ -964,16 +964,16 @@ export default function AutomatedDialerPage() {
                       audioData: buf,
                       speaker: 'customer',
                     })
-                  } catch {}
-                }).catch(() => {})
+                  } catch { }
+                }).catch(() => { })
               }
             }
           }
           rrec.start(3000)
           remoteRecorderRef.current = rrec
-        } catch {}
+        } catch { }
       }
-    } catch {}
+    } catch { }
   }
 
   async function fetchLoggedUsername(): Promise<string | null> {
@@ -994,13 +994,13 @@ export default function AutomatedDialerPage() {
       if (rec && rec.state !== 'inactive') {
         await new Promise<void>((resolve) => { rec.onstop = () => resolve(); try { rec.stop() } catch { resolve() } })
       }
-    } catch {}
+    } catch { }
     try {
       const rrec = remoteRecorderRef.current
       if (rrec && rrec.state !== 'inactive') {
         await new Promise<void>((resolve) => { rrec.onstop = () => resolve(); try { rrec.stop() } catch { resolve() } })
       }
-    } catch {}
+    } catch { }
     const blob = recordedChunksRef.current.length ? new Blob(recordedChunksRef.current, { type: 'audio/webm' }) : null
     const remoteBlob = remoteRecordedChunksRef.current.length ? new Blob(remoteRecordedChunksRef.current, { type: 'audio/webm' }) : null
     mediaRecorderRef.current = null
@@ -1082,9 +1082,9 @@ export default function AutomatedDialerPage() {
       dialStartRef.current = Date.now()
       await ensureAudioCtx()
       lastDialDestinationRef.current = num || null
-      try { await sendPhase('dialing', { source: ext, destination: num || '', direction: 'OUT' }) } catch {}
+      try { await sendPhase('dialing', { source: ext, destination: num || '', direction: 'OUT' }) } catch { }
       setShowPopup(true)
-      try { const w = window.innerWidth; const h = window.innerHeight; const px = Math.max(8, Math.floor(w / 2 - 180)); const py = Math.max(60, Math.floor(h / 2 - 120)); setPopupPos({ x: px, y: py }) } catch {}
+      try { const w = window.innerWidth; const h = window.innerHeight; const px = Math.max(8, Math.floor(w / 2 - 180)); const py = Math.max(60, Math.floor(h / 2 - 120)); setPopupPos({ x: px, y: py }) } catch { }
       uaRef.current.call(numberToSipUri(num, ext), options)
     } catch (e: any) {
       setError(e?.message || "Call start error")
@@ -1092,7 +1092,7 @@ export default function AutomatedDialerPage() {
   }
 
   const hangup = async () => {
-    try { sessionRef.current?.terminate() } catch {}
+    try { sessionRef.current?.terminate() } catch { }
     setShowPopup(false)
     if (!uploadedOnceRef.current) { setPendingUploadExtra({}); setShowDisposition(true) }
   }
@@ -1139,9 +1139,30 @@ export default function AutomatedDialerPage() {
     }, delay)
   }
 
+  const skipTimer = () => {
+    if (!nextTimeoutRef.current && nextIn <= 0) return
+    clearNextTimeout()
+    clearCountdown()
+    setNextIn(0)
+
+    // Proceed to next call immediately
+    const nextIdx = currentIndexRef.current + 1
+    const list = queueRef.current
+    if (nextIdx >= list.length) {
+      setAutoRun(false)
+      autoRunRef.current = false
+      setStatus("Completed")
+      return
+    }
+    setCurrentIndex(nextIdx)
+    currentIndexRef.current = nextIdx
+    resetDmForm()
+    placeCallTo(list[nextIdx].phone)
+  }
+
   const startAuto = async () => {
     if (!queue.length) { setError("Upload a list first"); return }
-    if (!status.includes("Registered")) { setError("SIP not registered yet") ; return }
+    if (!status.includes("Registered")) { setError("SIP not registered yet"); return }
     setAutoRun(true)
     autoRunRef.current = true
     const list = queueRef.current
@@ -1274,7 +1295,7 @@ export default function AutomatedDialerPage() {
         const rows = parseCsvRows(text)
         const prospects = parseProspectsFromRows(rows)
         setQueue(prospects); queueRef.current = prospects; setCurrentIndex(0); currentIndexRef.current = 0
-        try { localStorage.setItem('auto_queue', JSON.stringify(prospects)); queueHydratedRef.current = true } catch {}
+        try { localStorage.setItem('auto_queue', JSON.stringify(prospects)); queueHydratedRef.current = true } catch { }
       } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
         if (!window.XLSX) throw new Error('XLSX parser not loaded')
         const data = new Uint8Array(await file.arrayBuffer())
@@ -1284,7 +1305,7 @@ export default function AutomatedDialerPage() {
         const rows: any[][] = window.XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][]
         const prospects = parseProspectsFromRows(rows)
         setQueue(prospects); queueRef.current = prospects; setCurrentIndex(0); currentIndexRef.current = 0
-        try { localStorage.setItem('auto_queue', JSON.stringify(prospects)); queueHydratedRef.current = true } catch {}
+        try { localStorage.setItem('auto_queue', JSON.stringify(prospects)); queueHydratedRef.current = true } catch { }
       } else {
         setError('Unsupported file. Use CSV or Excel')
       }
@@ -1323,7 +1344,7 @@ export default function AutomatedDialerPage() {
       if (!tracks.length) return
       tracks[0].enabled = !tracks[0].enabled
       setIsMuted(!tracks[0].enabled)
-    } catch {}
+    } catch { }
   }
 
   const sendDTMF = async (digit: string) => {
@@ -1331,7 +1352,7 @@ export default function AutomatedDialerPage() {
       const session = sessionRef.current
       if (!session) return
       await session.dtmf(digit)
-    } catch {}
+    } catch { }
   }
 
   // Decision Maker Form API functions
@@ -1349,13 +1370,13 @@ export default function AutomatedDialerPage() {
       setDmMessage("Connect a call to unlock the form.")
       return
     }
-    
+
     // Check if form has already been submitted for current call
     if (formSubmittedForCurrentCall) {
       setDmMessage("Form already submitted for this call.")
       return
     }
-    
+
     setDmSaving(true)
     setDmMessage(null)
     try {
@@ -1370,7 +1391,7 @@ export default function AutomatedDialerPage() {
         if (token) headers['Authorization'] = `Bearer ${token}`
       }
       const payload = serializeDmPayload()
-      
+
       // Get logged-in user name from API
       try {
         const userRes = await fetch(`${API_PREFIX}/auth/me`, {
@@ -1387,7 +1408,7 @@ export default function AutomatedDialerPage() {
       } catch {
         payload.f_resource_name = 'Unknown'
       }
-      
+
       const res = await fetch(`${API_PREFIX}/dm-form`, {
         method: 'POST',
         headers,
@@ -1398,7 +1419,7 @@ export default function AutomatedDialerPage() {
         const text = await res.text().catch(() => '')
         throw new Error(text || `Failed to save form (${res.status})`)
       }
-      
+
       // Mark form as submitted for current call
       setFormSubmittedForCurrentCall(true)
       setDmMessage("Form saved successfully.")
@@ -1421,7 +1442,7 @@ export default function AutomatedDialerPage() {
         const token = getToken()
         if (token) headers['Authorization'] = `Bearer ${token}`
       }
-      
+
       // Get logged-in user name from API
       let userName = 'Unknown'
       try {
@@ -1437,23 +1458,23 @@ export default function AutomatedDialerPage() {
       } catch {
         userName = 'Unknown'
       }
-      
+
       // First, find the most recent entry for this campaign that doesn't have a disposition yet
       const listRes = await fetch(`${API_PREFIX}/dm-form?campaign=${encodeURIComponent(selectedCampaign || '')}&limit=20`, {
         method: 'GET',
         headers,
         credentials,
       })
-      
+
       if (listRes.ok) {
         const listData = await listRes.json()
         if (listData.success && listData.forms && listData.forms.length > 0) {
           // Find the most recent entry that doesn't have a disposition in f_lead
-          const existingEntry = listData.forms.find((form: any) => 
-            form.f_campaign_name === selectedCampaign && 
+          const existingEntry = listData.forms.find((form: any) =>
+            form.f_campaign_name === selectedCampaign &&
             (!form.f_lead || form.f_lead === '' || form.f_lead === null)
           )
-          
+
           if (existingEntry) {
             // Update the existing entry with disposition
             const updateRes = await fetch(`${API_PREFIX}/dm-form/${existingEntry.f_id}`, {
@@ -1466,7 +1487,7 @@ export default function AutomatedDialerPage() {
                 unique_id: dmForm.unique_id || String(sessionRef.current?.id || '') // Include unique_id from call session
               }),
             })
-            
+
             if (updateRes.ok) {
               console.log('Disposition updated in existing DM form:', dispositionValue)
               return
@@ -1474,7 +1495,7 @@ export default function AutomatedDialerPage() {
           }
         }
       }
-      
+
       // If no existing entry found, create new one with disposition
       const payload = {
         f_campaign_name: selectedCampaign || '',
@@ -1485,14 +1506,14 @@ export default function AutomatedDialerPage() {
           Object.entries(dmForm).filter(([key]) => key !== 'f_lead' && key !== 'f_resource_name')
         )
       }
-      
+
       const res = await fetch(`${API_PREFIX}/dm-form`, {
         method: 'POST',
         headers,
         credentials,
         body: JSON.stringify(payload),
       })
-      
+
       if (res.ok) {
         console.log('Disposition saved in new DM form:', dispositionValue)
       }
@@ -1509,7 +1530,7 @@ export default function AutomatedDialerPage() {
       gridCols: 3
     },
     {
-      title: "Contact Information", 
+      title: "Contact Information",
       fields: ['f_email_add', 'Secondary_Email', 'f_conatct_no', 'f_website'] as DmFieldKey[],
       gridCols: 2
     },
@@ -1653,7 +1674,7 @@ export default function AutomatedDialerPage() {
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>
-                    <Dialog open={loadSheetsOpen} onOpenChange={(o)=>{ setLoadSheetsOpen(o); if (o) fetchMySheets() }}>
+                    <Dialog open={loadSheetsOpen} onOpenChange={(o) => { setLoadSheetsOpen(o); if (o) fetchMySheets() }}>
                       <DialogTrigger asChild>
                         <Button variant="outline">Load</Button>
                       </DialogTrigger>
@@ -1664,33 +1685,33 @@ export default function AutomatedDialerPage() {
                         <div className="space-y-2 max-h-72 overflow-auto">
                           {mySheets.length === 0 ? (
                             <div className="text-sm text-muted-foreground">No sheets assigned</div>
-                          ) : mySheets.map((s)=> (
+                          ) : mySheets.map((s) => (
                             <div key={s.id} className="flex items-center justify-between gap-2 border rounded p-2">
                               <div className="text-sm truncate">{s.name}</div>
-                              <Button size="sm" onClick={()=>downloadAndLoadSheet(s.id, s.name)}>Load</Button>
+                              <Button size="sm" onClick={() => downloadAndLoadSheet(s.id, s.name)}>Load</Button>
                             </div>
                           ))}
                         </div>
                       </DialogContent>
                     </Dialog>
-                    <Button variant="outline" className="gap-2" onClick={() => { setQueue([]); queueRef.current = []; setCurrentIndex(0); currentIndexRef.current = 0; setAutoRun(false); autoRunRef.current = false; try { localStorage.removeItem('auto_queue_v1'); localStorage.removeItem('auto_queue'); localStorage.removeItem('auto_current_index') } catch {} }}>
+                    <Button variant="outline" className="gap-2" onClick={() => { setQueue([]); queueRef.current = []; setCurrentIndex(0); currentIndexRef.current = 0; setAutoRun(false); autoRunRef.current = false; try { localStorage.removeItem('auto_queue_v1'); localStorage.removeItem('auto_queue'); localStorage.removeItem('auto_current_index') } catch { } }}>
                       Clear Queue
                     </Button>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button onClick={startAuto} disabled={!queue.length || autoRun || !status.includes("Registered") } className="gap-2">
+                    <Button onClick={startAuto} disabled={!queue.length || autoRun || !status.includes("Registered")} className="gap-2">
                       <Play className="h-4 w-4" /> Start
                     </Button>
                     {autoRun ? (
-                    <Button onClick={pauseAuto} variant="outline" className="gap-2">
-                      <Pause className="h-4 w-4" /> Pause
-                    </Button>
-                  ) : (
-                    <Button onClick={resumeAuto} variant="outline" disabled={!queue.length || !status.includes("Registered")} className="gap-2">
-                      <Play className="h-4 w-4" /> Resume
-                    </Button>
-                  )}
+                      <Button onClick={pauseAuto} variant="outline" className="gap-2">
+                        <Pause className="h-4 w-4" /> Pause
+                      </Button>
+                    ) : (
+                      <Button onClick={resumeAuto} variant="outline" disabled={!queue.length || !status.includes("Registered")} className="gap-2">
+                        <Play className="h-4 w-4" /> Resume
+                      </Button>
+                    )}
                     <Button onClick={skipNext} variant="outline" disabled={!queue.length || currentIndex >= queue.length - 1} className="gap-2">
                       <SkipForward className="h-4 w-4" /> Skip
                     </Button>
@@ -1701,15 +1722,20 @@ export default function AutomatedDialerPage() {
                   </div>
 
                   {autoRun && nextIn > 0 && (
-                    <div className="mt-2">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100/70 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 px-2 py-1">
-                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                          Next call in {String(Math.floor(nextIn / 60)).padStart(2,'0')}:{String(nextIn % 60).padStart(2,'0')}
-                        </span>
-                        <span className="text-muted-foreground">({totalNextSecs - nextIn}s elapsed)</span>
+                    <div className="mt-2 text-center">
+                      <div className="flex items-center justify-between gap-2 text-xs mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100/70 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 px-2 py-1">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                            Next call in {String(Math.floor(nextIn / 60)).padStart(2, '0')}:{String(nextIn % 60).padStart(2, '0')}
+                          </span>
+                          <span className="text-muted-foreground">({totalNextSecs - nextIn}s elapsed)</span>
+                        </div>
+                        <Button size="sm" variant="secondary" className="h-6 text-xs" onClick={skipTimer}>
+                          Dial Now
+                        </Button>
                       </div>
-                      <div className="mt-2 h-2 w-full rounded bg-muted/40 overflow-hidden">
+                      <div className="mt-1 h-2 w-full rounded bg-muted/40 overflow-hidden">
                         <div
                           className="h-full bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 transition-[width] duration-1000 ease-linear"
                           style={{ width: `${Math.min(100, Math.max(0, ((totalNextSecs - nextIn) / totalNextSecs) * 100))}%` }}
@@ -1746,18 +1772,18 @@ export default function AutomatedDialerPage() {
                   <div className="text-sm text-muted-foreground">Queue</div>
                   <div className="text-xs text-muted-foreground">{queue.length} numbers • Index {Math.min(currentIndex + 1, queue.length)} / {queue.length}</div>
                 </div>
-                
+
                 <div className="relative mb-3">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                  <Input 
-                    placeholder="Search queue..." 
-                    value={queueSearch} 
-                    onChange={(e) => { setQueueSearch(e.target.value); setVisibleCount(50) }} 
-                    className="pl-8 h-8 text-xs" 
+                  <Input
+                    placeholder="Search queue..."
+                    value={queueSearch}
+                    onChange={(e) => { setQueueSearch(e.target.value); setVisibleCount(50) }}
+                    className="pl-8 h-8 text-xs"
                   />
                 </div>
 
-                <div 
+                <div
                   className="max-h-80 overflow-auto border rounded"
                   onScroll={onQueueScroll}
                 >
@@ -1766,30 +1792,34 @@ export default function AutomatedDialerPage() {
                   ) : (
                     <ul className="text-sm">
                       {visibleQueue.map((p, i) => {
-                        const isCurrent = queue[currentIndex] === p
+                        const idx = queue.indexOf(p)
+                        const isCurrent = idx === currentIndex
+                        const isDialed = idx !== -1 && idx < currentIndex
                         return (
-                        <li key={`${p.phone}-${i}`} className={`${isCurrent ? 'bg-accent/50 font-medium' : ''} flex items-center justify-between px-3 py-2 border-b last:border-b-0`}>
-                          <div className="truncate mr-2">
-                             {p.name ? `${p.name} — ` : ''}{p.company ? `${p.company} — ` : ''}{p.phone}
-                          </div>
-                          <Button 
-                            size="icon" 
-                            variant="ghost" 
-                            className="h-6 w-6 shrink-0" 
-                            onClick={() => {
+                          <li key={`${p.phone}-${i}`} className={`${isCurrent ? 'bg-accent/50 font-medium border-l-4 border-l-primary pl-2' : isDialed ? 'bg-muted/30 opacity-60' : ''} flex items-center justify-between px-3 py-2 border-b last:border-b-0 transition-colors`}>
+                            <div className={`truncate mr-2 flex items-center gap-2 ${isDialed ? 'line-through decoration-zinc-400/50' : ''}`}>
+                              {isDialed && <span className="text-xs mr-1">✅</span>}
+                              {p.name ? `${p.name} — ` : ''}{p.company ? `${p.company} — ` : ''}{p.phone}
+                            </div>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 shrink-0"
+                              onClick={() => {
                                 const idx = queue.indexOf(p)
                                 if (idx !== -1) {
-                                    setCurrentIndex(idx)
-                                    currentIndexRef.current = idx
-                                    placeCallTo(p.phone)
+                                  setCurrentIndex(idx)
+                                  currentIndexRef.current = idx
+                                  placeCallTo(p.phone)
                                 }
-                            }}
-                            title="Call this contact"
-                          >
-                            <Phone className="h-3 w-3" />
-                          </Button>
-                        </li>
-                      )})}
+                              }}
+                              title="Call this contact"
+                            >
+                              <Phone className="h-3 w-3" />
+                            </Button>
+                          </li>
+                        )
+                      })}
                       {visibleCount < filteredQueue.length && (
                         <li className="p-2 text-center text-xs text-muted-foreground">Loading more...</li>
                       )}
@@ -1819,7 +1849,7 @@ export default function AutomatedDialerPage() {
                         {dmMessage}
                       </Card>
                     ) : null}
-                    
+
                     {/* Campaign field only */}
                     <div className="grid gap-3 md:grid-cols-1">
                       <div key="f_campaign_name" className="space-y-1">
@@ -1838,16 +1868,15 @@ export default function AutomatedDialerPage() {
                         </Select>
                       </div>
                     </div>
-                    
+
                     {/* Progress indicator */}
                     <div className="flex items-center justify-between">
                       <div className="flex gap-2">
                         {formSections.map((_, index) => (
                           <div
                             key={index}
-                            className={`h-2 flex-1 rounded-full transition-colors ${
-                              index <= currentSection ? 'bg-emerald-500' : 'bg-muted'
-                            }`}
+                            className={`h-2 flex-1 rounded-full transition-colors ${index <= currentSection ? 'bg-emerald-500' : 'bg-muted'
+                              }`}
                           />
                         ))}
                       </div>
@@ -1855,7 +1884,7 @@ export default function AutomatedDialerPage() {
                         {currentSection + 1} of {formSections.length}
                       </span>
                     </div>
-                    
+
                     {/* Current section */}
                     <div className="space-y-4">
                       <div className="space-y-3">
@@ -1884,7 +1913,7 @@ export default function AutomatedDialerPage() {
                           ))}
                         </div>
                       </div>
-                      
+
                       {/* Navigation buttons */}
                       <div className="flex items-center justify-between pt-2 border-t">
                         <div className="flex gap-2">
@@ -2081,7 +2110,7 @@ export default function AutomatedDialerPage() {
                     </SelectTrigger>
                     <SelectContent className="max-h-[300px] overflow-auto">
                       {[
-                        'Call Failed','Lead','Lost','DNC','VM-RPC','VM-Operator','Not an RPC','Invalid Number','Invalid Job Title','Invalid Country','Invalid Industry','Invalid EMP-Size','Follow-Ups','Busy','Wrong Number','Not Answered','Disconnected','Contact Discovery'
+                        'Call Failed', 'Lead', 'Lost', 'DNC', 'VM-RPC', 'VM-Operator', 'Not an RPC', 'Invalid Number', 'Invalid Job Title', 'Invalid Country', 'Invalid Industry', 'Invalid EMP-Size', 'Follow-Ups', 'Busy', 'Wrong Number', 'Not Answered', 'Disconnected', 'Contact Discovery'
                       ].map((opt) => (
                         <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                       ))}
