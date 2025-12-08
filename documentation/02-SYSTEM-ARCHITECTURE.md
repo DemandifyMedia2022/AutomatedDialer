@@ -246,59 +246,278 @@ export const getPool = () => {
 ```prisma
 // Core entities (simplified representation)
 
-model User {
+model users {
   id          Int       @id @default(autoincrement())
-  email       String    @unique
+  usermail    String    @unique
   password    String
   role        Role
-  agent       Agent?
+  status      String    @default("active")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
 
-model Agent {
-  id          Int       @id @default(autoincrement())
-  userId      Int       @unique
-  user        User      @relation(fields: [userId], references: [id])
-  extension   String
-  sipUsername String
-  sipPassword String
-  calls       Call[]
-  campaigns   Campaign[]
+model calls {
+  id                          BigInt    @id @default(autoincrement())
+  user_id                     Int
+  destination                 String
+  direction                   String
+  status                      String
+  duration                    Int?
+  recording_path              String?
+  start_time                  DateTime
+  end_time                    DateTime?
+  metadata                    Json?
+  transcripts                 transcripts[]
+  call_transcription_metadata call_transcription_metadata?
+  transcription_keywords      transcription_keywords[]
+  transcription_segments      transcription_segments[]
+  qa_call_reviews             qa_call_reviews[]
+  notes                       notes[]
 }
 
-model Call {
-  id              Int       @id @default(autoincrement())
-  agentId         Int
-  agent           Agent     @relation(fields: [agentId], references: [id])
-  destination     String
-  direction       Direction
-  status          CallStatus
-  duration        Int?
-  recordingPath   String?
-  startTime       DateTime
-  endTime         DateTime?
-  metadata        Json?
+model transcripts {
+  id         BigInt   @id @default(autoincrement())
+  call_id    BigInt
+  ts         DateTime
+  speaker    String   @db.VarChar(32)
+  text       String   @db.VarChar(2000)
+  sentiment  String?  @db.VarChar(32)
+  confidence Float?
+  calls      calls    @relation(fields: [call_id], references: [id], onDelete: Cascade)
+  
+  @@index([call_id, ts])
 }
 
-model Campaign {
-  id          Int       @id @default(autoincrement())
-  name        String
-  status      CampaignStatus
-  agentId     Int
-  agent       Agent     @relation(fields: [agentId], references: [id])
-  leads       Lead[]
-  createdAt   DateTime  @default(now())
+model call_transcription_metadata {
+  id               BigInt    @id @default(autoincrement())
+  call_id          BigInt    @unique
+  full_transcript  String?   @db.LongText
+  language         String?   @default("en-US")
+  avg_confidence   Float?
+  word_count       Int?      @default(0)
+  duration_seconds Decimal?
+  provider         String?   @default("deepgram")
+  metadata_json    String?   @db.LongText
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @default(now())
+  calls            calls     @relation(fields: [call_id], references: [id], onDelete: Cascade)
 }
 
-model Lead {
+model transcription_keywords {
+  id                    BigInt    @id @default(autoincrement())
+  call_id               BigInt
+  keyword               String
+  occurrences           Int?      @default(1)
+  first_occurrence_time Decimal?
+  category              String?
+  created_at            DateTime  @default(now())
+  calls                 calls     @relation(fields: [call_id], references: [id], onDelete: Cascade)
+  
+  @@index([call_id])
+  @@index([keyword])
+  @@index([category])
+}
+
+model transcription_segments {
+  id            BigInt   @id @default(autoincrement())
+  call_id       BigInt
+  transcript_id BigInt?
+  speaker       String?  @default("unknown")
+  text          String   @db.Text
+  start_time    Decimal?
+  end_time      Decimal?
+  confidence    Float?
+  created_at    DateTime @default(now())
+  calls         calls    @relation(fields: [call_id], references: [id], onDelete: Cascade)
+  
+  @@index([call_id])
+}
+
+model agentic_campaigns {
+  id           Int      @id @default(autoincrement())
+  module       String   @unique @db.VarChar(255)
+  name         String   @db.VarChar(255)
+  agent_text   String   @db.Text
+  session_text String   @db.Text
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now())
+}
+
+model agentic_csv_files {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique @db.VarChar(255)
+  size       Int
+  mtime      BigInt
+  active     Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+}
+
+model dialing_contacts {
+  id             BigInt   @id @default(autoincrement())
+  campaign_id    BigInt?
+  csv_name       String?  @db.VarChar(255)
+  phone          String   @db.VarChar(64)
+  name           String?  @db.VarChar(255)
+  email          String?  @db.VarChar(255)
+  company        String?  @db.VarChar(255)
+  job_title      String?  @db.VarChar(255)
+  job_level      String?  @db.VarChar(64)
+  region         String?  @db.VarChar(64)
+  remarks        String?  @db.Text
+  priority       Int?     @default(0)
+  timezone       String?  @db.VarChar(64)
+  consent        Boolean?
+  status         String   @default("PENDING")
+  attempts       Int      @default(0)
+  last_called_at DateTime?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @default(now())
+}
+
+model password_resets {
   id          Int       @id @default(autoincrement())
-  campaignId  Int
-  campaign    Campaign  @relation(fields: [campaignId], references: [id])
-  phoneNumber String
-  name        String?
-  status      LeadStatus
-  metadata    Json?
+  user_id     Int
+  otp_hash    String?
+  reset_token String    @unique @db.Char(36)
+  expires_at  DateTime
+  attempts    Int       @default(0)
+  used_at     DateTime?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @default(now())
+  users       users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([user_id, used_at, expires_at])
+}
+
+model qa_call_reviews {
+  id                BigInt   @id @default(autoincrement())
+  call_id           BigInt
+  agent_user_id     Int?
+  reviewer_user_id  Int
+  overall_score     Int?
+  is_lead           Boolean  @default(false)
+  lead_quality      String?
+  notes             String?  @db.Text
+  issues_json       String?  @db.LongText
+  created_at        DateTime @default(now())
+  updated_at        DateTime @default(now())
+  calls             calls    @relation(fields: [call_id], references: [id], onDelete: Cascade)
+  
+  @@index([call_id])
+  @@index([agent_user_id])
+  @@index([reviewer_user_id])
+  @@index([is_lead])
+  @@index([lead_quality])
+}
+
+model notes {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  call_id    BigInt?
+  phone_e164 String   @default("")
+  title      String
+  body       String   @db.Text
+  tags_csv   String   @default("")
+  visibility String   @default("private")
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+  calls      calls?   @relation(fields: [call_id], references: [id])
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([call_id])
+  @@index([phone_e164])
+  @@index([user_id, created_at])
+}
+
+model documents {
+  id               Int      @id @default(autoincrement())
+  type             String   @default("guide")
+  title            String
+  description      String   @db.Text
+  file_url         String?  @db.VarChar(2000)
+  file_mime        String?
+  file_size_bytes  BigInt?
+  content_richtext String?  @db.LongText
+  version          Int      @default(1)
+  tags_csv         String   @default("")
+  created_by       Int
+  visibility       String   @default("org")
+  created_at       DateTime @default(now())
+  updated_at       DateTime @default(now())
+  users            users    @relation(fields: [created_by], references: [id])
+  
+  @@index([created_by])
+  @@index([type])
+  @@index([visibility])
+}
+
+model feature_flags {
+  id                 Int      @id @default(autoincrement())
+  name               String   @unique
+  description        String?  @db.Text
+  enabled            Boolean  @default(false)
+  rollout_percentage Int      @default(0)
+  target_roles       String?  @db.LongText
+  target_users       String?  @db.LongText
+  created_at         DateTime @default(now())
+  modified_at        DateTime @default(now())
+  modified_by        Int?
+}
+
+model system_config {
+  id          Int      @id @default(autoincrement())
+  category    String   @db.VarChar(100)
+  key         String   @unique
+  value       String   @db.LongText
+  type        String   @db.VarChar(50)
+  description String?  @db.Text
+  modified_by Int?
+  modified_at DateTime @default(now())
+  created_at  DateTime @default(now())
+}
+
+model resource_metrics {
+  id                 BigInt   @id @default(autoincrement())
+  cpu_usage          Float
+  memory_used        BigInt
+  memory_total       BigInt
+  disk_used          BigInt
+  disk_total         BigInt
+  active_connections Int?
+  timestamp          DateTime @default(now())
+  
+  @@index([timestamp])
+}
+
+model agent_sessions {
+  id            BigInt         @id @default(autoincrement())
+  user_id       Int
+  login_at      DateTime       @default(now())
+  logout_at     DateTime?
+  agent_breaks  agent_breaks[]
+}
+
+model agent_breaks {
+  id              BigInt          @id @default(autoincrement())
+  user_id         Int
+  session_id      BigInt
+  break_reason_id Int?
+  start_at        DateTime        @default(now())
+  end_at          DateTime?
+  ended_by        String?
+  agent_sessions  agent_sessions  @relation(fields: [session_id], references: [id], onDelete: Cascade)
+}
+
+model dm_form {
+  f_id            Int      @id @default(autoincrement())
+  f_campaign_name String?
+  f_prospect_name String?
+  f_company_name  String?
+  f_phone         String?
+  f_email         String?
+  f_notes         String?  @db.Text
+  f_created_at    DateTime @default(now())
 }
 ```
 
@@ -553,8 +772,130 @@ Object Storage (Recordings)
 - Multi-region deployment
 - Disaster recovery
 
+## AI Voice Agent Architecture
+
+### Agentic Dialing Service
+
+The system includes a Python-based AI voice agent service that makes autonomous phone calls using conversational AI.
+
+**Architecture:**
+```
+FastAPI Web UI (Port 4100)
+    ↓
+Python Agent (agent.py)
+    ↓
+LiveKit Agents Framework
+    ↓
+Google Realtime API (Voice AI)
+    ↓
+SIP/WebRTC → PSTN
+```
+
+**Key Components:**
+
+1. **Campaign Management** (`apps/backend/src/agentic-dialing/app/app.py`)
+   - Web dashboard for prospect selection
+   - CSV upload and management
+   - Campaign prompt configuration
+   - Real-time call status monitoring
+
+2. **AI Agent** (`apps/backend/src/agentic-dialing/agent.py`)
+   - Google Realtime voice model integration
+   - Dynamic prompt loading per campaign
+   - Lead context injection
+   - Noise cancellation (BVCTelephony)
+
+3. **Campaign Prompts** (`campaigns_prompts/`)
+   - Modular prompt system
+   - Agent instructions (personality, goals)
+   - Session instructions (call script with placeholders)
+   - Dynamic campaign creation via API
+
+**Data Flow:**
+```
+1. Upload CSV with prospects
+2. Select campaign (prompt template)
+3. AI agent reads lead data
+4. Injects context into prompts
+5. Initiates call via LiveKit
+6. Conducts conversation using Google AI
+7. Records call and transcription
+8. Logs results to database
+```
+
+**Environment Variables:**
+```bash
+# LiveKit Configuration
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your_api_key
+LIVEKIT_API_SECRET=your_api_secret
+
+# SIP Configuration (for PSTN calling)
+SIP_USER_ID=agent_username
+SIP_PASSWORD=agent_password
+SIP_URL=pbx.provider.com
+SIP_WS_URL=wss://pbx.provider.com:7443
+
+# Backend Integration
+BACKEND_API_BASE=http://localhost:4000/api/agentic
+LEADS_CSV_PATH=/path/to/leads.csv
+LEADS_CSV_DIR=/path/to/csv/storage
+
+# Campaign Configuration
+CAMPAIGN_PROMPT_MODULE=backend.campaigns_prompts.google
+CAMPAIGN_AGENT_NAME=ENHANCED_DEMANDIFY_CALLER_INSTRUCTIONS
+CAMPAIGN_SESSION_NAME=SESSION_INSTRUCTION
+RUN_SINGLE_CALL=1  # For child process execution
+LEAD_INDEX=1  # 1-based index for specific lead
+```
+
+### Real-Time Activity Monitoring
+
+**WebSocket Architecture:**
+```
+Client Browser
+    ↓ WebSocket Connection
+Activity Feed Server (activityFeedServer.ts)
+    ↓ Event Broadcasting
+Multiple Connected Clients
+```
+
+**Features:**
+- Real-time event streaming
+- Client-side filtering (auth, api, database, error)
+- Subscription management (activity, health, metrics)
+- Automatic reconnection
+- Authentication via JWT
+
+**Message Types:**
+```typescript
+// Client → Server
+{
+  type: "set_filters",
+  filters: ["auth", "api"]
+}
+
+{
+  type: "subscribe",
+  subscriptions: ["activity", "health"]
+}
+
+// Server → Client
+{
+  type: "activity",
+  data: {
+    id: 1,
+    type: "auth",
+    severity: "info",
+    message: "User logged in",
+    timestamp: "2025-12-08T10:00:00Z"
+  }
+}
+```
+
 ## Document Control
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2025-11-13 | System | Initial architecture documentation |
+| 1.1 | 2025-12-08 | System | Added AI voice agent architecture, updated database schema, added WebSocket monitoring |

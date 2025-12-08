@@ -824,8 +824,358 @@ Future versions will be accessible via:
 - URL: `/api/v2/...`
 - Header: `Accept: application/vnd.dialer.v2+json`
 
+## Agentic AI Calling Endpoints
+
+### GET /api/agentic/campaigns
+
+Retrieve AI campaign list (built-in and custom).
+
+**Response (200):**
+```json
+{
+  "ok": true,
+  "builtin": [
+    {
+      "name": "Default",
+      "module": "backend.prompts",
+      "builtin": true,
+      "key": "Default (prompts)"
+    }
+  ],
+  "custom": [
+    {
+      "name": "Google Outreach",
+      "module": "google"
+    }
+  ]
+}
+```
+
+### POST /api/agentic/campaigns/create
+
+Create a new AI campaign with custom prompts.
+
+**Request (form-data):**
+```
+name: "Q4 Sales Campaign"
+agent_text: "You are a professional sales representative..."
+session_text: "Call [Prospect Name] at [Company Name]..."
+module: "q4_sales" (optional, auto-generated from name if not provided)
+```
+
+**Response (200):**
+```json
+{
+  "ok": true,
+  "supabase_error": null
+}
+```
+
+### POST /api/agentic/campaigns/update
+
+Update an existing AI campaign.
+
+**Request (form-data):**
+```
+module: "q4_sales"
+name: "Q4 Sales Campaign - Updated"
+agent_text: "Updated agent instructions..."
+session_text: "Updated session instructions..."
+```
+
+**Response (200):**
+```json
+{
+  "ok": true,
+  "supabase_error": null
+}
+```
+
+### POST /api/agentic/campaigns/upload-prompts
+
+Upload prompt text from file.
+
+**Request (form-data):**
+```
+which: "agent" or "session"
+file: <text file>
+```
+
+**Response (200):**
+```json
+{
+  "which": "agent",
+  "text": "Uploaded prompt text content..."
+}
+```
+
+### GET /api/agentic/csv/list
+
+List all uploaded prospect CSV files.
+
+**Response (200):**
+```json
+{
+  "ok": true,
+  "files": [
+    {
+      "name": "prospects_q4.csv",
+      "size": 245678,
+      "mtime": 1699876800,
+      "active": true
+    }
+  ]
+}
+```
+
+### POST /api/agentic/csv/upload
+
+Upload a new prospect CSV file.
+
+**Request (multipart/form-data):**
+```
+file: <CSV file>
+```
+
+**Response (200):**
+```json
+{
+  "ok": true,
+  "name": "prospects_q4.csv",
+  "remote": "prospects_q4.csv"
+}
+```
+
+### POST /api/agentic/csv/select
+
+Set a CSV file as active for AI calling.
+
+**Request (form-data):**
+```
+name: "prospects_q4.csv"
+```
+
+**Response (200):**
+```json
+{
+  "ok": true,
+  "active": "prospects_q4.csv"
+}
+```
+
+### DELETE /api/agentic/csv/:name
+
+Delete a prospect CSV file.
+
+**Response (200):**
+```json
+{
+  "ok": true,
+  "supabase_error": null
+}
+```
+
+### GET /api/agentic/csv/preview
+
+Preview CSV file contents.
+
+**Query Parameters:**
+- `name` (string): CSV filename
+- `limit` (number): Number of rows to preview (default: 10)
+
+**Response (200):**
+```json
+{
+  "ok": true,
+  "headers": ["prospect_name", "company_name", "phone", "email"],
+  "rows": [
+    {
+      "prospect_name": "John Doe",
+      "company_name": "Acme Corp",
+      "phone": "+1234567890",
+      "email": "john@acme.com"
+    }
+  ]
+}
+```
+
+### GET /api/agentic/csv/download/:name
+
+Download a CSV file.
+
+**Response (200):**
+- Content-Type: text/csv
+- Binary CSV data
+
+## Super Admin Endpoints
+
+### GET /api/superadmin/activity/recent
+
+Get recent system activity events.
+
+**Query Parameters:**
+- `limit` (number): Maximum events to return (default: 100)
+- `type` (string): Comma-separated event types (auth,api,database,error)
+- `severity` (string): Comma-separated severity levels (info,warning,error,critical)
+- `startDate` (string): ISO date string
+- `endDate` (string): ISO date string
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "type": "auth",
+      "severity": "info",
+      "message": "User logged in",
+      "userId": 123,
+      "timestamp": "2025-12-08T10:00:00Z",
+      "metadata": {}
+    }
+  ],
+  "count": 1
+}
+```
+
+### PUT /api/superadmin/users/:id/status
+
+Update user account status.
+
+**Request:**
+```json
+{
+  "status": "active" | "inactive" | "suspended"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 123,
+    "status": "active",
+    "updatedAt": "2025-12-08T10:00:00Z"
+  },
+  "message": "User status updated successfully"
+}
+```
+
+## Password Reset Endpoints
+
+### POST /api/auth/password-reset/request
+
+Request a password reset OTP.
+
+**Request:**
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "OTP sent to email"
+}
+```
+
+### POST /api/auth/password-reset/verify
+
+Verify OTP and get reset token.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "otp": "123456"
+}
+```
+
+**Response (200):**
+```json
+{
+  "ok": true,
+  "resetToken": "uuid-token-here"
+}
+```
+
+### POST /api/auth/password-reset/reset
+
+Reset password with token.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "resetToken": "uuid-token-here",
+  "newPassword": "newSecurePassword123"
+}
+```
+
+**Response (200):**
+```json
+{
+  "ok": true,
+  "userId": 123
+}
+```
+
+## WebSocket Endpoints
+
+### WS /api/superadmin/activity/stream
+
+Real-time activity feed via WebSocket.
+
+**Connection:**
+```javascript
+const ws = new WebSocket('ws://localhost:4000/api/superadmin/activity/stream');
+```
+
+**Client Messages:**
+```json
+// Set event type filters
+{
+  "type": "set_filters",
+  "filters": ["auth", "api", "database"]
+}
+
+// Update subscriptions
+{
+  "type": "subscribe",
+  "subscriptions": ["activity", "health", "metrics"]
+}
+```
+
+**Server Messages:**
+```json
+// Activity event
+{
+  "type": "activity",
+  "data": {
+    "id": 1,
+    "type": "auth",
+    "severity": "info",
+    "message": "User logged in",
+    "timestamp": "2025-12-08T10:00:00Z"
+  }
+}
+
+// Filter confirmation
+{
+  "type": "filters_updated",
+  "filters": ["auth", "api"],
+  "timestamp": "2025-12-08T10:00:00Z"
+}
+```
+
 ## Document Control
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2025-11-13 | System | Initial API documentation |
+| 1.1 | 2025-12-08 | System | Added agentic AI, super admin, password reset, and WebSocket endpoints |
