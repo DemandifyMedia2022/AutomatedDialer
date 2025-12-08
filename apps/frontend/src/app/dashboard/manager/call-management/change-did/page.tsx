@@ -66,7 +66,7 @@ export default function Page() {
         credentials: 'include',
         body: JSON.stringify({ did }),
       })
-    } catch {}
+    } catch { }
   }, [])
 
   const updateItem = (idx: number, patch: Partial<ExtItem>) => {
@@ -188,7 +188,7 @@ export default function Page() {
       )
       setItems(details)
       // Seed DB with current allocated DIDs for visible extensions
-      try { await Promise.all(details.map(d => upsertDid(d.ext, d.allocated || ''))) } catch {}
+      try { await Promise.all(details.map(d => upsertDid(d.ext, d.allocated || ''))) } catch { }
     } finally {
       setLoading(false)
     }
@@ -211,7 +211,7 @@ export default function Page() {
     try {
       const payload = await res.json()
       verifiedCallerId = payload?.callerid ?? payload?.verify?.data?.extension?.callerid ?? it.callerId
-    } catch {}
+    } catch { }
     const newAlloc = ok ? (verifiedCallerId || it.callerId) : previousAllocated
     updateItem(idx, { status: ok ? "OK" : "ERROR", allocated: newAlloc, backup: ok ? previousAllocated : it.backup })
     if (ok) {
@@ -276,7 +276,7 @@ export default function Page() {
         return nextItems
       })
       // Persist mappings for all
-      try { await Promise.all(nextItems.map(it => upsertDid(it.ext, it.allocated || it.callerId || ''))) } catch {}
+      try { await Promise.all(nextItems.map(it => upsertDid(it.ext, it.allocated || it.callerId || ''))) } catch { }
       // Final refresh after bulk to mirror portal
       void fetchAccountAndExtensions()
       const failed = Object.values(results).some((r: any) => r?.ok === false)
@@ -367,12 +367,12 @@ export default function Page() {
               {error && (
                 <div className="col-span-full text-sm text-red-600">{error}</div>
               )}
-              {(error || items.length === 0) && (
+              {!loading && (error || items.length === 0) && (
                 <div className="col-span-full text-xs text-muted-foreground space-y-2">
                   <div>Derived accountId: {accountId || "-"}, planId: {planId || "-"}</div>
                   {lastAccount && (
                     <pre className="max-h-64 overflow-auto rounded border bg-muted p-3 text-[11px] whitespace-pre-wrap break-all">
-{JSON.stringify(lastAccount, null, 2)}
+                      {JSON.stringify(lastAccount, null, 2)}
                     </pre>
                   )}
                 </div>
@@ -423,7 +423,7 @@ export default function Page() {
                       </div>
 
                       <div className="pt-1">
-                        <Button variant="outline" className="w-full" onClick={() => onSave(idx)} disabled={!it.callerId} style={{color:"blue", borderColor:"blue"}}>Update</Button>
+                        <Button variant="outline" className="w-full" onClick={() => onSave(idx)} disabled={!it.callerId} style={{ color: "blue", borderColor: "blue" }}>Update</Button>
                       </div>
                     </div>
                   </CardContent>
