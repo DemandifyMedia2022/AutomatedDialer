@@ -321,19 +321,19 @@ export default function PlaybookListPage() {
                 {previewItem && getTypeIcon(previewItem.type)}
                 <SheetTitle>{previewItem?.title}</SheetTitle>
               </div>
-              <SheetDescription className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap text-sm text-muted-foreground">
                 {previewItem && (
                   <>
                     <Badge variant="outline" className={getTypeBadgeColor(previewItem.type)}>
                       {String(previewItem.type || 'other').toUpperCase()}
                     </Badge>
-                    <Badge variant="outline" className="text-xs">
+                    <Badge variant="outline">
                       {String(previewItem.visibility || 'org').toUpperCase()}
                     </Badge>
                     {getStatusBadge(previewItem.status || 'active')}
                   </>
                 )}
-              </SheetDescription>
+              </div>
             </SheetHeader>
             <div className="mt-6 space-y-4">
               {previewItem?.description && (

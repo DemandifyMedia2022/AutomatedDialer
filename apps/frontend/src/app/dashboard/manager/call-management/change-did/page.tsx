@@ -451,9 +451,6 @@ export default function Page() {
                 <Button variant="outline" onClick={() => fetchAccountAndExtensions()} disabled={loading}>
                   {loading ? "Loading..." : "Reload"}
                 </Button>
-                <Button variant="destructive" onClick={() => fetchAccountAndExtensions(true)} disabled={loading}>
-                  {loading ? "Loading..." : "Force Refresh"}
-                </Button>
                 <Button onClick={onSaveAll} disabled={savingAll || items.length === 0}>
                   {savingAll ? "Updating..." : "Update All"}
                 </Button>
