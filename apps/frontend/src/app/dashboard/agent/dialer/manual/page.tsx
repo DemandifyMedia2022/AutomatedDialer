@@ -151,6 +151,7 @@ export default function ManualDialerPage() {
   const [showPopup, setShowPopup] = useState(false)
   const [callHistory, setCallHistory] = useState<any[]>([])
   const [liveSegments, setLiveSegments] = useState<Array<{ speaker?: string; text: string }>>([])
+  const [lastCallDisposition, setLastCallDisposition] = useState<string | null>(null)
   const lastDialedNumber = useMemo(() => {
     if (typeof window === "undefined") return null
     return localStorage.getItem("lastDialedNumber")
@@ -271,7 +272,52 @@ export default function ManualDialerPage() {
   function isBusyCause(cause: any, code?: number, reason?: string): boolean {
     const c = String(cause || '').toLowerCase()
     const r = String(reason || '').toLowerCase()
-    return c.includes('busy') || c.includes('486') || code === 486 || code === 603 || r.includes('busy') || r.includes('decline')
+
+    // SIP codes that indicate busy/declined calls
+    const busyCodes = [486, 603, 600, 403, 406]
+
+    // Reasons that indicate busy/declined calls
+    const busyReasons = [
+      'busy', 'decline', 'forbidden', 'not acceptable',
+      'user busy', 'call rejected', 'busy here', 'declined'
+    ]
+
+    // Check if any busy code matches
+    const codeMatch = code !== undefined && busyCodes.includes(code)
+
+    // Check if any busy reason matches
+    const reasonMatch = busyReasons.some(br => r.includes(br))
+
+    // Check if cause contains busy indicators
+    const causeMatch = c.includes('busy') || c.includes('486') || c.includes('603') || c.includes('decline')
+
+    return codeMatch || reasonMatch || causeMatch
+  }
+
+  function isNoAnswerCause(cause: any, code?: number, reason?: string): boolean {
+    const c = String(cause || '').toLowerCase()
+    const r = String(reason || '').toLowerCase()
+
+    // SIP codes that indicate no answer/timeout calls
+    const noAnswerCodes = [408, 480, 487, 404]
+
+    // Reasons that indicate no answer/timeout calls
+    const noAnswerReasons = [
+      'no answer', 'timeout', 'temporarily unavailable', 'unavailable',
+      'not reachable', 'user not reachable', 'no response', 'ring timeout',
+      'call timeout', 'sip timeout', 'request timeout', 'server timeout', 'rejected'
+    ]
+
+    // Check if any no answer code matches
+    const codeMatch = code !== undefined && noAnswerCodes.includes(code)
+
+    // Check if any no answer reason matches
+    const reasonMatch = noAnswerReasons.some(nr => r.includes(nr))
+
+    // Check if cause contains no answer indicators
+    const causeMatch = c.includes('no answer') || c.includes('timeout') || c.includes('unavailable') || c.includes('not reachable') || c.includes('rejected')
+
+    return codeMatch || reasonMatch || causeMatch
   }
 
   useEffect(() => {
@@ -405,6 +451,22 @@ export default function ManualDialerPage() {
       })
       s.on("transcription:error", (_payload: any) => {
         // ignore for now in UI
+      })
+      s.on('agentic:start_call', async (payload: any) => {
+        try {
+          // Don't auto-initiate calls if last call was BUSY (prospect declined)
+          if (lastCallDisposition === 'BUSY') return
+          
+          // Additional safety: don't initiate if there's any active session
+          if (sessionRef.current) return
+          
+          const ph = String(payload?.lead?.phone || '').replace(/[^0-9+]/g, '').replace(/^00/, '+')
+          if (!ph) return
+          if (!uaRef.current) return
+          if (!String(status).includes('Registered')) return
+          setNumber(ph.replace(/^\+/, ''))
+          await placeCall()
+        } catch { }
       })
       socketRef.current = s
       return s
@@ -747,20 +809,43 @@ export default function ManualDialerPage() {
         const reason = e?.response?.reason_phrase || String(e?.cause || '')
         const reasonL = String(reason).toLowerCase()
         const isBusy = isBusyCause(e?.cause, code, reason)
-        const isNoAnswer = (!isBusy) && (
-          code === 408 || code === 480 || code === 487 || code === 404 ||
-          reasonL.includes('no answer') || reasonL.includes('timeout') || reasonL.includes('temporarily unavailable') || reasonL.includes('unavailable')
-        )
-        setStatus(isBusy ? "Busy" : isNoAnswer ? "No Answer" : "Call Failed")
+        const isNoAnswer = isNoAnswerCause(e?.cause, code, reason)
+        
+        // Debug logging
+        console.log('Call failed:', { code, reason, cause: e?.cause, isBusy, isNoAnswer })
+        
+        // Check both conditions independently to ensure proper parallel logic
+        let finalStatus = "Call Failed"
+        if (isBusy && isNoAnswer) {
+          // If both are true, prioritize BUSY as it's more specific
+          finalStatus = "Busy"
+        } else if (isBusy) {
+          finalStatus = "Busy"
+        } else if (isNoAnswer) {
+          finalStatus = "No Answer"
+        }
+        setStatus(finalStatus)
         setError(e?.cause || "Call failed")
         clearTimer()
-        // Keep the popup visible to show final status to the agent
         setShowPopup(true)
+        // Set last call disposition to block agentic auto-calls if BUSY
+        console.log('Disposition logic - isBusy:', isBusy, 'isNoAnswer:', isNoAnswer)
+        if (isBusy) {
+          console.log('Saving BUSY disposition - isBusy is true')
+          setLastCallDisposition('BUSY')
+          // Automatically save BUSY disposition to DM form
+          try { await saveDispositionToDmForm('Busy') } catch {}
+          // Immediately hang up any active session to prevent reconnection
+          try { session.terminate?.() } catch {}
+        } else {
+          console.log('Saving NO_ANSWER/FAILED disposition - isBusy is false, isNoAnswer:', isNoAnswer)
+          setLastCallDisposition(isNoAnswer ? 'NO_ANSWER' : 'FAILED')
+          // Automatically save NO_ANSWER or FAILED disposition to DM form
+          try { await saveDispositionToDmForm(isNoAnswer ? 'Not Answered' : 'Call Failed') } catch {}
+        }
         if (!uploadedOnceRef.current) {
-          if (isBusy) {
-            try { await startBusyTone(); setTimeout(() => stopBusyTone(), 3000) } catch {}
-          }
-          setPendingUploadExtra({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : undefined })
+          if (isBusy) { try { await startBusyTone(); setTimeout(() => stopBusyTone(), 3000) } catch { } }
+          setPendingUploadExtra({ sip_status: code || undefined, sip_reason: reason || undefined, hangup_cause: isBusy ? 'busy' : isNoAnswer ? 'no_answer' : undefined })
           setShowDisposition(true)
         }
         try { await sendPhase('ended') } catch {}
@@ -770,6 +855,8 @@ export default function ManualDialerPage() {
         setStatus("Call Ended")
         clearTimer()
         setShowPopup(false)
+        // Set last call disposition for normal call completion
+        setLastCallDisposition('ANSWERED')
         if (!uploadedOnceRef.current) {
           setPendingUploadExtra({})
           setShowDisposition(true)
@@ -1185,6 +1272,9 @@ export default function ManualDialerPage() {
     if (!uaRef.current) { setError("UA not ready"); return }
     if (!number) { setError("Empty number"); return }
     
+    // Reset last call disposition when manually placing a call
+    setLastCallDisposition(null)
+    
     const destination = `${countryCode}${number}`
     const options = {
       eventHandlers: {},
@@ -1316,7 +1406,7 @@ export default function ManualDialerPage() {
     }
   }
 
-  async function stopRecordingAndUpload(extra: { sip_status?: number; sip_reason?: string; hangup_cause?: string } = {}) {
+  async function stopRecordingAndUpload(extra: { sip_status?: number; sip_reason?: string; hangup_cause?: string } = {}, manualDisposition?: string) {
     try {
       const rec = mediaRecorderRef.current
       if (rec && rec.state !== 'inactive') {
@@ -1386,20 +1476,36 @@ export default function ManualDialerPage() {
     if (extra.sip_reason) form.append('sip_reason', extra.sip_reason)
     if (extra.hangup_cause) form.append('hangup_cause', extra.hangup_cause)
     form.append('platform', 'web')
+    
     // Determine automatic call disposition from SIP result
     const autoDisposition = (() => {
       if (hasAnsweredRef.current) return 'Answered'
       const code = typeof extra.sip_status === 'number' ? extra.sip_status : undefined
       const cause = (extra.sip_reason || '').toLowerCase()
       const hang = (extra.hangup_cause || '').toLowerCase()
-      if (hang.includes('busy') || (code === 486 || code === 603) || cause.includes('busy') || cause.includes('decline')) return 'Busy'
-      if ((code === 408 || code === 480 || code === 487 || code === 404) || cause.includes('no answer') || cause.includes('timeout') || cause.includes('temporarily unavailable') || cause.includes('unavailable')) return 'No Answer'
+      
+      // Use the dedicated functions for better detection - check both independently
+      const busyResult = hang.includes('busy') || isBusyCause(cause, code, extra.sip_reason)
+      const noAnswerResult = hang.includes('no_answer') || isNoAnswerCause(cause, code, extra.sip_reason)
+      
+      // Determine disposition with clear priority logic
+      if (busyResult && noAnswerResult) {
+        // If both are true, prioritize BUSY as it's more specific
+        return 'Busy'
+      } else if (busyResult) {
+        return 'Busy'
+      } else if (noAnswerResult) {
+        return 'No Answer'
+      }
       return 'Call Failed'
     })()
     form.append('disposition', autoDisposition)
-    // Selected options are feedbacks stored as remark
-    if (disposition) form.append('remarks', disposition)
-
+    
+    // Add manual disposition to remarks if provided
+    if (manualDisposition) {
+      form.append('remarks', manualDisposition)
+    }
+    
     if (blob) form.append('recording', blob, `call_${Date.now()}.webm`)
     if (remoteBlob) form.append('remote_recording', remoteBlob, `call_remote_${Date.now()}.webm`)
 
@@ -2178,9 +2284,9 @@ export default function ManualDialerPage() {
                           // Save disposition to DM form f_lead column
                           await saveDispositionToDmForm(disposition)
                           
-                          // Continue with existing logic
+                          // Continue with existing logic, pass the selected disposition for remarks
                           if (!uploadedOnceRef.current) uploadedOnceRef.current = true
-                          await stopRecordingAndUpload(pendingUploadExtra || {})
+                          await stopRecordingAndUpload(pendingUploadExtra || {}, disposition)
                         } finally {
                           setShowDisposition(false)
                           setPendingUploadExtra(null)
