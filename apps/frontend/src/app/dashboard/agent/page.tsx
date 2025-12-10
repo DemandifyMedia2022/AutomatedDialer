@@ -24,11 +24,14 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
-import { ArrowDownRight, ArrowUpRight, PhoneCall, PhoneIncoming, Voicemail, UsersRound, AlertCircle, Phone, Zap, Hand, TrendingUp, Calendar, BarChart3 } from "lucide-react"
+import { ArrowDownRight, ArrowUpRight, PhoneCall, PhoneIncoming, Voicemail, UsersRound, AlertCircle, Phone, Zap, Hand, TrendingUp, Calendar, BarChart3, Trophy, Medal, Star } from "lucide-react"
 import { WorldMap } from "./components/WorldMap"
+import { DispositionChart } from "./components/DispositionChart"
+import { PeriodSwitcher } from "./components/PeriodSwitcher"
 import AIAssistant from "@/components/ai-assistant"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/hooks/useAuth"
+import { useFollowUpNotifications } from "@/hooks/useFollowUpNotifications"
 
 type MetricResponse = {
   callsDialed: number
@@ -55,6 +58,7 @@ type LeaderboardData = {
 export default function Page() {
   const { user } = useAuth()
   const router = useRouter()
+  useFollowUpNotifications() // Initialize login notifications only on the dashboard
 
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
@@ -68,12 +72,12 @@ export default function Page() {
   // Format agent name from user email (same logic as sidebar)
   const agentName = user?.email
     ? user.email
-        .split("@")[0]
-        .replace(/[._-]+/g, " ")
-        .split(" ")
-        .filter(Boolean)
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        .join(" ")
+      .split("@")[0]
+      .replace(/[._-]+/g, " ")
+      .split(" ")
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ")
     : "Agent"
 
 
@@ -87,15 +91,15 @@ export default function Page() {
         const t = getToken()
         if (t) headers['Authorization'] = `Bearer ${t}`
       }
-      
+
       const [dailyRes, monthlyRes] = await Promise.all([
         fetch(`${API_BASE}/api/analytics/agent/dispositions/daily`, { headers, credentials }),
         fetch(`${API_BASE}/api/analytics/agent/dispositions/monthly`, { headers, credentials })
       ])
-      
+
       const dailyData = dailyRes.ok ? await dailyRes.json() : { daily: [] }
       const monthlyData = monthlyRes.ok ? await monthlyRes.json() : { monthly: [] }
-      
+
       setDispositionData({
         daily: dailyData.daily || [],
         monthly: monthlyData.monthly || []
@@ -119,7 +123,7 @@ export default function Page() {
       })
     }
   }
-  
+
   const fetchLeaderboardData = async () => {
     try {
       const headers: Record<string, string> = {}
@@ -130,15 +134,15 @@ export default function Page() {
         const t = getToken()
         if (t) headers['Authorization'] = `Bearer ${t}`
       }
-      
+
       const [dailyRes, monthlyRes] = await Promise.all([
         fetch(`${API_BASE}/api/analytics/leaderboard/daily`, { headers, credentials }),
         fetch(`${API_BASE}/api/analytics/leaderboard/monthly`, { headers, credentials })
       ])
-      
+
       const dailyData = dailyRes.ok ? await dailyRes.json() : { daily: [] }
       const monthlyData = monthlyRes.ok ? await monthlyRes.json() : { monthly: [] }
-      
+
       setLeaderboardData({
         daily: dailyData.daily || [],
         monthly: monthlyData.monthly || []
@@ -175,12 +179,12 @@ export default function Page() {
         const t = getToken()
         if (t) headers['Authorization'] = `Bearer ${t}`
       }
-      
+
       // Get today's date range (start of day to end of day)
       const today = new Date()
       const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
       const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
-      
+
       const res = await fetch(`${API_BASE}/api/analytics/agent?from=${startOfDay.toISOString()}&to=${endOfDay.toISOString()}`, { headers, credentials })
       if (res.ok) {
         const json = await res.json()
@@ -262,8 +266,8 @@ export default function Page() {
               </p>
             </div>
             <div className="flex gap-2">
-              <Button 
-                size="default" 
+              <Button
+                size="default"
                 className="gap-2"
                 onClick={() => setDialingDialogOpen(true)}
               >
@@ -338,46 +342,16 @@ export default function Page() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>Call Disposition Analytics</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <div className="flex rounded-lg border bg-background p-1">
-                      <button
-                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-                          dispositionView === 'daily'
-                            ? 'bg-primary text-primary-foreground shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                        }`}
-                        onClick={() => setDispositionView('daily')}
-                      >
-                        <Calendar className="h-4 w-4 mr-1" />
-                        Daily
-                      </button>
-                      <button
-                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-                          dispositionView === 'monthly'
-                            ? 'bg-primary text-primary-foreground shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                        }`}
-                        onClick={() => setDispositionView('monthly')}
-                      >
-                        <BarChart3 className="h-4 w-4 mr-1" />
-                        Monthly
-                      </button>
-                    </div>
-                  </div>
+                  <PeriodSwitcher value={dispositionView} onChange={setDispositionView} />
                 </div>
               </CardHeader>
               <CardContent>
                 {loading && !dispositionData ? (
-                  <div className="w-full flex items-center justify-center py-12">
-                    <Skeleton className="w-full max-w-sm h-64 rounded-full" />
-                  </div>
-                ) : (dispositionData?.[dispositionView] ?? []).length === 0 ? (
-                  <div className="w-full flex flex-col items-center justify-center py-12 text-center">
-                    <AlertCircle className="h-12 w-12 text-muted-foreground/50 mb-3" />
-                    <p className="text-sm text-muted-foreground">No disposition data available</p>
+                  <div className="w-full h-[300px] flex items-center justify-center">
+                    <Skeleton className="w-full h-full rounded-lg" />
                   </div>
                 ) : (
-                  <DispositionRadar dispositions={dispositionData?.[dispositionView] ?? []} />
+                  <DispositionChart view={dispositionView} />
                 )}
               </CardContent>
             </Card>
@@ -386,32 +360,7 @@ export default function Page() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>Leaderboard</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <div className="flex rounded-lg border bg-background p-1">
-                      <button
-                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-                          leaderboardView === 'daily'
-                            ? 'bg-primary text-primary-foreground shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                        }`}
-                        onClick={() => setLeaderboardView('daily')}
-                      >
-                        <Calendar className="h-4 w-4 mr-1" />
-                        Daily
-                      </button>
-                      <button
-                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-                          leaderboardView === 'monthly'
-                            ? 'bg-primary text-primary-foreground shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                        }`}
-                        onClick={() => setLeaderboardView('monthly')}
-                      >
-                        <BarChart3 className="h-4 w-4 mr-1" />
-                        Monthly
-                      </button>
-                    </div>
-                  </div>
+                  <PeriodSwitcher value={leaderboardView} onChange={setLeaderboardView} />
                 </div>
               </CardHeader>
               <CardContent>
@@ -427,14 +376,25 @@ export default function Page() {
                       ))}
                     </>
                   ) : (leaderboardData?.[leaderboardView] ?? []).length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-8 text-center">
-                      <AlertCircle className="h-10 w-10 text-muted-foreground/50 mb-2" />
-                      <p className="text-sm text-muted-foreground">No leaderboard data available</p>
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="relative mb-6">
+                        <div className="absolute inset-0 blur-xl bg-blue-500/20 rounded-full" />
+                        <div className="relative bg-background border rounded-full p-4 shadow-sm">
+                          <Trophy className="h-10 w-10 text-yellow-500" />
+                          <div className="absolute -top-1 -right-1">
+                            <Star className="h-4 w-4 text-yellow-400 fill-yellow-400 animate-pulse" />
+                          </div>
+                        </div>
+                      </div>
+                      <h3 className="font-semibold text-lg mb-1">No Champions Yet</h3>
+                      <p className="text-sm text-muted-foreground max-w-[200px]">
+                        Start dialing to climb the ranks and earn your spot on the leaderboard!
+                      </p>
                     </div>
                   ) : (
                     (leaderboardData?.[leaderboardView] ?? []).map((row, idx) => (
-                      <div 
-                        key={row.name} 
+                      <div
+                        key={row.name}
                         className="grid grid-cols-[1fr_auto] items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-accent/50 transition-colors duration-150"
                       >
                         <div className="flex items-center gap-3 min-w-0">
@@ -524,7 +484,7 @@ function AnimatedNumber({ value, suffix = "" }: { value: number; suffix?: string
     const steps = 50
     const increment = value / steps
     const stepDuration = duration / steps
-    
+
     let currentStep = 0
     const timer = setInterval(() => {
       currentStep++
@@ -551,12 +511,12 @@ function StatCard({ title, value, icon, tone, loading }: { title: string; value:
     fuchsia: "bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-400 border-fuchsia-500/20 dark:bg-fuchsia-500/15 dark:border-fuchsia-500/30",
     rose: "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20 dark:bg-rose-500/15 dark:border-rose-500/30",
   }[tone]
-  
+
   // Parse numeric value and suffix
   const numericMatch = value.match(/^(\d+)(.*)$/)
   const numericValue = numericMatch ? parseInt(numericMatch[1]) : 0
   const suffix = numericMatch ? numericMatch[2] : value
-  
+
   return (
     <Card className="p-0 border shadow-sm hover:shadow-md transition-all duration-200">
       <CardContent className="p-6">
@@ -620,11 +580,11 @@ function DispositionRadar({ dispositions }: { dispositions: { name: string; coun
             <g key={it.name}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <circle 
-                    cx={x} 
-                    cy={y} 
-                    r={isHovered ? 6 : 4} 
-                    className="fill-primary stroke-background cursor-help transition-all duration-200" 
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={isHovered ? 6 : 4}
+                    className="fill-primary stroke-background cursor-help transition-all duration-200"
                     strokeWidth={2}
                     onMouseEnter={() => setHoveredIndex(idx)}
                     onMouseLeave={() => setHoveredIndex(null)}
@@ -642,11 +602,11 @@ function DispositionRadar({ dispositions }: { dispositions: { name: string; coun
                 const lx = 140 + labelRadius * Math.cos(angle)
                 const ly = 140 + labelRadius * Math.sin(angle)
                 return (
-                  <text 
-                    x={lx} 
-                    y={ly} 
-                    textAnchor={Math.cos(angle) > 0.1 ? "start" : Math.cos(angle) < -0.1 ? "end" : "middle"} 
-                    dominantBaseline="middle" 
+                  <text
+                    x={lx}
+                    y={ly}
+                    textAnchor={Math.cos(angle) > 0.1 ? "start" : Math.cos(angle) < -0.1 ? "end" : "middle"}
+                    dominantBaseline="middle"
                     className={`text-[10px] fill-foreground/70 dark:fill-foreground/60 select-none pointer-events-none font-medium transition-all duration-200 ${isHovered ? 'fill-foreground' : ''}`}
                   >
                     {it.name}

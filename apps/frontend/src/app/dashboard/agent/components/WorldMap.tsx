@@ -74,7 +74,7 @@ export function WorldMap() {
                             <span className="text-muted-foreground">Active (9AM - 5PM)</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="block w-3 h-3 rounded-full bg-muted shadow-sm" />
+                            <span className="block w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: "#67676aff" }} />
                             <span className="text-muted-foreground">Inactive</span>
                         </div>
                     </div>
@@ -103,7 +103,7 @@ export function WorldMap() {
                                                                 default: {
                                                                     fill: status === "active"
                                                                         ? "rgb(16 185 129)" // emerald-500
-                                                                        : theme === "dark" ? "hsl(var(--muted))" : "hsl(var(--muted))",
+                                                                        : "#52525b", // Dark gray (zinc-600)
                                                                     stroke: theme === "dark" ? "hsl(var(--border))" : "hsl(var(--border))",
                                                                     strokeWidth: 0.5,
                                                                     outline: "none",
