@@ -206,7 +206,7 @@ export default function FollowUpCalls() {
         const data = await response.json()
         const allCalls = data.items || data.calls || []
         
-        // Filter calls - improved logic with deduplication
+        // Filter calls - only show specific remarks
         const seenCallIds = new Set<number | string>()
         const filteredCalls = allCalls.filter((call: FollowUpCall) => {
           // Deduplicate by call ID
@@ -214,46 +214,11 @@ export default function FollowUpCalls() {
             return false
           }
           
-          const remarks = (call.remarks || '').toLowerCase().trim()
-          const disposition = (call.disposition || '').toLowerCase().trim()
-          const status = (call.status || '').toLowerCase().trim()
-          const hangupCause = (call.hangup_cause || '').toLowerCase().trim()
-          const sipReason = (call.sip_reason || '').toLowerCase().trim()
+          const remarks = (call.remarks || '').trim().toLowerCase()
           
-          const allText = `${remarks} ${disposition} ${status} ${hangupCause} ${sipReason}`.toLowerCase()
-          
-          // EXCLUDE unwanted call types (case-insensitive)
-          const excludePatterns = [
-            'vm-operator', 'vm operator', 'voicemail',
-            'dnc', 'do not call', 'donotcall',
-            'invalid country', 'invalid-country',
-            'vm-rpc', 'vm rpc', 'vmrpc',
-            'invalid number', 'invalid job', 'invalid industry', 'invalid emp'
-          ]
-          
-          if (excludePatterns.some(pattern => allText.includes(pattern))) {
-            return false
-          }
-          
-          // INCLUDE follow-up worthy calls
-          const hasNoAnswer = allText.includes('no answer') || 
-                            allText.includes('no-answer') ||
-                            allText.includes('not answered') ||
-                            [600, 408, 480].includes(call.sip_status || 0)
-          
-          const hasBusy = allText.includes('busy') || 
-                         [486, 603].includes(call.sip_status || 0)
-          
-          const hasCallFailed = allText.includes('call failed') || 
-                              allText.includes('failed') ||
-                              [500, 503].includes(call.sip_status || 0)
-          
-          const hasFollowUp = allText.includes('follow-up') || 
-                            allText.includes('follow up') ||
-                            allText.includes('followup') ||
-                            call.follow_up === true
-          
-          const isMatch = hasNoAnswer || hasBusy || hasCallFailed || hasFollowUp
+          // ONLY include calls with these exact remarks (case-insensitive)
+          const allowedRemarks = ['busy', 'not answered', 'follow-ups']
+          const isMatch = allowedRemarks.includes(remarks)
           
           if (isMatch) {
             seenCallIds.add(call.id)
@@ -646,7 +611,7 @@ export default function FollowUpCalls() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-bold">Pending Follow-up Calls</h1>
-                <p className="text-muted-foreground">View Not Answered, Call Failed, Follow Ups, and Busy call records</p>
+                <p className="text-muted-foreground">View calls with remarks: Not Answered, Follow Up's, and Busy records only</p>
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -814,7 +779,7 @@ export default function FollowUpCalls() {
                     <p className="text-muted-foreground max-w-md mx-auto">
                       {searchTerm || statusFilter !== "all"
                         ? "No follow-up calls match your current filters. Try adjusting your search or filter criteria."
-                        : "Great! You don't have any Busy, Not Answered, Disconnected, or Follow-up calls (excluding Lead calls)."}
+                        : "Great! You don't have any calls with remarks: Not Answered, Follow Up's, or Busy."}
                     </p>
                   </CardContent>
                 </Card>

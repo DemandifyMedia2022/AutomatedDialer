@@ -246,6 +246,8 @@ const callsHandler = async (req: any, res: any, next: any) => {
       const raw = String(b.disposition ?? '').trim().toUpperCase();
       // If client sent a trustworthy final state, keep it; otherwise infer
       if (raw === 'BUSY' || raw === 'NO ANSWER' || raw === 'ANSWERED' || raw === 'VOICEMAIL') return raw;
+      // Convert CALL FAILED to NO ANSWER for prospects not picking up
+      if (raw === 'CALL FAILED' || raw === 'CALL_FAILED') return 'NO ANSWER';
       // Treat FAILED/FAIL/ERROR/REJECTED/DECLINED as hints -> infer from signals
       if (raw === 'FAILED' || raw === 'FAIL' || raw === 'ERROR' || raw === 'REJECTED' || raw === 'DECLINED') return inferDisposition();
       // Unknown/empty -> infer
@@ -514,6 +516,128 @@ router.get('/analytics/agent/stream', requireAuth, requireRoles(['agent']), asyn
     await tick()
     const timer = setInterval(tick, 3000)
     req.on('close', () => { try { clearInterval(timer) } catch { } })
+  } catch (e) {
+    next(e)
+  }
+})
+
+// Daily call disposition analytics for agents
+router.get('/analytics/agent/dispositions/daily', requireAuth, requireRoles(['agent']), async (req: any, res: any, next: any) => {
+  try {
+    const userId = req.user?.userId
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
+
+    const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true } })
+    const username = me?.username || null
+    const usermail = me?.usermail || null
+    const pool = getPool()
+
+    // Get today's date range (start of day to end of day)
+    const today = new Date()
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+
+    const idParts: string[] = []
+    const params: any[] = []
+    if (username) { idParts.push('username = ?'); params.push(username) }
+    if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
+    if (idParts.length === 0) return res.json({ daily: [] })
+    
+    params.push(startOfDay, endOfDay)
+    const where = ['(', idParts.join(' OR '), ')', 'AND start_time >= ? AND start_time < ?'].join(' ').trim()
+    const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`
+    const [rows]: any = await pool.query(sql, params)
+    const daily = (rows || []).map((r: any) => ({
+      name: String(r.disp || '') || 'UNKNOWN',
+      count: Number(r.cnt || 0),
+    }))
+    return res.json({ daily })
+  } catch (e) {
+    next(e)
+  }
+})
+
+// Monthly call disposition analytics for agents
+router.get('/analytics/agent/dispositions/monthly', requireAuth, requireRoles(['agent']), async (req: any, res: any, next: any) => {
+  try {
+    const userId = req.user?.userId
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
+
+    const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true } })
+    const username = me?.username || null
+    const usermail = me?.usermail || null
+    const pool = getPool()
+
+    // Get current month's date range (start of month to end of month)
+    const today = new Date()
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+
+    const idParts: string[] = []
+    const params: any[] = []
+    if (username) { idParts.push('username = ?'); params.push(username) }
+    if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
+    if (idParts.length === 0) return res.json({ monthly: [] })
+    
+    params.push(startOfMonth, endOfMonth)
+    const where = ['(', idParts.join(' OR '), ')', 'AND start_time >= ? AND start_time < ?'].join(' ').trim()
+    const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`
+    const [rows]: any = await pool.query(sql, params)
+    const monthly = (rows || []).map((r: any) => ({
+      name: String(r.disp || '') || 'UNKNOWN',
+      count: Number(r.cnt || 0),
+    }))
+    return res.json({ monthly })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/analytics/leaderboard/daily', requireAuth, requireRoles(['agent', 'manager', 'qa', 'superadmin']), async (req: any, res: any, next: any) => {
+  try {
+    const pool = getPool()
+    const params: any[] = []
+
+    // Get today's date range (start of day to end of day)
+    const today = new Date()
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+
+    params.push(startOfDay, endOfDay)
+    const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
+                 FROM calls 
+                 WHERE LOWER(remarks) = 'lead' AND start_time >= ? AND start_time < ?
+                 GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
+                 ORDER BY cnt DESC
+                 LIMIT 10`
+    const [rows]: any = await pool.query(sql, params)
+    const daily = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
+    return res.json({ daily })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/analytics/leaderboard/monthly', requireAuth, requireRoles(['agent', 'manager', 'qa', 'superadmin']), async (req: any, res: any, next: any) => {
+  try {
+    const pool = getPool()
+    const params: any[] = []
+
+    // Get current month's date range (start of month to end of month)
+    const today = new Date()
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+
+    params.push(startOfMonth, endOfMonth)
+    const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
+                 FROM calls 
+                 WHERE LOWER(remarks) = 'lead' AND start_time >= ? AND start_time < ?
+                 GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
+                 ORDER BY cnt DESC
+                 LIMIT 10`
+    const [rows]: any = await pool.query(sql, params)
+    const monthly = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
+    return res.json({ monthly })
   } catch (e) {
     next(e)
   }

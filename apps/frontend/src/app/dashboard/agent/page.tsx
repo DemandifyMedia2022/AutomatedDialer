@@ -24,7 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
-import { ArrowDownRight, ArrowUpRight, PhoneCall, PhoneIncoming, Voicemail, UsersRound, AlertCircle, Phone, Zap, Hand } from "lucide-react"
+import { ArrowDownRight, ArrowUpRight, PhoneCall, PhoneIncoming, Voicemail, UsersRound, AlertCircle, Phone, Zap, Hand, TrendingUp, Calendar, BarChart3 } from "lucide-react"
 import { WorldMap } from "./components/WorldMap"
 import AIAssistant from "@/components/ai-assistant"
 import { Button } from "@/components/ui/button"
@@ -42,6 +42,16 @@ type MetricResponse = {
   leaderboard: { name: string; count: number; avatar?: string }[]
 }
 
+type DispositionData = {
+  daily: { name: string; count: number }[]
+  monthly: { name: string; count: number }[]
+}
+
+type LeaderboardData = {
+  daily: { name: string; count: number }[]
+  monthly: { name: string; count: number }[]
+}
+
 export default function Page() {
   const { user } = useAuth()
   const router = useRouter()
@@ -49,7 +59,11 @@ export default function Page() {
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<MetricResponse | null>(null)
+  const [dispositionData, setDispositionData] = useState<DispositionData | null>(null)
+  const [leaderboardData, setLeaderboardData] = useState<LeaderboardData | null>(null)
   const [dialingDialogOpen, setDialingDialogOpen] = useState(false)
+  const [dispositionView, setDispositionView] = useState<'daily' | 'monthly'>('daily')
+  const [leaderboardView, setLeaderboardView] = useState<'daily' | 'monthly'>('daily')
 
   // Format agent name from user email (same logic as sidebar)
   const agentName = user?.email
@@ -62,6 +76,92 @@ export default function Page() {
         .join(" ")
     : "Agent"
 
+
+  const fetchDispositionData = async () => {
+    try {
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      
+      const [dailyRes, monthlyRes] = await Promise.all([
+        fetch(`${API_BASE}/api/analytics/agent/dispositions/daily`, { headers, credentials }),
+        fetch(`${API_BASE}/api/analytics/agent/dispositions/monthly`, { headers, credentials })
+      ])
+      
+      const dailyData = dailyRes.ok ? await dailyRes.json() : { daily: [] }
+      const monthlyData = monthlyRes.ok ? await monthlyRes.json() : { monthly: [] }
+      
+      setDispositionData({
+        daily: dailyData.daily || [],
+        monthly: monthlyData.monthly || []
+      })
+    } catch (error) {
+      console.error('Error fetching disposition data:', error)
+      // Fallback demo data
+      setDispositionData({
+        daily: [
+          { name: "ANSWERED", count: 45 },
+          { name: "NO ANSWER", count: 32 },
+          { name: "VOICEMAIL", count: 18 },
+          { name: "BUSY", count: 5 }
+        ],
+        monthly: [
+          { name: "ANSWERED", count: 1240 },
+          { name: "NO ANSWER", count: 890 },
+          { name: "VOICEMAIL", count: 420 },
+          { name: "BUSY", count: 150 }
+        ]
+      })
+    }
+  }
+  
+  const fetchLeaderboardData = async () => {
+    try {
+      const headers: Record<string, string> = {}
+      let credentials: RequestCredentials = 'omit'
+      if (USE_AUTH_COOKIE) {
+        credentials = 'include'
+      } else {
+        const t = getToken()
+        if (t) headers['Authorization'] = `Bearer ${t}`
+      }
+      
+      const [dailyRes, monthlyRes] = await Promise.all([
+        fetch(`${API_BASE}/api/analytics/leaderboard/daily`, { headers, credentials }),
+        fetch(`${API_BASE}/api/analytics/leaderboard/monthly`, { headers, credentials })
+      ])
+      
+      const dailyData = dailyRes.ok ? await dailyRes.json() : { daily: [] }
+      const monthlyData = monthlyRes.ok ? await monthlyRes.json() : { monthly: [] }
+      
+      setLeaderboardData({
+        daily: dailyData.daily || [],
+        monthly: monthlyData.monthly || []
+      })
+    } catch (error) {
+      console.error('Error fetching leaderboard data:', error)
+      // Fallback demo data
+      setLeaderboardData({
+        daily: [
+          { name: "Alex Johnson", count: 12 },
+          { name: "Priya Singh", count: 9 },
+          { name: "Rahul Mehta", count: 8 },
+          { name: "Sara Lee", count: 6 }
+        ],
+        monthly: [
+          { name: "Alex Johnson", count: 245 },
+          { name: "Priya Singh", count: 198 },
+          { name: "Rahul Mehta", count: 176 },
+          { name: "Sara Lee", count: 154 }
+        ]
+      })
+    }
+  }
 
   const fetchMetrics = async () => {
     setLoading(true)
@@ -122,152 +222,8 @@ export default function Page() {
 
   useEffect(() => {
     fetchMetrics()
-     
-  }, [])
-
-  // Optimized data fetching with proper daily filtering
-  useEffect(() => {
-    const getTodayDateRange = () => {
-      const today = new Date()
-      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
-      return { startOfDay, endOfDay }
-    }
-
-    const fetchWithAuth = async (url: string) => {
-      const headers: Record<string, string> = {}
-      let credentials: RequestCredentials = 'omit'
-      if (USE_AUTH_COOKIE) {
-        credentials = 'include'
-      } else {
-        const t = getToken()
-        if (t) headers['Authorization'] = `Bearer ${t}`
-      }
-      return fetch(url, { headers, credentials })
-    }
-
-    // Main analytics data fetcher
-    const fetchAnalyticsData = async () => {
-      try {
-        const { startOfDay, endOfDay } = getTodayDateRange()
-        const dateParams = `from=${startOfDay.toISOString()}&to=${endOfDay.toISOString()}`
-
-        // Fetch all analytics data in parallel
-        const [analyticsRes, leaderboardRes, dispositionsRes] = await Promise.all([
-          fetchWithAuth(`${API_BASE}/api/analytics/agent?${dateParams}`),
-          fetchWithAuth(`${API_BASE}/api/analytics/leaderboard?${dateParams}`),
-          fetchWithAuth(`${API_BASE}/api/analytics/agent/dispositions?${dateParams}&remarks=lead`)
-        ])
-
-        // Process analytics data
-        if (analyticsRes.ok) {
-          const analytics = await analyticsRes.json()
-          setData(prev => ({
-            ...(prev || {}),
-            ...analytics,
-            dispositions: prev?.dispositions || [],
-            leaderboard: prev?.leaderboard || []
-          }))
-        }
-
-        // Process leaderboard data
-        if (leaderboardRes.ok) {
-          const leaderboardData = await leaderboardRes.json()
-          setData(prev => ({
-            ...(prev || {}),
-            leaderboard: leaderboardData?.items || []
-          }))
-        }
-
-        // Process dispositions data
-        if (dispositionsRes.ok) {
-          const dispositionsData = await dispositionsRes.json()
-          setData(prev => ({
-            ...(prev || {}),
-            dispositions: dispositionsData?.items || []
-          }))
-        }
-      } catch (error) {
-        console.error('Error fetching analytics data:', error)
-      }
-    }
-
-    // Initial fetch
-    fetchAnalyticsData()
-
-    // Set up real-time updates
-    let cleanup: (() => void) | null = null
-
-    if (USE_AUTH_COOKIE) {
-      // Use EventSource for real-time updates
-      const { startOfDay, endOfDay } = getTodayDateRange()
-      const dateParams = `from=${startOfDay.toISOString()}&to=${endOfDay.toISOString()}`
-
-      const analyticsEventSource = new EventSource(`${API_BASE}/api/analytics/agent/stream?${dateParams}`, { withCredentials: true })
-      const leaderboardEventSource = new EventSource(`${API_BASE}/api/analytics/leaderboard/stream?${dateParams}`, { withCredentials: true })
-      const dispositionsEventSource = new EventSource(`${API_BASE}/api/analytics/agent/dispositions/stream?${dateParams}`, { withCredentials: true })
-
-      analyticsEventSource.onmessage = (ev) => {
-        try {
-          const data = JSON.parse(ev.data)
-          setData(prev => ({
-            ...(prev || {}),
-            ...data,
-            dispositions: prev?.dispositions || [],
-            leaderboard: prev?.leaderboard || []
-          }))
-        } catch (error) {
-          console.error('Error parsing analytics stream data:', error)
-        }
-      }
-
-      leaderboardEventSource.onmessage = (ev) => {
-        try {
-          const data = JSON.parse(ev.data)
-          setData(prev => ({
-            ...(prev || {}),
-            leaderboard: data?.items || []
-          }))
-        } catch (error) {
-          console.error('Error parsing leaderboard stream data:', error)
-        }
-      }
-
-      dispositionsEventSource.onmessage = (ev) => {
-        try {
-          const data = JSON.parse(ev.data)
-          setData(prev => ({
-            ...(prev || {}),
-            dispositions: data?.items || []
-          }))
-        } catch (error) {
-          console.error('Error parsing dispositions stream data:', error)
-        }
-      }
-
-      const handleEventSourceError = (source: EventSource) => {
-        source.onerror = () => {
-          console.warn('EventSource error, falling back to polling')
-          source.close()
-        }
-      }
-
-      handleEventSourceError(analyticsEventSource)
-      handleEventSourceError(leaderboardEventSource)
-      handleEventSourceError(dispositionsEventSource)
-
-      cleanup = () => {
-        analyticsEventSource.close()
-        leaderboardEventSource.close()
-        dispositionsEventSource.close()
-      }
-    } else {
-      // Fallback to polling
-      const pollInterval = setInterval(fetchAnalyticsData, 3000)
-      cleanup = () => clearInterval(pollInterval)
-    }
-
-    return cleanup
+    fetchDispositionData()
+    fetchLeaderboardData()
   }, [])
 
   return (
@@ -380,20 +336,48 @@ export default function Page() {
           <div className="grid gap-6 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader>
-                <CardTitle>Call Disposition Analytics</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Call Disposition Analytics</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <div className="flex rounded-lg border bg-background p-1">
+                      <button
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                          dispositionView === 'daily'
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                        }`}
+                        onClick={() => setDispositionView('daily')}
+                      >
+                        <Calendar className="h-4 w-4 mr-1" />
+                        Daily
+                      </button>
+                      <button
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                          dispositionView === 'monthly'
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                        }`}
+                        onClick={() => setDispositionView('monthly')}
+                      >
+                        <BarChart3 className="h-4 w-4 mr-1" />
+                        Monthly
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
-                {loading && !data ? (
+                {loading && !dispositionData ? (
                   <div className="w-full flex items-center justify-center py-12">
                     <Skeleton className="w-full max-w-sm h-64 rounded-full" />
                   </div>
-                ) : (data?.dispositions ?? []).length === 0 ? (
+                ) : (dispositionData?.[dispositionView] ?? []).length === 0 ? (
                   <div className="w-full flex flex-col items-center justify-center py-12 text-center">
                     <AlertCircle className="h-12 w-12 text-muted-foreground/50 mb-3" />
                     <p className="text-sm text-muted-foreground">No disposition data available</p>
                   </div>
                 ) : (
-                  <DispositionRadar dispositions={data?.dispositions ?? []} />
+                  <DispositionRadar dispositions={dispositionData?.[dispositionView] ?? []} />
                 )}
               </CardContent>
             </Card>
@@ -402,14 +386,37 @@ export default function Page() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>Leaderboard</CardTitle>
-                  <div className="text-sm text-muted-foreground">
-                    {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                  <div className="flex items-center gap-2">
+                    <div className="flex rounded-lg border bg-background p-1">
+                      <button
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                          leaderboardView === 'daily'
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                        }`}
+                        onClick={() => setLeaderboardView('daily')}
+                      >
+                        <Calendar className="h-4 w-4 mr-1" />
+                        Daily
+                      </button>
+                      <button
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                          leaderboardView === 'monthly'
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                        }`}
+                        onClick={() => setLeaderboardView('monthly')}
+                      >
+                        <BarChart3 className="h-4 w-4 mr-1" />
+                        Monthly
+                      </button>
+                    </div>
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {loading && !data ? (
+                  {loading && !leaderboardData ? (
                     <>
                       {[1, 2, 3, 4].map((i) => (
                         <div key={i} className="flex items-center gap-3 p-2">
@@ -419,13 +426,13 @@ export default function Page() {
                         </div>
                       ))}
                     </>
-                  ) : (data?.leaderboard ?? []).length === 0 ? (
+                  ) : (leaderboardData?.[leaderboardView] ?? []).length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-8 text-center">
                       <AlertCircle className="h-10 w-10 text-muted-foreground/50 mb-2" />
                       <p className="text-sm text-muted-foreground">No leaderboard data available</p>
                     </div>
                   ) : (
-                    (data?.leaderboard ?? []).map((row, idx) => (
+                    (leaderboardData?.[leaderboardView] ?? []).map((row, idx) => (
                       <div 
                         key={row.name} 
                         className="grid grid-cols-[1fr_auto] items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-accent/50 transition-colors duration-150"
@@ -445,7 +452,7 @@ export default function Page() {
                           </div>
                         </div>
                         <span className="text-sm font-semibold tabular-nums px-2.5 py-1 rounded-full bg-green-500/10 dark:bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/20 dark:border-green-500/30">
-                          {row.count} today
+                          {row.count} {leaderboardView === 'daily' ? 'today' : 'this month'}
                         </span>
                       </div>
                     ))

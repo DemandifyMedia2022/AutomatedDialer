@@ -181,6 +181,7 @@ export default function AutomatedDialerPage() {
   const [queue, setQueue] = useState<Prospect[]>([])
   const [currentIndex, setCurrentIndex] = useState<number>(0)
   const [autoRun, setAutoRun] = useState(false)
+  const [lastCallDisposition, setLastCallDisposition] = useState<string | null>(null)
   const [queueSearch, setQueueSearch] = useState("")
   const [visibleCount, setVisibleCount] = useState(50)
 
@@ -429,10 +430,15 @@ export default function AutomatedDialerPage() {
       })
       s.on('agentic:start_call', async (payload: any) => {
         try {
+          // Don't auto-initiate calls if last call was BUSY (prospect declined)
+          if (lastCallDisposition === 'BUSY') return
+          
+          // Additional safety: don't initiate if there's any active session
+          if (sessionRef.current) return
+          
           const ph = String(payload?.lead?.phone || '').replace(/[^0-9+]/g, '').replace(/^00/, '+')
           if (!ph) return
           if (!uaRef.current) return
-          if (sessionRef.current) return
           if (!String(status).includes('Registered')) return
           await placeCallTo(ph)
         } catch { }
@@ -829,7 +835,20 @@ export default function AutomatedDialerPage() {
           setShowDisposition(true)
         }
         try { await sendPhase('ended') } catch { }
-        scheduleNext()
+        // Stop auto-dialing when prospect declines/cuts the call (BUSY disposition)
+        if (isBusy) {
+          setLastCallDisposition('BUSY')
+          setAutoRun(false)
+          autoRunRef.current = false
+          clearCountdown()
+          clearNextTimeout()
+          setNextIn(0)
+          // Immediately hang up any active session to prevent reconnection
+          try { session.terminate?.() } catch {}
+        } else {
+          setLastCallDisposition(isNoAnswer ? 'NO_ANSWER' : 'FAILED')
+          scheduleNext()
+        }
       })
       session.on("ended", async () => {
         setStatus("Call Ended")
@@ -840,7 +859,21 @@ export default function AutomatedDialerPage() {
           setShowDisposition(true)
         }
         try { await sendPhase('ended') } catch { }
-        scheduleNext()
+        // For "ended" event, check disposition to determine if auto-dialing should continue
+        const disposition = pendingUploadExtra?.hangup_cause
+        const shouldStopAutoDialing = disposition === 'busy'
+        
+        if (shouldStopAutoDialing) {
+          setLastCallDisposition('BUSY')
+          setAutoRun(false)
+          autoRunRef.current = false
+          clearCountdown()
+          clearNextTimeout()
+          setNextIn(0)
+        } else {
+          setLastCallDisposition(disposition === 'busy' ? 'BUSY' : 'ANSWERED')
+          scheduleNext()
+        }
       })
     })
 
@@ -1163,6 +1196,7 @@ export default function AutomatedDialerPage() {
   const startAuto = async () => {
     if (!queue.length) { setError("Upload a list first"); return }
     if (!status.includes("Registered")) { setError("SIP not registered yet"); return }
+    setLastCallDisposition(null) // Reset disposition when starting new auto session
     setAutoRun(true)
     autoRunRef.current = true
     const list = queueRef.current
@@ -1178,6 +1212,7 @@ export default function AutomatedDialerPage() {
   const resumeAuto = async () => {
     if (!queueRef.current.length) { setError("Upload a list first"); return }
     if (!status.includes("Registered")) { setError("SIP not registered yet"); return }
+    setLastCallDisposition(null) // Reset disposition when manually resuming
     setAutoRun(true)
     autoRunRef.current = true
     // Ensure any pending timers are reset
