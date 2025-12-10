@@ -64,7 +64,6 @@ const data = {
       icon: Settings2,
       items: [
         { title: "Profile", url: "/dashboard/agent/settings/profile" },
-        { title: "Preferences", url: "/dashboard/agent/settings/preferences" },
       ],
     },
   ],

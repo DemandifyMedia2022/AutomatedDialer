@@ -82,7 +82,6 @@ const data = {
       items: [
         { title: "General", url: "/dashboard/manager/settings" },
         { title: "Profile", url: "/dashboard/manager/settings/profile" },
-        { title: "Preferences", url: "/dashboard/manager/settings/preferences" },
       ],
     },
   ],
