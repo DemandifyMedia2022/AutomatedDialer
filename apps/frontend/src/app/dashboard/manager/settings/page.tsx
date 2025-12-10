@@ -11,7 +11,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Save, Settings as SettingsIcon, Bell, Users, Clock } from "lucide-react"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { Shield, Trash2, User, KeyRound, Save, Settings as SettingsIcon, Bell, Users, Clock } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
@@ -29,10 +31,21 @@ interface ManagerSettings {
   dailyReportTime: string
 }
 
+interface UserProfile {
+  id: number
+  username: string
+  email: string
+  role: string
+}
+
 export default function ManagerSettingsPage() {
   const { toast } = useToast()
+  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [user, setUser] = useState<UserProfile | null>(null)
+  const [passwordForm, setPasswordForm] = useState({ current: "", new: "", confirm: "" })
+  const [updatingPassword, setUpdatingPassword] = useState(false)
   const [settings, setSettings] = useState<ManagerSettings>({
     teamName: "",
     timezone: "America/New_York",
@@ -47,24 +60,32 @@ export default function ManagerSettingsPage() {
   })
 
   useEffect(() => {
-    // Load settings from API
-    const loadSettings = async () => {
+    // Load settings and profile
+    const loadData = async () => {
       try {
-        const url = `${API_BASE}/api/manager/settings`
         const headers: Record<string, string> = {}
         if (!USE_AUTH_COOKIE) {
           const t = getToken()
           if (t) headers["Authorization"] = `Bearer ${t}`
         }
-        const res = await fetch(url, {
-          method: "GET",
-          headers,
-          credentials: USE_AUTH_COOKIE ? "include" : "same-origin",
-        })
-        if (res.ok) {
-          const data = await res.json()
+        const options = { headers, credentials: USE_AUTH_COOKIE ? "include" as RequestCredentials : "same-origin" as RequestCredentials }
+
+        const [settingsRes, profileRes] = await Promise.all([
+          fetch(`${API_BASE}/api/manager/settings`, options),
+          fetch(`${API_BASE}/api/profile/me`, options)
+        ])
+
+        if (settingsRes.ok) {
+          const data = await settingsRes.json()
           if (data?.success && data?.settings) {
             setSettings({ ...settings, ...data.settings })
+          }
+        }
+
+        if (profileRes.ok) {
+          const data = await profileRes.json()
+          if (data?.success && data?.user) {
+            setUser(data.user)
           }
         }
       } catch (error) {
@@ -73,7 +94,7 @@ export default function ManagerSettingsPage() {
         setLoading(false)
       }
     }
-    loadSettings()
+    loadData()
   }, [])
 
   const handleSave = async () => {
@@ -91,7 +112,7 @@ export default function ManagerSettingsPage() {
         credentials: USE_AUTH_COOKIE ? "include" : "same-origin",
         body: JSON.stringify(settings),
       })
-      
+
       if (res.ok) {
         toast({
           title: "Settings saved",
@@ -108,6 +129,76 @@ export default function ManagerSettingsPage() {
       })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handlePasswordUpdate = async () => {
+    if (!passwordForm.current || !passwordForm.new || !passwordForm.confirm) {
+      toast({ title: "Error", description: "Please fill in all password fields.", variant: "destructive" })
+      return
+    }
+    if (passwordForm.new !== passwordForm.confirm) {
+      toast({ title: "Error", description: "New passwords do not match.", variant: "destructive" })
+      return
+    }
+    if (passwordForm.new.length < 6) {
+      toast({ title: "Error", description: "Password must be at least 6 characters.", variant: "destructive" })
+      return
+    }
+
+    setUpdatingPassword(true)
+    try {
+      const url = `${API_BASE}/api/profile/me`
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (!USE_AUTH_COOKIE) {
+        const t = getToken()
+        if (t) headers["Authorization"] = `Bearer ${t}`
+      }
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers,
+        credentials: USE_AUTH_COOKIE ? "include" : "same-origin",
+        body: JSON.stringify({
+          currentPassword: passwordForm.current,
+          newPassword: passwordForm.new
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        toast({ title: "Success", description: "Password updated successfully." })
+        setPasswordForm({ current: "", new: "", confirm: "" })
+      } else {
+        throw new Error(data.message || "Failed to update password")
+      }
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" })
+    } finally {
+      setUpdatingPassword(false)
+    }
+  }
+
+  const handleDeleteAccount = async () => {
+    try {
+      const url = `${API_BASE}/api/profile/me`
+      const headers: Record<string, string> = {}
+      if (!USE_AUTH_COOKIE) {
+        const t = getToken()
+        if (t) headers["Authorization"] = `Bearer ${t}`
+      }
+      const res = await fetch(url, {
+        method: "DELETE",
+        headers,
+        credentials: USE_AUTH_COOKIE ? "include" : "same-origin",
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        toast({ title: "Account Deleted", description: "Your account has been deleted." })
+        window.location.href = "/login"
+      } else {
+        throw new Error(data.message || "Failed to delete account")
+      }
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" })
     }
   }
 
@@ -138,6 +229,116 @@ export default function ManagerSettingsPage() {
         </header>
 
         <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
+          {/* Account & Security */}
+          <Card className="transition-shadow hover:shadow-md duration-200 border-l-4 border-l-blue-500">
+            <CardHeader>
+              <div className="flex items-start gap-3">
+                <div className="grid size-10 place-items-center rounded-full border bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20 dark:bg-blue-500/15 dark:border-blue-500/30">
+                  <Shield className="size-4" />
+                </div>
+                <div>
+                  <CardTitle className="font-medium text-base">Account & Security</CardTitle>
+                  <CardDescription>Manage your profile and security settings</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Username</Label>
+                  <div className="flex items-center h-10 w-full rounded-md border border-input bg-muted px-3 py-2 text-sm ring-offset-background text-muted-foreground cursor-not-allowed">
+                    <User className="mr-2 h-4 w-4 opacity-50" />
+                    {user?.username || 'Loading...'}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Username cannot be changed.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Email Address</Label>
+                  <div className="flex items-center h-10 w-full rounded-md border border-input bg-muted px-3 py-2 text-sm ring-offset-background text-muted-foreground cursor-not-allowed">
+                    <span className="mr-2 opacity-50">@</span>
+                    {user?.email || 'Loading...'}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Contact support to change email.</p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <h4 className="text-sm font-medium flex items-center gap-2"><KeyRound className="h-4 w-4" /> Change Password</h4>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="currentPass">Current Password</Label>
+                    <Input
+                      id="currentPass"
+                      type="password"
+                      value={passwordForm.current}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
+                      placeholder="••••••"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="newPass">New Password</Label>
+                    <Input
+                      id="newPass"
+                      type="password"
+                      value={passwordForm.new}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, new: e.target.value })}
+                      placeholder="Min 6 characters"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPass">Confirm New Password</Label>
+                    <Input
+                      id="confirmPass"
+                      type="password"
+                      value={passwordForm.confirm}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, confirm: e.target.value })}
+                      placeholder="Min 6 characters"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" onClick={handlePasswordUpdate} disabled={updatingPassword}>
+                    {updatingPassword ? "Updating..." : "Update Password"}
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-900/10">
+                <div className="space-y-1">
+                  <h4 className="text-sm font-medium text-red-900 dark:text-red-200">Delete Account</h4>
+                  <p className="text-xs text-red-700 dark:text-red-300">
+                    Permanently delete your account and all associated data. This action cannot be undone.
+                  </p>
+                </div>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" className="gap-2">
+                      <Trash2 className="h-4 w-4" /> Delete Account
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete your account and remove your data from our servers.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteAccount} className="bg-red-600 hover:bg-red-700">
+                        Delete Account
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Team Configuration */}
           <Card className="transition-shadow hover:shadow-md duration-200">
             <CardHeader>

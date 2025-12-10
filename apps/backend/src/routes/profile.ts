@@ -21,39 +21,54 @@ router.get('/me', requireAuth, async (req, res, next) => {
 const protectIfCookie = env.USE_AUTH_COOKIE ? [csrfProtect] : []
 
 const UpdateProfileSchema = z.object({
-  username: z.string().trim().min(1).max(120).optional(),
-  currentPassword: z.string().min(6).optional(),
-  newPassword: z.string().min(6).optional(),
+  currentPassword: z.string().min(6),
+  newPassword: z.string().min(6),
 })
 
 router.patch('/me', ...protectIfCookie, requireAuth as any, async (req: any, res, next) => {
   try {
     const parsed = UpdateProfileSchema.safeParse(req.body || {})
-    if (!parsed.success) return res.status(400).json({ success: false, message: 'Invalid payload', issues: parsed.error.flatten() })
-    const { username, currentPassword, newPassword } = parsed.data
+    if (!parsed.success) return res.status(400).json({ success: false, message: 'Invalid payload. Both currentPassword and newPassword are required.', issues: parsed.error.flatten() })
+    const { currentPassword, newPassword } = parsed.data
 
     const userId = req.user?.userId
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
 
-    const updates: any = {}
-    if (typeof username === 'string') updates.username = username
+    const found = await db.users.findUnique({ where: { id: userId }, select: { password: true } })
+    if (!found) return res.status(404).json({ success: false, message: 'User not found' })
 
-    // Handle password change if both provided
-    if ((currentPassword || newPassword) && !(currentPassword && newPassword)) {
-      return res.status(400).json({ success: false, message: 'Both currentPassword and newPassword are required to change password' })
-    }
-    if (currentPassword && newPassword) {
-      const found = await db.users.findUnique({ where: { id: userId }, select: { password: true } })
-      const ok = found?.password ? await bcrypt.compare(currentPassword, found.password as any) : false
-      if (!ok) return res.status(400).json({ success: false, message: 'Current password is incorrect' })
-      updates.password = await bcrypt.hash(newPassword, 10)
-    }
+    const ok = found.password ? await bcrypt.compare(currentPassword, found.password as any) : false
+    if (!ok) return res.status(400).json({ success: false, message: 'Current password is incorrect' })
 
-    if (Object.keys(updates).length === 0) return res.status(400).json({ success: false, message: 'No changes provided' })
+    const hashedPassword = await bcrypt.hash(newPassword, 10)
+    await db.users.update({ where: { id: userId }, data: { password: hashedPassword } })
 
-    const updated = await db.users.update({ where: { id: userId }, data: updates, select: { id: true, username: true, usermail: true, role: true } })
-    return res.json({ success: true, user: { id: updated.id, username: updated.username, email: updated.usermail, role: updated.role } })
+    return res.json({ success: true, message: 'Password updated successfully' })
   } catch (e) {
+    next(e)
+  }
+})
+
+router.delete('/me', ...protectIfCookie, requireAuth as any, async (req: any, res, next) => {
+  try {
+    const userId = req.user?.userId
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
+
+    // Check for critical relations or just attempt delete (relying on cascade)
+    // For safety, we might implement a "soft delete" or checks here, but sticking to basic delete as requested.
+    await db.users.delete({ where: { id: userId } })
+
+    // Clear cookie if used
+    if (env.USE_AUTH_COOKIE) {
+      res.clearCookie(env.AUTH_COOKIE_NAME, { path: '/' })
+    }
+
+    return res.json({ success: true, message: 'Account deleted successfully' })
+  } catch (e: any) {
+    // Handle Prisma foreign key constraint errors
+    if (e.code === 'P2003') {
+      return res.status(400).json({ success: false, message: 'Cannot delete account because it has related data (documents, etc.)' })
+    }
     next(e)
   }
 })
