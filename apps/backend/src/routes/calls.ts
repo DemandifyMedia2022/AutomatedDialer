@@ -8,6 +8,7 @@ import { csrfProtect } from '../middlewares/csrf'
 import { z } from 'zod'
 import { emitToManagers, emitToUser } from '../utils/ws'
 import { updateLiveCallPhase } from '../routes/livecalls'
+import { detectRegion, getCountryName } from '../utils/regionDetection'
 
 const router = Router()
 
@@ -84,6 +85,7 @@ const CallsSchema = z.object({
   source: z.string().optional().nullable(),
   extension: z.string().optional().nullable(),
   region: z.string().optional().nullable(),
+  country: z.string().optional().nullable(),
   charges: z.coerce.number().optional().nullable(),
   direction: z.string().optional().nullable(),
   destination: z.string().optional().nullable(),
@@ -102,12 +104,30 @@ const CallsSchema = z.object({
 
 const callsHandler = async (req: any, res: any, next: any) => {
   try {
+    // Debug: Log the raw request body and files
+    console.log('[calls] Debug - raw req.body keys:', Object.keys(req.body || {}))
+    console.log('[calls] Debug - raw req.body:', req.body)
+    console.log('[calls] Debug - req.file exists:', !!req.file)
+    if (req.file) {
+      console.log('[calls] Debug - req.file keys:', Object.keys(req.file))
+    }
+    
+    // Debug: Check if country is specifically in req.body
+    console.log('[calls] Debug - req.body.country specifically:', req.body?.country)
+    console.log('[calls] Debug - typeof req.body.country:', typeof req.body?.country)
+    
     const parsed = CallsSchema.safeParse(req.body ?? {})
     if (!parsed.success) {
+      console.log('[calls] Debug - schema validation failed:', parsed.error.flatten())
       return res.status(400).json({ success: false, message: 'Invalid payload', issues: parsed.error.flatten() })
     }
     const b = parsed.data as any
     const file = (req as any).file
+
+    // Debug: Log the parsed data
+    console.log('[calls] Debug - parsed data keys:', Object.keys(b || {}))
+    console.log('[calls] Debug - parsed data:', b)
+    console.log('[calls] Debug - parsed data.country specifically:', b.country)
 
     const recording_url = file
       ? `${env.PUBLIC_BASE_URL}/uploads/${file.filename}`
@@ -161,6 +181,21 @@ const callsHandler = async (req: any, res: any, next: any) => {
       computedDuration = Math.max(0, Math.floor((endNorm.getTime() - startNorm.getTime()) / 1000))
     }
 
+    // Detect region and country from destination phone number if not provided
+    let detectedRegion = b.region || null
+    let detectedCountry = b.country || null
+    
+    console.log('[calls] Debug - destination:', b.destination)
+    console.log('[calls] Debug - incoming region:', b.region)
+    console.log('[calls] Debug - incoming country:', b.country)
+    
+    if (b.destination && (!detectedRegion || !detectedCountry)) {
+      detectedRegion = detectedRegion || detectRegion(b.destination, 'Unknown')
+      detectedCountry = detectedCountry || (getCountryName(b.destination) || 'Unknown')
+      console.log('[calls] Debug - detected region:', detectedRegion)
+      console.log('[calls] Debug - detected country:', detectedCountry)
+    }
+
     const data = {
       campaign_name: b.campaign_name || null,
       useremail: b.useremail || null,
@@ -173,7 +208,8 @@ const callsHandler = async (req: any, res: any, next: any) => {
       billed_duration: b.billed_duration ?? null,
       source: b.source || null,
       extension: extensionVal,
-      region: b.region || null,
+      region: detectedRegion,
+      country: detectedCountry,
       charges: b.charges ?? null,
       direction: b.direction || null,
       destination: b.destination || null,
@@ -186,9 +222,13 @@ const callsHandler = async (req: any, res: any, next: any) => {
       prospect_email: b.prospect_email || null,
       prospect_company: b.prospect_company || null,
       job_title: b.job_title || null,
-      job_level: b.job_level || null,
-      data_source_type: b.data_source_type || null,
-    } as any
+      sip_status: b.sip_status ?? null,
+      sip_reason: b.sip_reason || null,
+      hangup_cause: b.hangup_cause || null,
+    }
+
+    console.log('[calls] Debug - final data.region:', data.region)
+    console.log('[calls] Debug - final data.country:', data.country)
 
     const saved = await (db as any).calls.create({ data })
     try { console.log('[calls] saved id', saved?.id) } catch { }

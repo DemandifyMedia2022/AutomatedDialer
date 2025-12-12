@@ -19,6 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useCampaigns } from "@/hooks/agentic/useCampaigns"
+import { detectRegion, getCountryName } from "@/utils/regionDetection"
 
 declare global {
   interface Window {
@@ -140,6 +141,7 @@ export default function AutomatedDialerPage() {
   const [status, setStatus] = useState("Idle")
   const [error, setError] = useState<string | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
+  const [countryCode, setCountryCode] = useState("+91") // Default to India
 
   // Notes & Documents state
   const [notes, setNotes] = useState<Array<{ id: string; text: string; phone?: string; at: string }>>([])
@@ -1063,7 +1065,18 @@ export default function AutomatedDialerPage() {
     const sess = sessionRef.current
     const sipUser = (() => { try { return (sess?.remote_identity?.uri?.user || sess?.request?.to?.uri?.user || sess?.remote_identity?._uri?._user || null) } catch { return null } })()
     const destination = (lastDialDestinationRef.current || sipUser || '').toString()
-    if (destination) form.append('destination', destination)
+    if (destination) {
+      form.append('destination', destination)
+      // Detect and append region and country
+      const detectedRegion = detectRegion(destination, 'Unknown')
+      const detectedCountry = getCountryName(destination) || 'Unknown'
+      console.log('[Automated Dialer] Debug - destination:', destination)
+      console.log('[Automated Dialer] Debug - detected region:', detectedRegion)
+      console.log('[Automated Dialer] Debug - detected country:', detectedCountry)
+      form.append('region', detectedRegion)
+      form.append('country', detectedCountry)
+      console.log('[Automated Dialer] Debug - appended region and country to form')
+    }
     form.append('direction', 'outbound')
     if (typeof extra.sip_status === 'number') form.append('sip_status', String(extra.sip_status))
     if (extra.sip_reason) form.append('sip_reason', extra.sip_reason)
@@ -1114,7 +1127,7 @@ export default function AutomatedDialerPage() {
       uploadedOnceRef.current = false
       dialStartRef.current = Date.now()
       await ensureAudioCtx()
-      lastDialDestinationRef.current = num || null
+      lastDialDestinationRef.current = `${countryCode}${num}` || null
       try { await sendPhase('dialing', { source: ext, destination: num || '', direction: 'OUT' }) } catch { }
       setShowPopup(true)
       try { const w = window.innerWidth; const h = window.innerHeight; const px = Math.max(8, Math.floor(w / 2 - 180)); const py = Math.max(60, Math.floor(h / 2 - 120)); setPopupPos({ x: px, y: py }) } catch { }
