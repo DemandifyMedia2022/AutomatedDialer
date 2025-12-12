@@ -37,84 +37,7 @@ type CallRow = {
   unique_id?: string | null
 }
 
-function AreaChart({ data, maxXTicks = 6 }: { data: { label: string; value: number }[]; maxXTicks?: number }) {
-  const [hover, setHover] = useState<{ x: number; y: number; label: string; value: number } | null>(null)
-  const values = data.map(d => d.value)
-  const max = Math.max(...values, 1)
-  const width = 640
-  const height = 240
-  const paddingX = 24
-  const paddingY = 16
-  const innerW = width - paddingX * 2
-  const innerH = height - paddingY * 2
-  const step = data.length > 1 ? innerW / (data.length - 1) : innerW
-  const pts = data.map((d, i) => {
-    const x = paddingX + i * step
-    const y = paddingY + (1 - d.value / max) * innerH
-    return { x, y }
-  })
-  // Build a smooth curved path using Catmull-Rom to Bezier conversion
-  const pathD = (() => {
-    if (pts.length === 0) return ''
-    if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`
-    const d: string[] = []
-    d.push(`M ${pts[0].x} ${pts[0].y}`)
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p0 = pts[i - 1] || pts[i]
-      const p1 = pts[i]
-      const p2 = pts[i + 1]
-      const p3 = pts[i + 2] || p2
-      const cp1x = p1.x + (p2.x - p0.x) / 6
-      const cp1y = p1.y + (p2.y - p0.y) / 6
-      const cp2x = p2.x - (p3.x - p1.x) / 6
-      const cp2y = p2.y - (p3.y - p1.y) / 6
-      d.push(`C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`)
-    }
-    return d.join(' ')
-  })()
-  return (
-    <div className="mt-2 h-60 w-full">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full">
-        <defs>
-          <linearGradient id="chart-area-gradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="blue-200" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="blue" stopOpacity="0.25" />
-          </linearGradient>
-        </defs>
-        <rect x={paddingX} y={paddingY} width={innerW} height={innerH} fill="transparent" />
-        {/* horizontal grid lines */}
-        {[0.25, 0.5, 0.75].map((p, i) => (
-          <line key={i} x1={paddingX} x2={paddingX + innerW} y1={paddingY + innerH * p} y2={paddingY + innerH * p} stroke="blue-900" strokeDasharray="4 4" className="transition-colors duration-300" />
-        ))}
-        <path d={pathD} fill="none" stroke="blue-700" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" className="transition-all duration-300" />
-        {/* area fill below curve */}
-        <path d={`${pathD} L ${paddingX + innerW} ${paddingY + innerH} L ${paddingX} ${paddingY + innerH} Z`} fill="url(#chart-area-gradient)" className="transition-all duration-300" />
-        {/* hover hit-area only (no visible dots) */}
-        {pts.map((p, i) => (
-          <rect key={i} x={p.x - step / 2} width={step} y={paddingY} height={innerH} fill="transparent"
-            onMouseEnter={() => setHover({ x: p.x, y: p.y, label: data[i].label, value: data[i].value })}
-            onMouseLeave={() => setHover(null)}
-          />
-        ))}
-        {/* x-axis labels */}
-        {data.map((d, i) => {
-          const tickEvery = Math.max(1, Math.ceil(data.length / maxXTicks))
-          if (i % tickEvery !== 0 && i !== data.length - 1) return null
-          return (
-            <text key={`x-${i}`} x={paddingX + i * step} y={height - 4} textAnchor="middle" fontSize="11" className="fill-muted-foreground">{d.label}</text>
-          )
-        })}
-        {hover && (
-          <g transform={`translate(${Math.min(hover.x + 8, width - 120)}, ${Math.max(hover.y - 36, 8)})`}>
-            <rect rx="8" ry="8" width="110" height="44" className="fill-background stroke-border shadow-lg" strokeWidth="1" />
-            <text x="8" y="18" fontSize="12" className="fill-foreground font-medium">{hover.label}</text>
-            <text x="8" y="34" fontSize="13" className="fill-foreground font-semibold">{hover.value} calls</text>
-          </g>
-        )}
-      </svg>
-    </div>
-  )
-}
+import { CallsTrendChart } from "./components/CallsTrendChart"
 
 function AnimatedNumber({ value, suffix = "" }: { value: number; suffix?: string }) {
   const [displayValue, setDisplayValue] = useState(0)
@@ -129,7 +52,7 @@ function AnimatedNumber({ value, suffix = "" }: { value: number; suffix?: string
     const steps = 50
     const increment = value / steps
     const stepDuration = duration / steps
-    
+
     let currentStep = 0
     const timer = setInterval(() => {
       currentStep++
@@ -147,13 +70,13 @@ function AnimatedNumber({ value, suffix = "" }: { value: number; suffix?: string
   return <span className="inline-block tabular-nums">{displayValue}{suffix}</span>
 }
 
-function MetricCard({ 
-  title, 
-  description, 
-  value, 
-  icon, 
-  tone 
-}: { 
+function MetricCard({
+  title,
+  description,
+  value,
+  icon,
+  tone
+}: {
   title: string
   description: string
   value: string | number
@@ -171,7 +94,7 @@ function MetricCard({
   const numericMatch = typeof value === 'string' ? value.match(/^(\d+)(.*)$/) : null
   const numericValue = numericMatch ? parseInt(numericMatch[1]) : (typeof value === 'number' ? value : 0)
   const suffix = numericMatch ? numericMatch[2] : (typeof value === 'string' && !numericMatch ? value : '')
-  
+
   return (
     <Card className="transition-shadow hover:shadow-md duration-200">
       <CardHeader>
@@ -234,17 +157,17 @@ export default function Page() {
           const calls: CallRow[] = d.items
           const totalCallsDialed = calls.length
           const totalCallsAnswered = calls.filter(call => call.disposition === 'ANSWERED').length
-          
+
           // Calculate average campaign time (in minutes) from answered calls
           const answeredCalls = calls.filter(call => call.disposition === 'ANSWERED' && call.call_duration)
           const totalCallDuration = answeredCalls.reduce((sum, call) => sum + (call.call_duration || 0), 0)
           const avgCampaignTime = answeredCalls.length > 0 ? Math.round(totalCallDuration / answeredCalls.length / 60) : 0
-          
+
           const activeAgents = summary?.available || 1
-          
+
           const avgCallsDialed = activeAgents > 0 ? Math.round(totalCallsDialed / activeAgents) : 0
           const avgCallsAnswered = activeAgents > 0 ? Math.round(totalCallsAnswered / activeAgents) : 0
-          
+
           setManagerMetrics({
             avgCallsDialed,
             avgCallsAnswered,
@@ -269,10 +192,10 @@ export default function Page() {
   useEffect(() => {
     loadSummary()
     const s: Socket = io(API_BASE, { withCredentials: true })
-    
+
     s.on('connect', () => setIsConnected(true))
     s.on('disconnect', () => setIsConnected(false))
-    
+
     const onAny = () => loadSummary()
     s.on('presence:update', onAny)
     s.on('session:opened', onAny)
@@ -280,7 +203,7 @@ export default function Page() {
     s.on('break:started', onAny)
     s.on('break:ended', onAny)
     const poll = setInterval(loadSummary, 10000)
-    return () => { 
+    return () => {
       s.off('connect')
       s.off('disconnect')
       s.off('presence:update', onAny)
@@ -316,7 +239,7 @@ export default function Page() {
   useEffect(() => {
     loadLeaders()
     const s: Socket = io(API_BASE, { withCredentials: true })
-    
+
     const onAny = () => loadLeaders()
     s.on('presence:update', onAny)
     s.on('session:opened', onAny)
@@ -324,7 +247,7 @@ export default function Page() {
     s.on('break:started', onAny)
     s.on('break:ended', onAny)
     const poll = setInterval(loadLeaders, 10000)
-    return () => { 
+    return () => {
       s.off('presence:update', onAny)
       s.off('session:opened', onAny)
       s.off('session:closed', onAny)
@@ -450,26 +373,12 @@ export default function Page() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-4">
-            <Card className="md:col-span-3 transition-shadow hover:shadow-md duration-200">
-              <CardHeader>
-                <CardTitle className="font-medium text-base">Calls Trend</CardTitle>
-                <CardDescription>Call volume over time</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Tabs defaultValue="daily" className="w-full">
-                  <TabsList>
-                    <TabsTrigger value="daily" onClick={() => setRange('daily')}>Daily</TabsTrigger>
-                    <TabsTrigger value="monthly" onClick={() => setRange('monthly')}>Monthly</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="daily" className="transition-opacity duration-300">
-                    <AreaChart data={series} />
-                  </TabsContent>
-                  <TabsContent value="monthly" className="transition-opacity duration-300">
-                    <AreaChart data={series} />
-                  </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
+            <CallsTrendChart
+              data={series}
+              range={range}
+              onRangeChange={setRange}
+            />
+
             <Card className="transition-shadow hover:shadow-md duration-200">
               <CardHeader>
                 <div className="flex items-start gap-3">
@@ -485,8 +394,8 @@ export default function Page() {
               <CardContent>
                 <div className="space-y-2">
                   {leaders.map((row, idx) => (
-                    <div 
-                      key={row.name} 
+                    <div
+                      key={row.name}
                       className="grid grid-cols-[1fr_auto] items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-accent/50 transition-colors duration-150"
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -518,7 +427,7 @@ export default function Page() {
               <CardHeader>
                 <div className="flex items-start gap-3">
                   <div className="grid size-10 place-items-center rounded-full border bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/20 dark:bg-violet-500/15 dark:border-violet-500/30">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>
                   </div>
                   <div>
                     <CardTitle className="font-medium text-base">Playbook</CardTitle>
@@ -542,7 +451,7 @@ export default function Page() {
               <CardHeader>
                 <div className="flex items-start gap-3">
                   <div className="grid size-10 place-items-center rounded-full border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 dark:bg-amber-500/15 dark:border-amber-500/30">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" /><path d="m9 12 2 2 4-4" /></svg>
                   </div>
                   <div>
                     <CardTitle className="font-medium text-base">Campaign</CardTitle>

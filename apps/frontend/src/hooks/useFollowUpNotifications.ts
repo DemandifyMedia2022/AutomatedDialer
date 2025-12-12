@@ -28,7 +28,7 @@ export function useFollowUpNotifications() {
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       let credentials: RequestCredentials = 'omit'
-      
+
       if (USE_AUTH_COOKIE) {
         credentials = 'include'
       } else {
@@ -40,7 +40,7 @@ export function useFollowUpNotifications() {
       const today = new Date()
       const weekAgo = new Date(today)
       weekAgo.setDate(weekAgo.getDate() - 7)
-      
+
       const params = new URLSearchParams()
       params.set('from', format(weekAgo, 'yyyy-MM-dd'))
       params.set('to', format(today, 'yyyy-MM-dd'))
@@ -53,25 +53,25 @@ export function useFollowUpNotifications() {
       if (response.ok) {
         const data = await response.json()
         const allCalls = data.items || data.calls || []
-        
+
         // Filter calls for follow-ups
         const filteredCalls = allCalls.filter((call: any) => {
-          const disposition = (call.disposition || '').toUpperCase().trim()
-          const status = (call.status || '').toLowerCase().trim()
-          const remarks = (call.remarks || '').toLowerCase().trim()
-          
-          const hasFollowUpDisposition = disposition === 'FOLLOW-UP CALL' && status === 'disconnected'
-          const hasNoAnswerDisposition = disposition === 'NO ANSWER'
-          const hasBusyDisposition = disposition === 'BUSY'
-          const hasFollowUpRemarks = remarks === 'follow-up'
-          
-          return hasFollowUpDisposition || hasNoAnswerDisposition || hasBusyDisposition || hasFollowUpRemarks
+          const remarks = (call.remarks || '').trim().toLowerCase()
+
+          const allowedRemarks = ['busy', 'not answered', 'follow-ups']
+          const isRemarkMatch = allowedRemarks.includes(remarks)
+
+          if (!isRemarkMatch) return false
+          if (call.follow_up === true) return false
+          if (call.schedule_call && new Date(call.schedule_call) > new Date()) return false
+
+          return true
         })
 
         if (filteredCalls.length > 0) {
           // Check for high priority follow-ups (older than 7 days)
           const highPriorityCalls = filteredCalls.filter((call: FollowUpCall) => {
-            const daysSinceCall = call.start_time ? 
+            const daysSinceCall = call.start_time ?
               Math.floor((new Date().getTime() - new Date(call.start_time).getTime()) / (1000 * 60 * 60 * 24)) : 0
             return daysSinceCall > 7
           })

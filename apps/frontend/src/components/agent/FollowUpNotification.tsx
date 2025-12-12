@@ -37,7 +37,7 @@ export function FollowUpNotification({ className }: FollowUpNotificationProps) {
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       let credentials: RequestCredentials = 'omit'
-      
+
       if (USE_AUTH_COOKIE) {
         credentials = 'include'
       } else {
@@ -49,7 +49,7 @@ export function FollowUpNotification({ className }: FollowUpNotificationProps) {
       const today = new Date()
       const weekAgo = new Date(today)
       weekAgo.setDate(weekAgo.getDate() - 7)
-      
+
       const params = new URLSearchParams()
       params.set('from', format(weekAgo, 'yyyy-MM-dd'))
       params.set('to', format(today, 'yyyy-MM-dd'))
@@ -63,26 +63,36 @@ export function FollowUpNotification({ className }: FollowUpNotificationProps) {
         const data = await response.json()
         const allCalls = data.items || data.calls || []
         console.log('All calls:', allCalls.length)
-        
-        // Filter calls for follow-ups (only show calls that are at least 30 minutes old)
+
+        // Filter calls for follow-ups (match logic from follow-up-calls/page.tsx)
+        const seenCallIds = new Set<number | string>()
         const filteredCalls = allCalls.filter((call: any) => {
-          const disposition = (call.disposition || '').toUpperCase().trim()
-          const status = (call.status || '').toLowerCase().trim()
-          const remarks = (call.remarks || '').toLowerCase().trim()
-          
-          const hasFollowUpDisposition = disposition === 'FOLLOW-UP CALL' && status === 'disconnected'
-          const hasNoAnswerDisposition = disposition === 'NO ANSWER'
-          const hasBusyDisposition = disposition === 'BUSY'
-          const hasFollowUpRemarks = remarks === 'follow-up'
-          
-          // Check if call is at least 30 minutes old
-          const minutesSinceCall = call.start_time ? 
-            Math.floor((new Date().getTime() - new Date(call.start_time).getTime()) / (1000 * 60)) : 0
-          const isAtLeast30MinutesOld = minutesSinceCall >= 30
-          
-          return (hasFollowUpDisposition || hasNoAnswerDisposition || hasBusyDisposition || hasFollowUpRemarks) && isAtLeast30MinutesOld
+          // Deduplicate by call ID
+          if (seenCallIds.has(call.id)) {
+            return false
+          }
+
+          const remarks = (call.remarks || '').trim().toLowerCase()
+
+          // 1. Check remarks matches page logic
+          const allowedRemarks = ['busy', 'not answered', 'follow-ups']
+          const isRemarkMatch = allowedRemarks.includes(remarks)
+
+          if (!isRemarkMatch) return false
+
+          // 2. Exclude if already followed up
+          if (call.follow_up === true) return false
+
+          // 3. Exclude if completed (redundant with remarks check but safe)
+          if (remarks === 'completed') return false
+
+          // 4. Exclude if scheduled for future
+          if (call.schedule_call && new Date(call.schedule_call) > new Date()) return false
+
+          seenCallIds.add(call.id)
+          return true
         })
-        
+
         console.log('Filtered follow-ups:', filteredCalls.length)
         setFollowUps(filteredCalls)
       }
@@ -94,18 +104,18 @@ export function FollowUpNotification({ className }: FollowUpNotificationProps) {
   }
 
   const getPriorityColor = (call: FollowUpCall) => {
-    const daysSinceCall = call.start_time ? 
+    const daysSinceCall = call.start_time ?
       Math.floor((new Date().getTime() - new Date(call.start_time).getTime()) / (1000 * 60 * 60 * 24)) : 0
-    
+
     if (daysSinceCall > 7) return "bg-red-500"
     if (daysSinceCall > 3) return "bg-yellow-500"
     return "bg-blue-500"
   }
 
   const getPriorityText = (call: FollowUpCall) => {
-    const daysSinceCall = call.start_time ? 
+    const daysSinceCall = call.start_time ?
       Math.floor((new Date().getTime() - new Date(call.start_time).getTime()) / (1000 * 60 * 60 * 24)) : 0
-    
+
     if (daysSinceCall > 7) return "High Priority"
     if (daysSinceCall > 3) return "Medium Priority"
     return "New"
@@ -157,8 +167,8 @@ export function FollowUpNotification({ className }: FollowUpNotificationProps) {
         <Button variant="ghost" size="sm" className={cn("relative", className)}>
           <Bell className="h-4 w-4" />
           {followUps.length > 0 && (
-            <Badge 
-              variant="destructive" 
+            <Badge
+              variant="destructive"
               className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
             >
               {followUps.length > 99 ? "99+" : followUps.length}
@@ -187,7 +197,7 @@ export function FollowUpNotification({ className }: FollowUpNotificationProps) {
                     <Phone className="h-4 w-4 text-muted-foreground" />
                     <span className="font-medium">{call.destination || 'Unknown'}</span>
                   </div>
-                  <Badge 
+                  <Badge
                     className={cn("text-white text-xs", getPriorityColor(call))}
                   >
                     {getPriorityText(call)}
@@ -221,7 +231,7 @@ export function FollowUpNotification({ className }: FollowUpNotificationProps) {
                         const minutesSinceCall = Math.floor((now.getTime() - callTime.getTime()) / (1000 * 60))
                         const hoursSinceCall = Math.floor(minutesSinceCall / 60)
                         const daysSinceCall = Math.floor(hoursSinceCall / 24)
-                        
+
                         if (daysSinceCall > 0) {
                           return `${daysSinceCall} day${daysSinceCall === 1 ? '' : 's'} ago`
                         } else if (hoursSinceCall > 0) {
@@ -238,8 +248,8 @@ export function FollowUpNotification({ className }: FollowUpNotificationProps) {
           ))}
         </div>
         <div className="flex gap-2 pt-4">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => window.location.href = '/dashboard/agent/my-calls/follow-up-calls'}
             className="flex-1"
           >

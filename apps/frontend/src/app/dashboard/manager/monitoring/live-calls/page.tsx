@@ -128,13 +128,13 @@ export default function LiveCallsPage() {
     fetch(`${BACKEND}/api/live-calls`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(j => { if (mounted && Array.isArray(j?.items)) setItems(j.items) })
-      .catch(() => {})
+      .catch(() => { })
 
     // Initial agents snapshot
     fetch(`${BACKEND}/api/presence/manager/agents`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(j => { if (mounted && Array.isArray(j?.items)) setAgents(j.items) })
-      .catch(() => {})
+      .catch(() => { })
 
     // Load extension->DID mappings for fallback
     fetch(`${BACKEND}/api/extension-dids/dids`, { credentials: 'include' })
@@ -150,7 +150,7 @@ export default function LiveCallsPage() {
         }
         setDidMap(map)
       })
-      .catch(() => {})
+      .catch(() => { })
 
     // Subscribe to socket updates
     try {
@@ -165,7 +165,7 @@ export default function LiveCallsPage() {
         fetch(`${BACKEND}/api/presence/manager/agents`, { credentials: 'include' })
           .then(r => r.ok ? r.json() : null)
           .then(j => { if (mounted && Array.isArray(j?.items)) setAgents(j.items) })
-          .catch(() => {})
+          .catch(() => { })
       })
       s.on('extension:did:update', (p: any) => {
         try {
@@ -173,9 +173,9 @@ export default function LiveCallsPage() {
           const did = String(p?.did || '').trim()
           if (!ext) return
           setDidMap(prev => ({ ...prev, [ext]: did }))
-        } catch {}
+        } catch { }
       })
-    } catch {}
+    } catch { }
 
     // Local duration ticker for rows with startTime
     timerRef.current = setInterval(() => { setItems(prev => [...prev]) }, 1000)
@@ -184,9 +184,9 @@ export default function LiveCallsPage() {
       fetch(`${BACKEND}/api/live-calls`, { credentials: 'include' })
         .then(r => r.ok ? r.json() : null)
         .then(j => { if (mounted && Array.isArray(j?.items)) setItems(j.items) })
-        .catch(() => {})
+        .catch(() => { })
     }, 5000)
-    return () => { mounted = false; try { clearInterval(poll) } catch {}; }
+    return () => { mounted = false; try { clearInterval(poll) } catch { }; }
   }, [])
 
   const fetchSipConfig = useCallback(async () => {
@@ -213,7 +213,7 @@ export default function LiveCallsPage() {
       connection_recovery_max_interval: 30,
       iceServers: cfg.stunServer ? [{ urls: cfg.stunServer }] : undefined,
     }
-    try { JsSIP.debug.enable("JsSIP:*") } catch {}
+    try { JsSIP.debug.enable("JsSIP:*") } catch { }
     const ua = new JsSIP.UA(configuration)
     ua.on("registered", () => setSipReady(true))
     ua.on("unregistered", () => setSipReady(false))
@@ -227,7 +227,7 @@ export default function LiveCallsPage() {
           const [stream] = event.streams
           if (remoteAudioRef.current) {
             remoteAudioRef.current.srcObject = stream
-            remoteAudioRef.current.play().catch(() => {})
+            remoteAudioRef.current.play().catch(() => { })
           }
         }
       })
@@ -255,11 +255,11 @@ export default function LiveCallsPage() {
               const [stream] = event.streams
               if (remoteAudioRef.current) {
                 remoteAudioRef.current.srcObject = stream
-                remoteAudioRef.current.play().catch(() => {})
+                remoteAudioRef.current.play().catch(() => { })
               }
             }
           }
-        } catch {}
+        } catch { }
       })
     })
     ua.start()
@@ -305,7 +305,7 @@ export default function LiveCallsPage() {
         rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
       }
       // Avoid overlapping sessions
-      try { sessionRef.current?.terminate() } catch {}
+      try { sessionRef.current?.terminate() } catch { }
       setMonitoring(true)
       setMonitorErr(null)
       setMonitorMsg(`Dialing ${targetUser}…`)
@@ -316,7 +316,7 @@ export default function LiveCallsPage() {
   }, [fetchSipConfig, sipConfig])
 
   const stopMonitor = useCallback(() => {
-    try { sessionRef.current?.terminate() } catch {}
+    try { sessionRef.current?.terminate() } catch { }
     setMonitoring(false)
     setMonitorMsg("Monitoring ended")
     setTimeout(() => setMonitorMsg(null), 2000)
@@ -389,12 +389,12 @@ export default function LiveCallsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[60px]">#</TableHead>
+                      <TableHead className="w-[160px]">Agent</TableHead>
                       <TableHead>Source</TableHead>
                       <TableHead>Destination</TableHead>
                       <TableHead className="w-[140px]">TFN/DID</TableHead>
                       <TableHead className="w-[110px]">Direction</TableHead>
                       <TableHead className="w-[120px]">Status</TableHead>
-                      <TableHead className="w-[160px]">Agent</TableHead>
                       <TableHead className="w-[120px] text-center">Start Time</TableHead>
                       <TableHead className="w-[120px] text-center">Duration</TableHead>
                       <TableHead className="w-[160px] text-center">Actions</TableHead>
@@ -403,7 +403,7 @@ export default function LiveCallsPage() {
                   <TableBody>
                     {items.length === 0 && agents.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center text-muted-foreground py-8">No active calls</TableCell>
+                        <TableCell colSpan={10} className="text-center text-muted-foreground py-8">No active calls</TableCell>
                       </TableRow>
                     )}
                     {/* Merge live calls phases over agents: show all agents; if a live call exists for a user, override status/duration */}
@@ -415,6 +415,7 @@ export default function LiveCallsPage() {
                       return (
                         <TableRow key={`agent-${a.userId}`}>
                           <TableCell>{idx + 1}</TableCell>
+                          <TableCell>{a.name}</TableCell>
                           <TableCell className="font-medium">{lc?.source || a.extension || '—'}</TableCell>
                           <TableCell>{lc?.destination || '—'}</TableCell>
                           <TableCell>{lc?.did || (a.extension ? (didMap[a.extension] || '—') : '—')}</TableCell>
@@ -422,7 +423,6 @@ export default function LiveCallsPage() {
                           <TableCell>
                             <StatusBadge status={dispStatus} />
                           </TableCell>
-                          <TableCell>{a.name}</TableCell>
                           <TableCell className="text-center">{startTs}</TableCell>
                           <TableCell className="text-center tabular-nums">{formatDuration(dur)}</TableCell>
                           <TableCell className="text-center space-x-2">
@@ -460,6 +460,7 @@ export default function LiveCallsPage() {
                     {agents.length === 0 && items.map((c, idx) => (
                       <TableRow key={`${c.userId}-${c.callId}`}>
                         <TableCell>{idx + 1}</TableCell>
+                        <TableCell>{c.username || 'User ' + c.userId}</TableCell>
                         <TableCell className="font-medium">{c.source || '—'}</TableCell>
                         <TableCell>{c.destination || '—'}</TableCell>
                         <TableCell>{c.did || '—'}</TableCell>
@@ -467,7 +468,6 @@ export default function LiveCallsPage() {
                         <TableCell>
                           <StatusBadge status={String(c.status).toUpperCase()} />
                         </TableCell>
-                        <TableCell>{c.username || 'User ' + c.userId}</TableCell>
                         <TableCell className="text-center">{formatTime(c.startTime)}</TableCell>
                         <TableCell className="text-center tabular-nums">{c.startTime ? formatDuration(Math.max(0, Math.floor((Date.now() - c.startTime) / 1000))) : '—'}</TableCell>
                         <TableCell className="text-center space-x-2">
