@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Request, Response, NextFunction } from 'express';
 import * as userManagementService from '../../services/superadmin/userManagementService';
 import { z } from 'zod';

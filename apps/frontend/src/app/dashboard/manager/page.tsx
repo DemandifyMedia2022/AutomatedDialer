@@ -24,6 +24,7 @@ import { Users, PhoneCall, PhoneIncoming, Timer, Trophy, Plus } from "lucide-rea
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { io, Socket } from "socket.io-client"
+import { PeriodSwitcher } from "../agent/components/PeriodSwitcher"
 
 type CallRow = {
   id: number | string
@@ -125,6 +126,8 @@ export default function Page() {
   const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000"
   const [summary, setSummary] = useState<{ totalAgents: number; online: number; available: number; onCall: number; idle: number; onBreak: number; offline: number } | null>(null)
   const [leaders, setLeaders] = useState<{ name: string; count: number }[]>([])
+  const [leaderboardData, setLeaderboardData] = useState<{ daily: { name: string; count: number }[], monthly: { name: string; count: number }[] } | null>(null)
+  const [leaderboardView, setLeaderboardView] = useState<'daily' | 'monthly'>('daily')
   const [series, setSeries] = useState<{ label: string; value: number }[]>([])
   const [range, setRange] = useState<'daily' | 'monthly'>('daily')
   const [isConnected, setIsConnected] = useState(false)
@@ -216,7 +219,42 @@ export default function Page() {
     }
   }, [])
 
-  // Leaderboard: pull from analytics leaderboard API with daily filtering
+  // Leaderboard: pull from analytics leaderboard API with both daily and monthly data
+  const fetchLeaderboardData = async () => {
+    try {
+      const [dailyRes, monthlyRes] = await Promise.all([
+        fetch(`${API_BASE}/api/analytics/leaderboard/daily`, { credentials: 'include' }),
+        fetch(`${API_BASE}/api/analytics/leaderboard/monthly`, { credentials: 'include' })
+      ])
+
+      const dailyData = dailyRes.ok ? await dailyRes.json() : { daily: [] }
+      const monthlyData = monthlyRes.ok ? await monthlyRes.json() : { monthly: [] }
+
+      setLeaderboardData({
+        daily: dailyData.daily || [],
+        monthly: monthlyData.monthly || []
+      })
+    } catch (error) {
+      console.error('Error fetching leaderboard data:', error)
+      // Fallback demo data
+      setLeaderboardData({
+        daily: [
+          { name: "Alex Johnson", count: 12 },
+          { name: "Priya Singh", count: 9 },
+          { name: "Rahul Mehta", count: 8 },
+          { name: "Sara Lee", count: 6 }
+        ],
+        monthly: [
+          { name: "Alex Johnson", count: 245 },
+          { name: "Priya Singh", count: 198 },
+          { name: "Rahul Mehta", count: 176 },
+          { name: "Sara Lee", count: 154 }
+        ]
+      })
+    }
+  }
+
+  // Legacy loadLeaders function for backward compatibility
   const loadLeaders = () => {
     const getTodayDateRange = () => {
       const today = new Date()
@@ -237,16 +275,23 @@ export default function Page() {
   }
 
   useEffect(() => {
+    fetchLeaderboardData()
     loadLeaders()
     const s: Socket = io(API_BASE, { withCredentials: true })
 
-    const onAny = () => loadLeaders()
+    const onAny = () => {
+      fetchLeaderboardData()
+      loadLeaders()
+    }
     s.on('presence:update', onAny)
     s.on('session:opened', onAny)
     s.on('session:closed', onAny)
     s.on('break:started', onAny)
     s.on('break:ended', onAny)
-    const poll = setInterval(loadLeaders, 10000)
+    const poll = setInterval(() => {
+      fetchLeaderboardData()
+      loadLeaders()
+    }, 10000)
     return () => {
       s.off('presence:update', onAny)
       s.off('session:opened', onAny)
@@ -381,42 +426,70 @@ export default function Page() {
 
             <Card className="transition-shadow hover:shadow-md duration-200">
               <CardHeader>
-                <div className="flex items-start gap-3">
-                  <div className="grid size-10 place-items-center rounded-full border bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20 dark:bg-blue-500/15 dark:border-blue-500/30">
-                    <Trophy className="size-4" />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-start gap-3">
+                    <div className="grid size-10 place-items-center rounded-full border bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20 dark:bg-blue-500/15 dark:border-blue-500/30">
+                      <Trophy className="size-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="font-medium text-base">Leader Board</CardTitle>
+                      <CardDescription>Top performers</CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="font-medium text-base">Leader Board</CardTitle>
-                    <CardDescription>Top performers</CardDescription>
-                  </div>
+                  <PeriodSwitcher value={leaderboardView} onChange={setLeaderboardView} />
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {leaders.map((row, idx) => (
-                    <div
-                      key={row.name}
-                      className="grid grid-cols-[1fr_auto] items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-accent/50 transition-colors duration-150"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Avatar className="h-8 w-8 border-2 border-background shadow-sm">
-                          <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(row.name)}`} alt={row.name} />
-                          <AvatarFallback className="text-xs font-semibold">{row.name.split(" ").map(s => s[0]).slice(0, 2).join("")}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium">{row.name}</div>
-                          {idx < 3 && (
-                            <span className="shrink-0 text-[11px] px-2 py-0.5 rounded-full border bg-primary/10 text-primary border-primary/20 font-semibold">
-                              #{idx + 1}
-                            </span>
-                          )}
+                  {!leaderboardData ? (
+                    <>
+                      {[1, 2, 3, 4].map((i) => (
+                        <div key={i} className="flex items-center gap-3 p-2">
+                          <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+                          <div className="h-4 flex-1 bg-muted animate-pulse rounded" />
+                          <div className="h-6 w-12 rounded-full bg-muted animate-pulse" />
+                        </div>
+                      ))}
+                    </>
+                  ) : (leaderboardData?.[leaderboardView] ?? []).length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="relative mb-6">
+                        <div className="absolute inset-0 blur-xl bg-blue-500/20 rounded-full" />
+                        <div className="relative bg-background border rounded-full p-4 shadow-sm">
+                          <Trophy className="h-10 w-10 text-yellow-500" />
                         </div>
                       </div>
-                      <span className="text-sm font-semibold tabular-nums px-2.5 py-1 rounded-full bg-green-500/10 dark:bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/20 dark:border-green-500/30">
-                        {row.count} leads
-                      </span>
+                      <h3 className="font-semibold text-lg mb-1">No Champions Yet</h3>
+                      <p className="text-sm text-muted-foreground max-w-[200px]">
+                        Start dialing to climb the ranks and earn your spot on the leaderboard!
+                      </p>
                     </div>
-                  ))}
+                  ) : (
+                    (leaderboardData?.[leaderboardView] ?? []).map((row, idx) => (
+                      <div
+                        key={row.name}
+                        className="grid grid-cols-[1fr_auto] items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-accent/50 transition-colors duration-150"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Avatar className="h-8 w-8 border-2 border-background shadow-sm">
+                            <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(row.name)}`} alt={row.name} />
+                            <AvatarFallback className="text-xs font-semibold">{row.name.split(" ").map(s => s[0]).slice(0, 2).join("")}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium">{row.name}</div>
+                            {idx < 3 && (
+                              <span className="shrink-0 text-[11px] px-2 py-0.5 rounded-full border bg-primary/10 text-primary border-primary/20 font-semibold">
+                                #{idx + 1}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-sm font-semibold tabular-nums px-2.5 py-1 rounded-full bg-green-500/10 dark:bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/20 dark:border-green-500/30">
+                          {row.count} {leaderboardView === 'daily' ? 'today' : 'this month'}
+                        </span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>

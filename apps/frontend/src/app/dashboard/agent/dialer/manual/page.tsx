@@ -47,6 +47,7 @@ import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
 import { io } from "socket.io-client"
 import { useCampaigns } from "@/hooks/agentic/useCampaigns"
+import { detectRegion, getCountryName } from "@/utils/regionDetection"
 
 declare global {
   interface Window {
@@ -1563,8 +1564,24 @@ export default function ManualDialerPage() {
         )
       } catch { return null }
     })()
-    const destination = (number || lastDialDestinationRef.current || sipUser || '').toString()
-    if (destination) form.append('destination', destination)
+    const destination = (number ? `${countryCode}${number}` : lastDialDestinationRef.current || sipUser || '').toString()
+    if (destination) {
+      form.append('destination', destination)
+      // Detect and append region and country
+      const detectedRegion = detectRegion(destination, 'Unknown')
+      const detectedCountry = getCountryName(destination) || 'Unknown'
+      console.log('[Manual Dialer] Debug - destination:', destination)
+      console.log('[Manual Dialer] Debug - detected region:', detectedRegion)
+      console.log('[Manual Dialer] Debug - detected country:', detectedCountry)
+      form.append('region', detectedRegion)
+      form.append('country', detectedCountry)
+      console.log('[Manual Dialer] Debug - appended region and country to form')
+    }
+    // Log all FormData entries before continuing
+    console.log('[Manual Dialer] Debug - FormData entries before sending:')
+    for (let [key, value] of form.entries()) {
+      console.log(`  ${key}: ${value}`)
+    }
     form.append('direction', 'outbound')
     if (selectedCampaign) form.append('campaign_name', selectedCampaign)
     if (typeof extra.sip_status === 'number') form.append('sip_status', String(extra.sip_status))

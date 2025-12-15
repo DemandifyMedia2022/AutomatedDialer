@@ -21,6 +21,7 @@
   "dependencies": {
     "jsonwebtoken": "^9.0.2",
     "jssip": "^3.10.1",
-    "livekit-client": "^2.16.0"
+    "livekit-client": "^2.16.0",
+    "openai": "^6.9.1"
   }
 }

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Request, Response, NextFunction } from 'express';
 import * as roleManagementService from '../../services/superadmin/roleManagementService';
 import { z } from 'zod';

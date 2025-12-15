@@ -52,7 +52,7 @@ export function PieChartWrapper({
           innerRadius={innerRadius}
           outerRadius={outerRadius}
           paddingAngle={2}
-          label={(entry) => entry[nameKey]}
+          label={(entry: any) => entry[nameKey]}
         >
           {data.map((entry, index) => (
             <Cell key={`cell-${index}`} fill={getColor(index)} />
