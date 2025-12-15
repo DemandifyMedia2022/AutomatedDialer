@@ -37,4 +37,6 @@ export const env = {
   MAIL_ENCRYPTION: (process.env.MAIL_ENCRYPTION || 'ssl').toLowerCase(),
   MAIL_FROM_ADDRESS: process.env.MAIL_FROM_ADDRESS || '',
   MAIL_FROM_NAME: process.env.MAIL_FROM_NAME || 'App',
+  API_CALL_DEBUG: (process.env.API_CALL_DEBUG || 'false').toLowerCase() === 'true',
+  API_CALL_DEBUG_SCOPE: (process.env.API_CALL_DEBUG_SCOPE || 'calls').toLowerCase(),
 };

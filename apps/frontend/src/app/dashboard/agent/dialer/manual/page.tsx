@@ -190,6 +190,8 @@ export default function ManualDialerPage() {
 
   const uaRef = useRef<any>(null)
   const sessionRef = useRef<any>(null)
+  const activeDirectionRef = useRef<'incoming' | 'outgoing' | null>(null)
+  const activeSessionAliveRef = useRef<boolean>(false)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
   const callStartRef = useRef<number | null>(null)
   const timerRef = useRef<number | null>(null)
@@ -559,6 +561,8 @@ export default function ManualDialerPage() {
     } finally {
       sessionRef.current = null
       uaRef.current = null
+      activeSessionAliveRef.current = false
+      activeDirectionRef.current = null
     }
   }, [])
 
@@ -737,15 +741,35 @@ export default function ManualDialerPage() {
     const ua = new window.JsSIP.UA(configuration)
 
     ua.on("connected", () => setStatus("Connected"))
-    ua.on("disconnected", () => setStatus("Disconnected"))
+    ua.on("disconnected", () => {
+      setStatus("Disconnected")
+      activeSessionAliveRef.current = false
+      activeDirectionRef.current = null
+    })
+
     ua.on("registered", () => setStatus("Registered"))
-    ua.on("unregistered", () => setStatus("Unregistered"))
+    ua.on("unregistered", () => {
+      setStatus("Unregistered")
+      activeSessionAliveRef.current = false
+      activeDirectionRef.current = null
+    })
+    ua.on("registrationFailed", (e: any) => setError(`Registration failed: ${e?.cause || "unknown"}`))
     ua.on("registrationFailed", (e: any) => setError(`Registration failed: ${e?.cause || "unknown"}`))
 
     ua.on("newRTCSession", (data: any) => {
       const session = data.session
-      sessionRef.current = session
 
+      const direction: 'incoming' | 'outgoing' = data.originator === 'local' ? 'outgoing' : 'incoming'
+
+      if (direction === 'incoming' && activeSessionAliveRef.current && activeDirectionRef.current === 'outgoing') {
+        try {
+          session.terminate({ status_code: 486, reason_phrase: 'Busy Here' })
+          return
+        } catch { }
+      }
+      sessionRef.current = session
+      activeDirectionRef.current = direction
+      activeSessionAliveRef.current = true
       // Set unique_id in DM form when session is created
       if (session?.id) {
         setDmForm(prev => ({ ...prev, unique_id: String(session.id) }))
@@ -767,12 +791,13 @@ export default function ManualDialerPage() {
         } catch { }
       })
 
-      session.on("progress", () => {
-        setStatus("Ringing");
-        // Attach remote audio to hear the original ringing sound from PBX
-        try { const pc: RTCPeerConnection = (session as any).connection; if (pc) attachRemoteAudio(pc) } catch { }
-        const dest = lastDialDestinationRef.current || `${countryCode}${number}`
-        try { sendPhase('ringing', { source: ext, destination: dest || '', direction: 'OUT' }) } catch { }
+      session.on('progress', () => {
+        if (activeDirectionRef.current === 'outgoing') {
+          setStatus('Ringing')
+          try { const pc: RTCPeerConnection = (session as any).connection; if (pc) attachRemoteAudio(pc) } catch { }
+          const dest = lastDialDestinationRef.current || `${countryCode}${number}`
+          try { sendPhase('ringing', { source: ext, destination: dest || '', direction: 'OUT' }) } catch { }
+        }
       })
       session.on("accepted", async () => {
         setStatus("In Call")
@@ -852,6 +877,9 @@ export default function ManualDialerPage() {
         }
         try { await sendPhase('ended') } catch { }
         try { await setPresenceStatus('AVAILABLE') } catch { }
+
+        activeSessionAliveRef.current = false
+        activeDirectionRef.current = null
       })
       session.on("ended", async () => {
         setStatus("Call Ended")
@@ -866,15 +894,68 @@ export default function ManualDialerPage() {
         }
         try { await sendPhase('ended') } catch { }
         try { await setPresenceStatus('AVAILABLE') } catch { }
+
+        activeSessionAliveRef.current = false
+        activeDirectionRef.current = null
       })
 
+      // // Incoming call handling
+      // try {
+      //   if (session.direction === "incoming") {
+      //     const remoteUser = (() => {
+      //       try { return String(session.remote_identity?.uri?.user || session.remote_identity?.display_name || 'Unknown') } catch { return 'Unknown' }
+      //     })()
+      //     setStatus(`Incoming from ${remoteUser}`)
+      //     setShowPopup(true)
+      //     setShowIncomingPrompt(true)
+      //   }
+      // } catch { }
+      // Incoming call handling
       // Incoming call handling
       try {
         if (session.direction === "incoming") {
-          const remoteUser = (() => {
-            try { return String(session.remote_identity?.uri?.user || session.remote_identity?.display_name || 'Unknown') } catch { return 'Unknown' }
+          const safeDigits = (val: any) => String(val || '').replace(/[^0-9+]/g, '')
+          const getHeader = (name: string) => {
+            try { return session.request?.getHeader?.(name) || '' } catch { return '' }
+          }
+          const getSipUriUser = (input: any) => {
+            const s = String(input || '')
+            const m = s.match(/sip:([^@;>]+)/i)
+            return m ? safeDigits(m[1]) : ''
+          }
+
+          // Caller (ANI)
+          let caller =
+            safeDigits(session.remote_identity?.uri?.user) ||
+            safeDigits(session.remote_identity?.display_name) ||
+            getSipUriUser(getHeader('P-Asserted-Identity')) ||
+            getSipUriUser(getHeader('Remote-Party-ID')) ||
+            getSipUriUser(session.request?.from?.uri?.toString?.()) ||
+            getSipUriUser(getHeader('From'))
+
+          // DID (called number)
+          const did = (() => {
+            const toUser = safeDigits(session.request?.to?.uri?.user)
+            if (toUser) return toUser
+            const pCalled = getHeader('P-Called-Party-ID')
+            if (pCalled) {
+              const m = String(pCalled).match(/sip:([^@;>]+)/i)
+              if (m) return safeDigits(m[1])
+            }
+            const diversion = getHeader('Diversion')
+            if (diversion) {
+              const m = String(diversion).match(/sip:([^@;>]+)/i)
+              if (m) return safeDigits(m[1])
+            }
+            return ''
           })()
-          setStatus(`Incoming from ${remoteUser}`)
+
+          const display = caller || did || ''
+          if (display) {
+            setStatus(`Incoming from ${display}`)
+          } else {
+            setStatus('Incoming call')
+          }
           setShowPopup(true)
           setShowIncomingPrompt(true)
         }
@@ -1873,9 +1954,9 @@ export default function ManualDialerPage() {
                     <div className="flex items-center gap-2 ml-2 shrink-0">
                       {h.disposition ? (
                         <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${h.disposition === 'Answered' ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/20' :
-                            h.disposition === 'Busy' ? 'bg-orange-500/10 text-orange-700 border border-orange-500/20' :
-                              h.disposition === 'No Answer' ? 'bg-slate-500/10 text-slate-700 border border-slate-500/20' :
-                                'bg-muted text-foreground/80 border border-border'
+                          h.disposition === 'Busy' ? 'bg-orange-500/10 text-orange-700 border border-orange-500/20' :
+                            h.disposition === 'No Answer' ? 'bg-slate-500/10 text-slate-700 border border-slate-500/20' :
+                              'bg-muted text-foreground/80 border border-border'
                           }`}>
                           {h.disposition}
                         </span>

@@ -39,6 +39,7 @@ model calls {
   source                      String?                      @db.VarChar(255)
   extension                   String?                      @db.VarChar(255)
   region                      String?                      @db.VarChar(255)
+  country                     String?                      @db.VarChar(255)
   charges                     Decimal?                     @db.Decimal(10, 2)
   direction                   String?                      @db.VarChar(255)
   destination                 String?                      @db.VarChar(255)
