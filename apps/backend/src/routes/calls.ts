@@ -190,8 +190,12 @@ const callsHandler = async (req: any, res: any, next: any) => {
     console.log('[calls] Debug - incoming country:', b.country)
     
     if (b.destination && (!detectedRegion || !detectedCountry)) {
-      detectedRegion = detectedRegion || detectRegion(b.destination, 'Unknown')
-      detectedCountry = detectedCountry || (getCountryName(b.destination) || 'Unknown')
+      if (!detectedRegion) {
+        detectedRegion = detectRegion(b.destination, 'Unknown')
+      }
+      if (!detectedCountry) {
+        detectedCountry = getCountryName(b.destination) || 'Unknown'
+      }
       console.log('[calls] Debug - detected region:', detectedRegion)
       console.log('[calls] Debug - detected country:', detectedCountry)
     }
