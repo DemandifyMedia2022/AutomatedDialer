@@ -48,6 +48,8 @@ import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
 import { io } from "socket.io-client"
 import { useCampaigns } from "@/hooks/agentic/useCampaigns"
 import { detectRegion, getCountryName } from "@/utils/regionDetection"
+import { GSM_CONFIG } from "@/lib/gsm-config"
+import { SipNetworkToggle } from "@/components/SipNetworkToggle"
 
 declare global {
   interface Window {
@@ -141,6 +143,7 @@ const humanizeDmField = (key: string) => {
 
 export default function ManualDialerPage() {
   const TRANSFER_MODE: 'dtmf' | 'refer-then-dtmf' = 'dtmf'
+  const [sipMode, setSipMode] = useState<'telxio' | 'gsm'>('telxio')
   const [ext, setExt] = useState("")
   const [pwd, setPwd] = useState("")
   const [number, setNumber] = useState("")
@@ -521,6 +524,30 @@ export default function ManualDialerPage() {
     const run = async () => {
       try {
         setError(null)
+        teardownUA() // Ensure previous UA is stopped before switching
+
+        // GSM MODE
+        if (sipMode === 'gsm') {
+          console.log('[DEBUG] GSM Config Loaded:', {
+            extension: GSM_CONFIG.extension,
+            hasPassword: !!GSM_CONFIG.password,
+            wssUrl: GSM_CONFIG.wssUrl,
+            domain: GSM_CONFIG.domain,
+            realm: GSM_CONFIG.realm
+          });
+
+          if (!GSM_CONFIG.extension || !GSM_CONFIG.password) {
+            setError('GSM credentials missing in configuration')
+            return
+          }
+
+          setExt(GSM_CONFIG.extension)
+          setPwd(GSM_CONFIG.password)
+          await startUA(GSM_CONFIG.extension, GSM_CONFIG.password)
+          return
+        }
+
+        // TELXIO MODE (Default)
         const headers: Record<string, string> = {}
         if (!USE_AUTH_COOKIE) {
           const t = getToken()
@@ -549,7 +576,7 @@ export default function ManualDialerPage() {
     }
     run()
     return () => { aborted = true }
-  }, [isLoaded])
+  }, [isLoaded, sipMode])
 
   const teardownUA = useCallback(() => {
     try {
@@ -721,7 +748,19 @@ export default function ManualDialerPage() {
     setError(null)
     if (!window.JsSIP) throw new Error("JsSIP not loaded")
 
-    const { wssUrl, domain, stunServer } = await fetchSipConfig()
+    let wssUrl, domain, stunServer;
+
+    if (sipMode === 'gsm') {
+      wssUrl = GSM_CONFIG.wssUrl
+      domain = GSM_CONFIG.domain
+      stunServer = GSM_CONFIG.stunServer
+    } else {
+      const config = await fetchSipConfig()
+      wssUrl = config.wssUrl
+      domain = config.domain
+      stunServer = config.stunServer
+    }
+
     sipDomainRef.current = domain
 
     const socket = new window.JsSIP.WebSocketInterface(wssUrl)
@@ -729,6 +768,8 @@ export default function ManualDialerPage() {
     const configuration = {
       uri: `sip:${extension}@${domain}`,
       password,
+      authorization_user: extension,
+      realm: sipMode === 'gsm' ? GSM_CONFIG.realm : undefined,
       sockets: [socket],
       register: true,
       session_timers: true,
@@ -754,8 +795,24 @@ export default function ManualDialerPage() {
       activeSessionAliveRef.current = false
       activeDirectionRef.current = null
     })
-    ua.on("registrationFailed", (e: any) => setError(`Registration failed: ${e?.cause || "unknown"}`))
-    ua.on("registrationFailed", (e: any) => setError(`Registration failed: ${e?.cause || "unknown"}`))
+    ua.on("registrationFailed", (e: any) => {
+      const failureCause = e?.cause;
+      const response = e?.response;
+      console.error("SIP Registration Failed FULL OBJECT:", e);
+      console.error("SIP Registration Cause:", failureCause);
+
+      if (response) {
+        console.error("SIP Response Status:", response.status_code);
+        console.error("SIP Response Reason:", response.reason_phrase);
+        console.error("SIP Response Challenge:", response.getHeader('WWW-Authenticate'));
+      }
+
+      let errorMsg = `Registration failed: ${failureCause || 'Unknown'}`;
+      if (response?.status_code) {
+        errorMsg += ` (${response.status_code} ${response.reason_phrase})`;
+      }
+      setError(errorMsg + " - Check console details");
+    })
 
     ua.on("newRTCSession", (data: any) => {
       const session = data.session
@@ -1788,6 +1845,9 @@ export default function ManualDialerPage() {
               </BreadcrumbList>
             </Breadcrumb>
             {/* status badge removed per request */}
+            <div className="ml-auto flex items-center gap-2">
+              <SipNetworkToggle mode={sipMode} onModeChange={setSipMode} disabled={status.startsWith("In Call")} />
+            </div>
           </div>
         </header>
 
