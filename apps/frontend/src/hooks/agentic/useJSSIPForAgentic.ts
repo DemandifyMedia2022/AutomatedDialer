@@ -32,6 +32,8 @@ export function useJSSIPForAgentic() {
 
   const uaRef = useRef<any>(null)
   const sessionRef = useRef<any>(null)
+  const activeDirectionRef = useRef<'incoming' | 'outgoing' | null>(null)
+  const activeSessionAliveRef = useRef<boolean>(false)
 
   // Check if JSSIP is loaded
   useEffect(() => {
@@ -301,8 +303,22 @@ export function useJSSIPForAgentic() {
 
       ua.on("newRTCSession", (data: any) => {
         const session = data.session
+        const direction: 'incoming' | 'outgoing' = data.originator === 'local' ? 'outgoing' : 'incoming'
+        console.log('[JSSIP] New RTC session:', { id: session?.id, direction })
+
+        if (direction === 'incoming' && activeSessionAliveRef.current && activeDirectionRef.current === 'outgoing') {
+          try {
+            console.log('[JSSIP] Rejecting incoming call while outbound call is active')
+            session.terminate({ status_code: 486, reason_phrase: 'Busy Here' })
+            return
+          } catch (err) {
+            console.log('[JSSIP] Failed to reject incoming while busy:', err)
+          }
+        }
+
         sessionRef.current = session
-        console.log('[JSSIP] New RTC session:', session)
+        activeDirectionRef.current = direction
+        activeSessionAliveRef.current = true
 
         session.on("peerconnection", (e: any) => {
           console.log('[JSSIP] Peer connection established')
@@ -312,28 +328,33 @@ export function useJSSIPForAgentic() {
 
         session.on("progress", () => {
           console.log('[JSSIP] Call in progress (ringing)')
-          startRingbackTone()
+          if (activeDirectionRef.current === 'outgoing') startRingbackTone()
         })
 
         session.on("confirmed", () => {
           console.log('[JSSIP] Call confirmed/answered')
-          stopRingbackTone()
+          if (activeDirectionRef.current === 'outgoing') stopRingbackTone()
         })
 
         session.on("accepted", () => {
           console.log('[JSSIP] Call accepted')
-          stopRingbackTone()
+          if (activeDirectionRef.current === 'outgoing') stopRingbackTone()
         })
 
         session.on("failed", (e: any) => {
           console.error('[JSSIP] Call failed:', e)
           stopRingbackTone()
+          activeSessionAliveRef.current = false
+          sessionRef.current = null
+          activeDirectionRef.current = null
         })
 
         session.on("ended", () => {
           console.log('[JSSIP] Call ended')
           stopRingbackTone()
           sessionRef.current = null
+          activeDirectionRef.current = null
+          activeSessionAliveRef.current = false
         })
       })
 

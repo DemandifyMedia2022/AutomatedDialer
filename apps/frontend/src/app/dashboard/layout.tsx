@@ -22,5 +22,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   if (!user) return null
-  return <>{children}</>
+  return <>
+    {children}
+  </>
 }
