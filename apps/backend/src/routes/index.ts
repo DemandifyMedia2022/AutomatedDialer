@@ -18,6 +18,7 @@ import qa from './qa';
 import dmForm from './dmForm';
 import superadmin from './superadmin';
 import calls from './calls';
+import dialerRoutes from './gsm/dialer';
 import { getLiveCalls, updateLiveCallPhase, startLiveCallsSweeper } from './livecalls';
 
 import { env } from '../config/env';
@@ -54,6 +55,7 @@ router.use('/qa', qa);
 router.use('/dm-form', dmForm);
 router.use('/superadmin', superadmin);
 router.use('/calls', calls);
+router.use('/dialer', dialerRoutes); // Mount GSM dialer routes
 
 router.get('/sip/config', (_req, res) => {
   res.json({
@@ -544,7 +546,7 @@ router.get('/analytics/agent/dispositions/daily', requireAuth, requireRoles(['ag
     if (username) { idParts.push('username = ?'); params.push(username) }
     if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
     if (idParts.length === 0) return res.json({ daily: [] })
-    
+
     params.push(startOfDay, endOfDay)
     const where = ['(', idParts.join(' OR '), ')', 'AND start_time >= ? AND start_time < ?'].join(' ').trim()
     const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`
@@ -580,7 +582,7 @@ router.get('/analytics/agent/dispositions/monthly', requireAuth, requireRoles(['
     if (username) { idParts.push('username = ?'); params.push(username) }
     if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
     if (idParts.length === 0) return res.json({ monthly: [] })
-    
+
     params.push(startOfMonth, endOfMonth)
     const where = ['(', idParts.join(' OR '), ')', 'AND start_time >= ? AND start_time < ?'].join(' ').trim()
     const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`

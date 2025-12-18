@@ -37,6 +37,7 @@ const data = {
       items: [
         { title: "Manual", url: "/dashboard/agent/dialer/manual" },
         { title: "Automated", url: "/dashboard/agent/dialer/automated" },
+        { title: "GSM Dialer", url: "/dashboard/agent/dialer/gsm-dialer" },
       ],
     },
     {

@@ -2,7 +2,7 @@ export type Role = 'agent' | 'manager' | 'superadmin'
 
 export type MeResponse = {
   success: true
-  user: { id: number; role: Role | string; email: string }
+  user: { id: number; role: Role | string; email: string; username?: string | null; extension?: string | null }
 }
 
 export type LoginSuccess = {

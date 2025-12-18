@@ -49,7 +49,7 @@ import { io } from "socket.io-client"
 import { useCampaigns } from "@/hooks/agentic/useCampaigns"
 import { detectRegion, getCountryName } from "@/utils/regionDetection"
 import { GSM_CONFIG } from "@/lib/gsm-config"
-import { SipNetworkToggle } from "@/components/SipNetworkToggle"
+
 
 declare global {
   interface Window {
@@ -1846,7 +1846,7 @@ export default function ManualDialerPage() {
             </Breadcrumb>
             {/* status badge removed per request */}
             <div className="ml-auto flex items-center gap-2">
-              <SipNetworkToggle mode={sipMode} onModeChange={setSipMode} disabled={status.startsWith("In Call")} />
+
             </div>
           </div>
         </header>

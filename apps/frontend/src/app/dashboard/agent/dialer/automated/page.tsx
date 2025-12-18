@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { detectRegion, getCountryName } from "@/utils/regionDetection"
 import { GSM_CONFIG } from "@/lib/gsm-config"
-import { SipNetworkToggle } from "@/components/SipNetworkToggle"
+
 
 declare global {
   interface Window {
@@ -1748,10 +1748,7 @@ export default function AutomatedDialerPage() {
             <div className="lg:col-span-1 space-y-3">
               <Card className="p-5">
                 <div className="flex flex-col gap-4">
-                  <div>
-                    <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Network Mode</Label>
-                    <SipNetworkToggle mode={sipMode} onModeChange={setSipMode} disabled={!!sessionRef.current} />
-                  </div>
+
                   <div className="mb-4">
                     <Label className="text-xs font-medium text-muted-foreground">Campaign</Label>
                     <Select

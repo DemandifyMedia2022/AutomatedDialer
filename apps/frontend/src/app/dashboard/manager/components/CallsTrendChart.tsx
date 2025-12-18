@@ -47,7 +47,7 @@ export function CallsTrendChart({ data, loading, range, onRangeChange }: CallsTr
     const maxValue = Math.max(...data.map(d => d.value), 5)
 
     return (
-        <Card className="md:col-span-3 transition-shadow hover:shadow-md duration-200 h-full">
+        <Card className="md:col-span-2 transition-shadow hover:shadow-md duration-200 h-full">
             <CardHeader>
                 <div className="flex items-center justify-between">
                     <div>

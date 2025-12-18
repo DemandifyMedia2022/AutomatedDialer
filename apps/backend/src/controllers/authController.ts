@@ -93,7 +93,7 @@ export async function login(req: Request, res: Response) {
     const { email, password } = parsed.data;
 
     // Allow login via email OR unique_user_id
-    const user = await db.users.findFirst({ where: { OR: [ { usermail: email }, { unique_user_id: email } ] } });
+    const user = await db.users.findFirst({ where: { OR: [{ usermail: email }, { unique_user_id: email }] } });
     if (!user || !user.password) {
       console.warn('[auth] failed login (no user)', { email });
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -122,8 +122,8 @@ export async function login(req: Request, res: Response) {
     const token = signJwt({ userId: user.id, role: (user.role || '').toLowerCase(), email: user.usermail || email });
 
     // Ensure agent session is opened on successful login
-    try { await ensureSession(user.id, { ip: (req as any).ip, userAgent: req.headers['user-agent'] as any }) } catch {}
-    
+    try { await ensureSession(user.id, { ip: (req as any).ip, userAgent: req.headers['user-agent'] as any }) } catch { }
+
     // Log successful login (only once)
     logAuthActivity(
       'login',
@@ -150,14 +150,14 @@ export async function login(req: Request, res: Response) {
         maxAge: 1000 * 60 * 30,
         path: '/',
       });
-      
+
       return res.json({
         success: true,
         user: { id: user.id, role: user.role, username: user.username, email: user.usermail },
         csrfToken,
       });
     }
-    
+
     return res.json({ success: true, token, user: { id: user.id, role: user.role, username: user.username, email: user.usermail } });
   } catch (e: any) {
     return res.status(500).json({ success: false, message: e?.message || 'Login failed' });
@@ -168,16 +168,16 @@ export async function me(req: Request, res: Response) {
   const u = req.user;
   if (!u) return res.status(401).json({ success: false, message: 'Unauthorized' });
   try {
-    const user = await db.users.findUnique({ where: { id: u.userId }, select: { username: true, usermail: true, role: true, id: true } });
-    return res.json({ success: true, user: { id: user?.id || u.userId, role: user?.role || u.role, username: user?.username || null, email: user?.usermail || u.email } });
+    const user = await db.users.findUnique({ where: { id: u.userId }, select: { username: true, usermail: true, role: true, id: true, extension: true } });
+    return res.json({ success: true, user: { id: user?.id || u.userId, role: user?.role || u.role, username: user?.username || null, email: user?.usermail || u.email, extension: user?.extension || null } });
   } catch {
-    return res.json({ success: true, user: { id: u.userId, role: u.role, username: null, email: u.email } });
+    return res.json({ success: true, user: { id: u.userId, role: u.role, username: null, email: u.email, extension: null } });
   }
 }
 
 export async function logout(req: Request, res: Response) {
-  try { if (req.user?.userId) await closeActiveSession(req.user.userId, 'user_logout') } catch {}
-  
+  try { if (req.user?.userId) await closeActiveSession(req.user.userId, 'user_logout') } catch { }
+
   // Log logout activity
   if (req.user?.userId) {
     logAuthActivity(
@@ -188,7 +188,7 @@ export async function logout(req: Request, res: Response) {
       req.get('user-agent') || 'unknown'
     ).catch(err => console.error('Failed to log auth activity:', err));
   }
-  
+
   if (env.USE_AUTH_COOKIE) {
     res.clearCookie(env.AUTH_COOKIE_NAME, { path: '/' });
     res.clearCookie('csrf_token', { path: '/' });
