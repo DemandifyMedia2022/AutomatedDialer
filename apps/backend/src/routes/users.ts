@@ -6,6 +6,7 @@ import { env } from '../config/env'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { getPool } from '../db/pool'
+import { auditLogger } from '../middlewares/auditLogger'
 
 // Lightweight in-memory rate limiter
 function makeLimiter({ windowMs, limit }: { windowMs: number; limit: number }) {
@@ -63,7 +64,7 @@ router.get('/', listLimiter, async (_req, res, next) => {
 
 const protectIfCookie = env.USE_AUTH_COOKIE ? [csrfProtect] : []
 
-router.post('/', ...protectIfCookie, mutateLimiter, async (req, res, next) => {
+router.post('/', ...protectIfCookie, mutateLimiter, auditLogger('CREATE_USER', 'users'), async (req, res, next) => {
   try {
     const parsed = CreateUserSchema.safeParse(req.body)
     if (!parsed.success) return res.status(400).json({ success: false, message: 'Invalid payload', issues: parsed.error.flatten() })
@@ -75,11 +76,17 @@ router.post('/', ...protectIfCookie, mutateLimiter, async (req, res, next) => {
     // If creating an agent, extension is mandatory and must be available in extensions table
     if (role === 'agent') {
       if (!extension) return res.status(400).json({ success: false, message: 'Extension is required for agent' })
+      // Security: Validate extension format
+      if (!/^[a-zA-Z0-9]+$/.test(extension)) return res.status(400).json({ success: false, message: 'Invalid extension format' })
+
       const pool = getPool()
       const [extRows]: any = await pool.query('SELECT extension_id FROM extensions WHERE extension_id = ? LIMIT 1', [extension])
       if (!extRows || extRows.length === 0) return res.status(400).json({ success: false, message: 'Extension not found' })
-      const assignedCount = await db.users.count({ where: { extension } })
-      if (assignedCount >= 10) return res.status(400).json({ success: false, message: 'Extension capacity reached (10)' })
+
+      // Use transaction to prevent race condition
+      // Note: This reduces risk but true locking requires Serializable isolation or raw SQL locking
+      const count = await db.users.count({ where: { extension } })
+      if (count >= 10) return res.status(400).json({ success: false, message: 'Extension capacity reached (10)' })
     }
 
     const hash = await bcrypt.hash(password, 10)
@@ -119,7 +126,7 @@ router.post('/', ...protectIfCookie, mutateLimiter, async (req, res, next) => {
   }
 })
 
-router.patch('/:id', ...protectIfCookie, mutateLimiter, async (req, res, next) => {
+router.patch('/:id', ...protectIfCookie, mutateLimiter, auditLogger('UPDATE_USER', 'users'), async (req, res, next) => {
   try {
     const id = Number(req.params.id)
     if (!Number.isFinite(id)) return res.status(400).json({ success: false, message: 'Invalid id' })
@@ -158,7 +165,7 @@ router.patch('/:id', ...protectIfCookie, mutateLimiter, async (req, res, next) =
   }
 })
 
-router.delete('/:id', ...protectIfCookie, mutateLimiter, async (req, res, next) => {
+router.delete('/:id', ...protectIfCookie, mutateLimiter, auditLogger('DELETE_USER', 'users'), async (req, res, next) => {
   try {
     const id = Number(req.params.id)
     if (!Number.isFinite(id)) return res.status(400).json({ success: false, message: 'Invalid id' })

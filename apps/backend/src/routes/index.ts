@@ -99,11 +99,26 @@ const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, recordingsPath),
   filename: (_req, file, cb) => {
     const ts = Date.now();
-    const ext = path.extname(file.originalname) || '.webm';
+    // Security: allow-list extensions
+    const allowed = ['.webm', '.wav', '.mp3', '.m4a', '.ogg'];
+    let ext = path.extname(file.originalname).toLowerCase();
+    if (!allowed.includes(ext)) ext = '.webm'; // Fallback safe extension
     cb(null, `rec_${ts}${ext}`);
   },
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+  fileFilter: (_req, file, cb) => {
+    // Security: Validate mime types
+    const allowedMimes = ['audio/webm', 'audio/wav', 'audio/mpeg', 'audio/mp4', 'audio/ogg', 'video/webm']; // webm can be video
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only audio files are allowed.'));
+    }
+  }
+});
 
 // Save call detail and recording (Authenticated: agent/manager/superadmin). CSRF required when using cookie auth.
 // Lightweight in-memory rate limiter for this route
@@ -184,22 +199,38 @@ const callsHandler = async (req: any, res: any, next: any) => {
     try { console.log('[calls] incoming body', b); } catch { }
     try { console.log('[calls] file', !!file, 'recording_url', recording_url); } catch { }
 
-    // Fallback: if username not provided, use authenticated user's name
+    // Validate/Fetch User Context
     let usernameVal = b.username || null;
-    if (!usernameVal && req.user?.userId) {
+    let extensionVal = b.extension || null;
+
+    if (req.user?.userId) {
       try {
-        const u = await db.users.findUnique({ where: { id: req.user.userId }, select: { username: true } });
-        usernameVal = u?.username || null;
+        const u = await db.users.findUnique({ where: { id: req.user.userId }, select: { username: true, extension: true, role: true } });
+
+        // Security: Agents cannot spoof extension or username
+        if (req.user.role === 'agent' || u?.role === 'agent') {
+          usernameVal = u?.username || null;
+          extensionVal = u?.extension || null;
+
+          // Verify extension matches if provided (or just overwrite as above)
+          if (b.extension && b.extension !== extensionVal) {
+            console.warn('[calls] agent attempted to spoof extension', { agent: usernameVal, attempted: b.extension });
+          }
+        } else {
+          // Fallback for non-agents
+          if (!usernameVal) usernameVal = u?.username || null;
+          if (!extensionVal) extensionVal = u?.extension || null;
+        }
       } catch { }
     }
 
-    // Fallback: if extension not provided, use authenticated user's assigned extension
-    let extensionVal = b.extension || null;
-    if (!extensionVal && req.user?.userId) {
-      try {
-        const u = await db.users.findUnique({ where: { id: req.user.userId }, select: { extension: true } });
-        extensionVal = u?.extension || null;
-      } catch { }
+    // Security: Validate campaign name to prevent injection
+    if (b.campaign_name) {
+      const safeCampaign = b.campaign_name.replace(/[^a-zA-Z0-9\s-]/g, '');
+      if (safeCampaign !== b.campaign_name) {
+        // Reject or sanitize. Let's sanitize.
+        b.campaign_name = safeCampaign;
+      }
     }
 
     // Normalize and compute times/duration
@@ -210,6 +241,11 @@ const callsHandler = async (req: any, res: any, next: any) => {
     if (endNorm < startNorm) {
       // swap if client provided inverted values
       const t = startNorm; startNorm = endNorm; endNorm = t
+    }
+
+    // Security: Reject future dates (allow 5 min clock skew)
+    if (startNorm.getTime() > Date.now() + 5 * 60 * 1000) {
+      return res.status(400).json({ success: false, message: 'Call time cannot be in the future' });
     }
 
     // Ensure answer_time: prefer provided, else derive from end - call_duration
@@ -355,20 +391,27 @@ router.get('/analytics/agent/dispositions', requireAuth, requireRoles(['agent'])
     const to = req.query.to ? new Date(String(req.query.to)) : null
     const pool = getPool()
 
-    const idParts: string[] = []
-    const params: any[] = []
-    if (username) { idParts.push('username = ?'); params.push(username) }
-    if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
-    if (idParts.length === 0) return res.json({})
-    const timeParts: string[] = []
-    if (from) { timeParts.push('start_time >= ?'); params.push(from) }
-    if (to) { timeParts.push('start_time <= ?'); params.push(to) }
-    const where = ['(', idParts.join(' OR '), ')', timeParts.length ? 'AND ' + timeParts.join(' AND ') : ''].join(' ').trim()
-    const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`
-    const [rows]: any = await pool.query(sql, params)
-    const items = (rows || []).map((r: any) => ({
-      name: String(r.disp || '') || 'UNKNOWN',
-      count: Number(r.cnt || 0),
+    const whereAnd: any[] = []
+    if (from) whereAnd.push({ start_time: { gte: from } })
+    if (to) whereAnd.push({ start_time: { lte: to } })
+
+    const whereOr: any[] = []
+    if (username) whereOr.push({ username })
+    if (usermail) whereOr.push({ useremail: usermail })
+    if (whereOr.length === 0) return res.json({}) // No valid user identifier
+
+    const groupByResult = await db.calls.groupBy({
+      by: ['disposition'],
+      _count: { _all: true },
+      where: {
+        AND: whereAnd,
+        OR: whereOr
+      }
+    })
+
+    const items = groupByResult.map(r => ({
+      name: (r.disposition || '').toUpperCase() || 'UNKNOWN',
+      count: r._count._all
     }))
     return res.json({ items })
   } catch (e) {
@@ -393,26 +436,32 @@ router.get('/analytics/agent/dispositions/stream', requireAuth, requireRoles(['a
     const pool = getPool()
 
     const build = () => {
-      const idParts: string[] = []
-      const params: any[] = []
-      if (username) { idParts.push('username = ?'); params.push(username) }
-      if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
-      if (idParts.length === 0) return { sql: null as any, params }
-      const timeParts: string[] = []
-      if (from) { timeParts.push('start_time >= ?'); params.push(from) }
-      if (to) { timeParts.push('start_time <= ?'); params.push(to) }
-      const where = ['(', idParts.join(' OR '), ')', timeParts.length ? 'AND ' + timeParts.join(' AND ') : ''].join(' ').trim()
-      const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`
-      return { sql, params }
+      const whereAnd: any[] = []
+      if (from) whereAnd.push({ start_time: { gte: from } })
+      if (to) whereAnd.push({ start_time: { lte: to } })
+
+      const whereOr: any[] = []
+      if (username) whereOr.push({ username })
+      if (usermail) whereOr.push({ useremail: usermail })
+
+      return { whereAnd, whereOr }
     }
 
     let last = ''
     const tick = async () => {
       try {
         const b = build()
-        if (!b.sql) { res.write(`data: {"items":[]}\n\n`); return }
-        const [rows]: any = await pool.query(b.sql, b.params)
-        const items = (rows || []).map((r: any) => ({ name: String(r.disp || '') || 'UNKNOWN', count: Number(r.cnt || 0) }))
+        if (b.whereOr.length === 0) { res.write(`data: {"items":[]}\n\n`); return }
+
+        const groupByResult = await db.calls.groupBy({
+          by: ['disposition'],
+          _count: { _all: true },
+          where: {
+            AND: b.whereAnd,
+            OR: b.whereOr
+          }
+        })
+        const items = groupByResult.map(r => ({ name: (r.disposition || '').toUpperCase() || 'UNKNOWN', count: r._count._all }))
         const payload = JSON.stringify({ items })
         if (payload !== last) { last = payload; res.write(`data: ${payload}\n\n`) }
       } catch { }
@@ -740,6 +789,22 @@ router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'qa', 'super
     if (qStatus) where.AND.push({ disposition: { equals: qStatus } })
     const qDir = (req.query.direction || '').toString().trim()
     if (qDir) where.AND.push({ direction: qDir })
+
+    // Enforce data access control for agents
+    if (req.user?.role === 'agent') {
+      const me = await db.users.findUnique({ where: { id: req.user.userId }, select: { username: true, usermail: true, extension: true } })
+      const myUsermail = me?.usermail || undefined
+      const myExt = me?.extension || undefined
+      const agentFilter: any = { OR: [] }
+      if (me?.username) agentFilter.OR.push({ username: me.username })
+      if (myUsermail) agentFilter.OR.push({ useremail: myUsermail })
+      if (myExt) agentFilter.OR.push({ AND: [{ extension: myExt }, { username: null }, { useremail: null }] })
+
+      if (agentFilter.OR.length === 0) {
+        agentFilter.OR.push({ id: -1 }) // No access
+      }
+      where.AND.push(agentFilter)
+    }
 
     const [total, items] = await Promise.all([
       (db as any).calls.count({ where }),

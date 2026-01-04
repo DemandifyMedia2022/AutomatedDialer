@@ -24,7 +24,8 @@ function makeLimiter({ windowMs, limit }: { windowMs: number; limit: number }) {
   };
 }
 
-const loginLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 10 });
+// Security: Lockout after 5 failed attempts for 15 minutes
+const loginLimiter = makeLimiter({ windowMs: 15 * 60 * 1000, limit: 5 });
 const logoutLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 30 });
 const setupLimiter = makeLimiter({ windowMs: 10 * 60 * 1000, limit: 3 });
 const forgotLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 5 });
@@ -51,67 +52,6 @@ router.post('/forgot-password', forgotLimiter, forgotPassword);
 router.post('/verify-otp', verifyLimiter, verifyOtp);
 router.post('/reset-password', resetLimiter, resetPassword);
 
-if (env.NODE_ENV !== 'production' && env.ALLOW_SETUP) {
-  router.get('/setup-form', (_req, res) => {
-    res.type('html').send(`
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>Initialize Superadmin</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <style>
-            body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu;max-width:520px;margin:40px auto;padding:0 16px}
-            form{display:flex;flex-direction:column;gap:12px}
-            input,button{padding:10px;font-size:16px}
-            .card{border:1px solid #ddd;border-radius:8px;padding:20px}
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <h2>Initialize Superadmin</h2>
-            <form method="post" action="/api/auth/setup">
-              <input name="username" placeholder="Username" required />
-              <input type="email" name="usermail" placeholder="Email" required />
-              <input type="password" name="password" placeholder="Password (min 6)" minlength="6" required />
-              <button type="submit">Create Superadmin</button>
-            </form>
-          </div>
-        </body>
-      </html>
-    `);
-  });
-}
 
-if (env.NODE_ENV !== 'production') {
-  router.get('/login-form', (_req, res) => {
-    res.type('html').send(`
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>Login</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <style>
-            body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu;max-width:520px;margin:40px auto;padding:0 16px}
-            form{display:flex;flex-direction:column;gap:12px}
-            input,button{padding:10px;font-size:16px}
-            .card{border:1px solid #ddd;border-radius:8px;padding:20px}
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <h2>Login</h2>
-            <form method="post" action="/api/auth/login">
-              <input type="email" name="usermail" placeholder="Email" required />
-              <input type="password" name="password" placeholder="Password" required />
-              <button type="submit">Login</button>
-            </form>
-          </div>
-        </body>
-      </html>
-    `);
-  });
-}
 
 export default router;

@@ -23,7 +23,7 @@ services:
     ports:
       - "4050:4000"
     environment:
-      - DATABASE_URL=mysql://demandify:Demandify%40765@192.168.0.238:3306/demandify_db
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379
       - PORT=4000
       - CORS_ORIGIN=http://localhost:8050
@@ -45,12 +45,12 @@ services:
     image: mysql:8.0
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: Demandify@765
-      MYSQL_DATABASE: demandify_db
-      MYSQL_USER: demandify
-      MYSQL_PASSWORD: Demandify@765
-    ports:
-      - "3307:3306"
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-demandify_db}
+      - MYSQL_USER=${MYSQL_USER:-demandify}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    # ports:
+    #   - "3307:3306" # Internal only
     volumes:
       - db_data:/var/lib/mysql
 

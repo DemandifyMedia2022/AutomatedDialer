@@ -27,4 +27,7 @@ RUN npm run build
 EXPOSE 4000
 
 # Start the server
+# Start the server
+RUN chown -R node:node /app
+USER node
 CMD ["npm", "start"]

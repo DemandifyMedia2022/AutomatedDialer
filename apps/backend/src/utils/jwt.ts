@@ -4,7 +4,6 @@ import { env } from '../config/env'
 export type JwtPayload = {
   userId: number
   role: string | null
-  email: string
 }
 
 export function signJwt(payload: JwtPayload): string {
@@ -16,7 +15,11 @@ export function verifyJwt(token: string): JwtPayload | null {
   try {
     if (!env.JWT_SECRET) throw new Error('Missing JWT_SECRET')
     return jwt.verify(token, env.JWT_SECRET) as JwtPayload
-  } catch {
+  } catch (err: any) {
+    if (err.name === 'TokenExpiredError') {
+      // Explicitly handle expiration
+      return null;
+    }
     return null
   }
 }

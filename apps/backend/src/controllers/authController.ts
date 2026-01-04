@@ -93,33 +93,31 @@ export async function login(req: Request, res: Response) {
     const { email, password } = parsed.data;
 
     // Allow login via email OR unique_user_id
+    // Timing attack protection: always compare password
     const user = await db.users.findFirst({ where: { OR: [{ usermail: email }, { unique_user_id: email }] } });
-    if (!user || !user.password) {
-      console.warn('[auth] failed login (no user)', { email });
+
+    // Use a dummy hash for timing if user not found (generated once or cached)
+    const dummyHash = '$2a$10$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'; // 60 chars
+    const targetHash = (user && user.password) ? user.password : dummyHash;
+
+    const ok = await bcrypt.compare(password, targetHash);
+
+    if (!user || !user.password || !ok) {
+      console.warn('[auth] failed login'); // Don't log email
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
+
+
+    // Only proceed if user exists and password correct (handled above by !ok check combined)
+    // But we need to separate status check
 
     // Check if user status is active
     if (user.status !== 'active') {
-      console.warn('[auth] failed login (inactive user)', { email, status: user.status });
+      console.warn('[auth] failed login (inactive user)');
       return res.status(401).json({ success: false, message: 'Account is inactive. Please contact administrator.' });
     }
 
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) {
-      console.warn('[auth] failed login (bad password)', { email });
-      // Log failed login attempt
-      logAuthActivity(
-        'failed_login',
-        null,
-        email,
-        req.ip || req.socket.remoteAddress || 'unknown',
-        req.get('user-agent') || 'unknown'
-      ).catch(err => console.error('Failed to log auth activity:', err));
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
-    }
-
-    const token = signJwt({ userId: user.id, role: (user.role || '').toLowerCase(), email: user.usermail || email });
+    const token = signJwt({ userId: user.id, role: (user.role || '').toLowerCase() });
 
     // Ensure agent session is opened on successful login
     try { await ensureSession(user.id, { ip: (req as any).ip, userAgent: req.headers['user-agent'] as any }) } catch { }
@@ -169,9 +167,9 @@ export async function me(req: Request, res: Response) {
   if (!u) return res.status(401).json({ success: false, message: 'Unauthorized' });
   try {
     const user = await db.users.findUnique({ where: { id: u.userId }, select: { username: true, usermail: true, role: true, id: true, extension: true } });
-    return res.json({ success: true, user: { id: user?.id || u.userId, role: user?.role || u.role, username: user?.username || null, email: user?.usermail || u.email, extension: user?.extension || null } });
+    return res.json({ success: true, user: { id: user?.id || u.userId, role: user?.role || u.role, username: user?.username || null, email: user?.usermail || null, extension: user?.extension || null } });
   } catch {
-    return res.json({ success: true, user: { id: u.userId, role: u.role, username: null, email: u.email, extension: null } });
+    return res.json({ success: true, user: { id: u.userId, role: u.role, username: null, email: null, extension: null } });
   }
 }
 
@@ -183,7 +181,7 @@ export async function logout(req: Request, res: Response) {
     logAuthActivity(
       'logout',
       req.user.userId,
-      req.user.email || 'unknown',
+      'unknown', // email no longer in token
       req.ip || req.socket.remoteAddress || 'unknown',
       req.get('user-agent') || 'unknown'
     ).catch(err => console.error('Failed to log auth activity:', err));

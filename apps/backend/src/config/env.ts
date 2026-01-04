@@ -7,18 +7,24 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const JWT_SECRET = process.env.JWT_SECRET || '';
 
 // Enforce strong JWT_SECRET in production
-if (NODE_ENV === 'production' && !JWT_SECRET) {
-  throw new Error('JWT_SECRET must be set in production environment.');
+// Enforce strong JWT_SECRET in production
+if (NODE_ENV === 'production') {
+  if (!JWT_SECRET) {
+    throw new Error('JWT_SECRET must be set in production environment.');
+  }
+  if (JWT_SECRET.length < 32) {
+    throw new Error('JWT_SECRET must be at least 32 characters long in production.');
+  }
 }
 
 export const env = {
   NODE_ENV,
   PORT: parseInt(process.env.PORT || '4000', 10),
-  DATABASE_URL: process.env.DATABASE_URL ,
-  SIP_WSS_URL: process.env.SIP_WSS_URL ,
-  SIP_DOMAIN: process.env.SIP_DOMAIN ,
-  STUN_SERVER: process.env.STUN_SERVER ,
-  PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL ,
+  DATABASE_URL: process.env.DATABASE_URL,
+  SIP_WSS_URL: process.env.SIP_WSS_URL,
+  SIP_DOMAIN: process.env.SIP_DOMAIN,
+  STUN_SERVER: process.env.STUN_SERVER,
+  PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL,
   RECORDINGS_DIR: process.env.RECORDINGS_DIR || 'uploads/recordings',
   JWT_SECRET,
   JWT_EXPIRES_IN: (process.env.JWT_EXPIRES_IN || '20m') as SignOptions['expiresIn'],
