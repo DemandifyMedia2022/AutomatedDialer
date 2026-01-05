@@ -32,6 +32,7 @@ const data = {
       url: "#",
       icon: Users,
       items: [
+        { title: "Overview", url: "/dashboard/manager/monitoring" },
         { title: "Track Agent", url: "/dashboard/manager/monitoring/track-agent" },
         { title: "Live Calls", url: "/dashboard/manager/monitoring/live-calls" },
       ],
