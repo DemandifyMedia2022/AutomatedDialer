@@ -3,7 +3,8 @@
 import React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Download, Play, Pause, ChevronDownIcon, FileDown } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Download, Play, Pause, ChevronDownIcon, FileDown, Users, CheckCircle2, Activity } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
@@ -127,7 +128,7 @@ const LeadDetailsPage = () => {
       a.addEventListener('loadedmetadata', onTime)
       return () => { a.removeEventListener('play', onPlay); a.removeEventListener('pause', onPause); a.removeEventListener('timeupdate', onTime); a.removeEventListener('loadedmetadata', onTime) }
     }, [])
-    const pct = dur ? Math.min(100, (progress/dur)*100) : 0
+    const pct = dur ? Math.min(100, (progress / dur) * 100) : 0
     const seek = (e: React.MouseEvent<HTMLDivElement>) => {
       const a = audioRef.current; if (!a || !dur) return
       const rect = (e.target as HTMLDivElement).getBoundingClientRect()
@@ -162,8 +163,8 @@ const LeadDetailsPage = () => {
   const fetchLeads = React.useCallback(async (p: number) => {
     setLoading(true)
     try {
-      const qs = new URLSearchParams({ 
-        page: String(p), 
+      const qs = new URLSearchParams({
+        page: String(p),
         pageSize: String(pageSize),
         remarks: 'Lead' // Add filter for remarks
       })
@@ -174,8 +175,8 @@ const LeadDetailsPage = () => {
           return endOfDay ? `${d}T23:59:59.999Z` : `${d}T00:00:00.000Z`
         } catch { return d }
       }
-      const fStr = fromDate || (range?.from ? new Date(range.from).toISOString().slice(0,10) : '')
-      const tStr = toDate || (range?.to ? new Date(range.to).toISOString().slice(0,10) : (range?.from ? new Date(range.from).toISOString().slice(0,10) : ''))
+      const fStr = fromDate || (range?.from ? new Date(range.from).toISOString().slice(0, 10) : '')
+      const tStr = toDate || (range?.to ? new Date(range.to).toISOString().slice(0, 10) : (range?.from ? new Date(range.from).toISOString().slice(0, 10) : ''))
       if (fStr) qs.set('from', toIso(fStr))
       if (tStr) qs.set('to', toIso(tStr, true))
       const headers: Record<string, string> = {}
@@ -188,8 +189,8 @@ const LeadDetailsPage = () => {
       }
       const url = `${API_BASE}/api/calls/mine?${qs.toString()}`
       console.log('Fetching from URL:', url) // Debug log
-      const res = await fetch(url, { 
-        headers, 
+      const res = await fetch(url, {
+        headers,
         credentials,
         mode: 'cors'
       })
@@ -197,22 +198,22 @@ const LeadDetailsPage = () => {
         const data = await res.json()
         console.log('API Response:', data) // Debug log
         let rows: any[] = data?.items || []
-        
+
         // Ensure we only keep rows where remarks is exactly 'Lead'
         rows = rows.filter(row => row.remarks === 'Lead')
         console.log('Filtered Rows:', rows) // Debug log
         console.log('Sample QA Status:', rows[0]?.qa_status) // Debug QA status specifically
-        
+
         // Log each row's QA status
         rows.forEach((row, index) => {
           console.log(`Row ${index}: ID=${row.id}, unique_id=${row.unique_id}, qa_status=${row.qa_status}`)
         })
-        
+
         // Calculate qualified leads count
-        const qualified = rows.filter(row => 
+        const qualified = rows.filter(row =>
           row.f_qa_status && row.f_qa_status.toLowerCase() === 'qualified'
         ).length
-        
+
         setItems(rows.map(r => {
           console.log('Processing row:', r) // Debug log
           return {
@@ -267,17 +268,17 @@ const LeadDetailsPage = () => {
       row.f_qa_status || '-',
       row.recording_url || '-'
     ])
-    
+
     const csvContent = [
       headers.join(','),
       ...csvData.map(row => row.map(cell => `"${cell}"`).join(','))
     ].join('\n')
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     const url = URL.createObjectURL(blob)
     link.setAttribute('href', url)
-    link.setAttribute('download', `lead-details-${new Date().toISOString().slice(0,10)}.csv`)
+    link.setAttribute('download', `lead-details-${new Date().toISOString().slice(0, 10)}.csv`)
     link.style.visibility = 'hidden'
     document.body.appendChild(link)
     link.click()
@@ -325,7 +326,7 @@ const LeadDetailsPage = () => {
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
           <div className="p-6">
-           
+
             <div className="mb-4 w-full overflow-x-auto">
               <div className="flex items-center gap-4 min-w-max whitespace-nowrap">
                 <Popover>
@@ -346,36 +347,60 @@ const LeadDetailsPage = () => {
                         setRange(r)
                         const f = r?.from ? new Date(r.from) : undefined
                         const t = r?.to ? new Date(r.to) : r?.from ? new Date(r.from) : undefined
-                        if (f) setFromDate(f.toISOString().slice(0,10))
-                        if (t) setToDate(t.toISOString().slice(0,10))
+                        if (f) setFromDate(f.toISOString().slice(0, 10))
+                        if (t) setToDate(t.toISOString().slice(0, 10))
                       }}
                     />
                   </PopoverContent>
                 </Popover>
                 <Input className="w-56" placeholder="Destination Number" value={dest} onChange={(e) => setDest(e.target.value)} />
                 <Button onClick={onSearch}>Search</Button>
-              </div>
-            </div>
-
-            <div className="mt-4 mb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2">
-                    <span className="text-green-800 font-medium">Qualified Leads: {qualifiedCount}</span>
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Total Leads: {total}
-                  </div>
-                </div>
-                <Button 
-                  onClick={exportToCSV} 
+                <div className="flex-1" />
+                <Button
+                  variant="outline"
+                  onClick={exportToCSV}
                   disabled={items.length === 0}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 ml-auto"
                 >
                   <FileDown className="h-4 w-4" />
                   Export CSV
                 </Button>
               </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3 mb-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{total}</div>
+                  <p className="text-xs text-muted-foreground">Total leads in current view</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Qualified Leads</CardTitle>
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{qualifiedCount}</div>
+                  <p className="text-xs text-muted-foreground">Leads marked as qualified</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Qualification Rate</CardTitle>
+                  <Activity className="h-4 w-4 text-blue-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {total > 0 ? ((qualifiedCount / total) * 100).toFixed(1) : 0}%
+                  </div>
+                  <p className="text-xs text-muted-foreground">Percentage of qualified leads</p>
+                </CardContent>
+              </Card>
             </div>
 
             <div className="mt-4 overflow-x-auto rounded-lg border">
@@ -385,7 +410,7 @@ const LeadDetailsPage = () => {
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">User</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Destination</th>
-                  
+
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Start Time (UTC)</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">End Time (UTC)</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Call Duration</th>
@@ -407,18 +432,17 @@ const LeadDetailsPage = () => {
                       <td className="px-4 py-3">{(page - 1) * pageSize + idx + 1}</td>
                       <td className="px-4 py-3">{row.username || "-"}</td>
                       <td className="px-4 py-3">{row.destination || "-"}</td>
-                     
+
                       <td className="px-4 py-3">{toUtc(row.start_time)}</td>
                       <td className="px-4 py-3">{toUtc(row.end_time)}</td>
                       <td className="px-4 py-3">{fmtDur(row.call_duration)}</td>
                       <td className="px-4 py-3">{row.remarks || "-"}</td>
                       <td className="px-4 py-3">
                         {row.f_qa_status ? (
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            row.f_qa_status.toLowerCase() === 'qualified' ? 'bg-green-100 text-green-800' :
-                            row.f_qa_status.toLowerCase() === 'disqualified' ? 'bg-red-100 text-red-800' :
-                            'bg-yellow-100 text-yellow-800'
-                          }`}>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${row.f_qa_status.toLowerCase() === 'qualified' ? 'bg-green-100 text-green-800' :
+                              row.f_qa_status.toLowerCase() === 'disqualified' ? 'bg-red-100 text-red-800' :
+                                'bg-yellow-100 text-yellow-800'
+                            }`}>
                             {row.f_qa_status}
                           </span>
                         ) : (

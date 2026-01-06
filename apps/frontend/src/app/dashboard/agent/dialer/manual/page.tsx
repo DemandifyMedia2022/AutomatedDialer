@@ -38,8 +38,10 @@ import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { Badge } from "@/components/ui/badge"
 import { AgentSidebar } from "../../components/AgentSidebar"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
+import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
@@ -47,6 +49,7 @@ import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
 import { io } from "socket.io-client"
 import { useCampaigns } from "@/hooks/agentic/useCampaigns"
+import { useAuth } from "@/hooks/useAuth"
 import { detectRegion, getCountryName } from "@/utils/regionDetection"
 import { GSM_CONFIG } from "@/lib/gsm-config"
 
@@ -144,6 +147,7 @@ const humanizeDmField = (key: string) => {
 export default function ManualDialerPage() {
   const TRANSFER_MODE: 'dtmf' | 'refer-then-dtmf' = 'dtmf'
   const [sipMode, setSipMode] = useState<'telxio' | 'gsm'>('telxio')
+  const [gsmPort, setGsmPort] = useState<string>('COM1')
   const [ext, setExt] = useState("")
   const [pwd, setPwd] = useState("")
   const [number, setNumber] = useState("")
@@ -182,7 +186,10 @@ export default function ManualDialerPage() {
       return undefined
     }
   })
+
   const { campaigns, loading: campaignsLoading } = useCampaigns()
+  const { user } = useAuth()
+
 
   // Draggable in-call popup position
   const [popupPos, setPopupPos] = useState<{ x: number; y: number }>({ x: 420, y: 160 })
@@ -216,7 +223,11 @@ export default function ManualDialerPage() {
   const remoteRecorderRef = useRef<MediaRecorder | null>(null)
   const remoteRecordedChunksRef = useRef<BlobPart[]>([])
   const wantRemoteRecordingRef = useRef<boolean>(false)
+
   const currentCallIdRef = useRef<number | null>(null)
+
+  // GSM Call Ref
+  const gsmCallIdRef = useRef<string | number | null>(null)
 
   // Busy tone helpers
   const busyGainRef = useRef<GainNode | null>(null)
@@ -543,7 +554,12 @@ export default function ManualDialerPage() {
 
           setExt(GSM_CONFIG.extension)
           setPwd(GSM_CONFIG.password)
-          await startUA(GSM_CONFIG.extension, GSM_CONFIG.password)
+          // In GSM mode via API, we don't register SIP UA
+          // Just clear error and return
+          setExt(GSM_CONFIG.extension)
+          setPwd(GSM_CONFIG.password) // Not used for API calls but kept for state consistency
+          // await startUA(GSM_CONFIG.extension, GSM_CONFIG.password)
+          setStatus("GSM Ready")
           return
         }
 
@@ -1399,6 +1415,27 @@ export default function ManualDialerPage() {
   ]
 
   const hangup = async () => {
+    // GSM API Hangup
+    if (sipMode === 'gsm') {
+      try {
+        const callId = gsmCallIdRef.current || Date.now().toString()
+        await fetch(`${API_PREFIX}/dialer/hangup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callId }),
+        })
+      } catch { }
+      finally {
+        gsmCallIdRef.current = null
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+        setStatus("Idle")
+        setIsMuted(false)
+        setIsOnHold(false)
+        setShowPopup(false)
+      }
+      return
+    }
+
     try { sessionRef.current?.terminate() } catch { }
     setShowPopup(false)
     if (!uploadedOnceRef.current) {
@@ -1411,11 +1448,59 @@ export default function ManualDialerPage() {
 
   const placeCall = async () => {
     setError(null)
-    if (!uaRef.current) { setError("UA not ready"); return }
     if (!number) { setError("Empty number"); return }
 
     // Reset last call disposition when manually placing a call
     setLastCallDisposition(null)
+
+    if (sipMode === 'gsm') {
+      setStatus("Calling...")
+      try {
+        const response = await fetch(`${API_PREFIX}/dialer/call`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            number: (number.length === 10 && !number.startsWith('+')) ? `+91${number}` : number,
+            port: gsmPort,
+            type: 'gsm',
+            username: user?.username,
+            extension: user?.extension || ext
+          }),
+        })
+        if (!response.ok) throw new Error('GSM Call failed')
+
+        // Capture the call ID from the server
+        const data = await response.json()
+        if (data && data.id) {
+          gsmCallIdRef.current = data.id
+        }
+
+        setStatus("In Call")
+        callStartRef.current = Date.now()
+        if (timerRef.current) window.clearInterval(timerRef.current)
+        timerRef.current = window.setInterval(() => {
+          setStatus((s) => (s.startsWith("In Call") ? `In Call ${elapsed()}` : s))
+        }, 1000)
+        setShowPopup(true)
+
+        // Setup popup position
+        try {
+          const w = window.innerWidth
+          const h = window.innerHeight
+          const px = Math.max(8, Math.floor(w / 2 - 180))
+          const py = Math.max(60, Math.floor(h / 2 - 120))
+          setPopupPos({ x: px, y: py })
+        } catch { }
+
+      } catch (e: any) {
+        setError(e?.message || "GSM Call start error")
+        setStatus("Call Failed")
+        setTimeout(() => setStatus("GSM Ready"), 3000)
+      }
+      return
+    }
+
+    if (!uaRef.current) { setError("UA not ready"); return }
 
     const destination = `${countryCode}${number}`
     const options = {
@@ -1449,7 +1534,6 @@ export default function ManualDialerPage() {
   const logout = () => {
     setError(null)
     setStatus("Idle")
-    setNumber("")
     setIsMuted(false)
     setIsOnHold(false)
     hasAnsweredRef.current = false
@@ -1866,11 +1950,40 @@ export default function ManualDialerPage() {
           <div className="grid gap-3 lg:grid-cols-3">
             {/* Dialer */}
             <Card className="p-5 lg:col-span-1 transition-shadow hover:shadow-md">
-              <div className="mb-3 text-lg font-semibold flex items-center gap-2">
-                <PhoneCall className="h-5 w-5 text-primary" />
-                Dialer
+              <div className="mb-3 text-lg font-semibold flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <PhoneCall className="h-5 w-5 text-primary" />
+                  Dialer
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="gsm-mode" className="text-xs font-medium">GSM Mode</Label>
+                  <Switch
+                    id="gsm-mode"
+                    checked={sipMode === 'gsm'}
+                    onCheckedChange={(checked) => setSipMode(checked ? 'gsm' : 'telxio')}
+                  />
+                  {(() => {
+                    const s = status
+                    let label = 'Offline'
+                    let className = 'bg-slate-500 hover:bg-slate-600'
+
+                    if (s.includes('Registered') || s.includes('GSM Ready') || s.includes('Connected')) {
+                      label = 'Available'
+                      className = 'bg-emerald-500 hover:bg-emerald-600'
+                    } else if (s.startsWith('In Call') || s.includes('Ringing') || s.includes('Calling') || s.includes('Busy')) {
+                      label = 'Busy'
+                      className = 'bg-amber-500 hover:bg-amber-600'
+                    }
+
+                    return (
+                      <Badge className={`ml-2 ${className} border-0`}>
+                        {label}
+                      </Badge>
+                    )
+                  })()}
+                </div>
               </div>
-              <div className="mb-4">
+              <div className="mb-0">
                 <Label className="text-xs font-medium text-muted-foreground">Campaign</Label>
                 <Select
                   value={selectedCampaign ?? undefined}
@@ -1899,21 +2012,36 @@ export default function ManualDialerPage() {
                 </p>
               </div>
 
-              <div className="mb-4">
+              <div className="mb-2">
                 <Label className="text-xs font-medium text-muted-foreground">Phone Number</Label>
                 <div className="mt-1.5 flex gap-2">
-                  <Select value={countryCode} onValueChange={(v) => { setCountryCode(v); try { localStorage.setItem('dial_cc', v) } catch { } }}>
-                    <SelectTrigger className="w-[110px]">
-                      <SelectValue placeholder="+91" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="+1">+1 US</SelectItem>
-                      <SelectItem value="+44">+44 UK</SelectItem>
-                      <SelectItem value="+61">+61 AU</SelectItem>
-                      <SelectItem value="+65">+65 SG</SelectItem>
-                      <SelectItem value="+91">+91 IN</SelectItem>
-                    </SelectContent>
-                  </Select>
+
+                  {sipMode === 'gsm' ? (
+                    <Select value={gsmPort} onValueChange={setGsmPort}>
+                      <SelectTrigger className="w-[110px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {/* Replicating the dropdown from the requested screenshot functionality (COM ports) */}
+                        <SelectItem value="COM1">COM1</SelectItem>
+                        <SelectItem value="COM2">COM2</SelectItem>
+                        <SelectItem value="COM3">COM3</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Select value={countryCode} onValueChange={(v) => { setCountryCode(v); try { localStorage.setItem('dial_cc', v) } catch { } }}>
+                      <SelectTrigger className="w-[110px]">
+                        <SelectValue placeholder="+91" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="+1">+1 US</SelectItem>
+                        <SelectItem value="+44">+44 UK</SelectItem>
+                        <SelectItem value="+61">+61 AU</SelectItem>
+                        <SelectItem value="+65">+65 SG</SelectItem>
+                        <SelectItem value="+91">+91 IN</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                   <Input className="flex-1 text-lg tracking-widest font-medium" inputMode="numeric" value={number} onChange={(e) => {
                     const v = e.target.value.replace(/\D+/g, "")
                     setNumber(v)
@@ -1978,33 +2106,7 @@ export default function ManualDialerPage() {
                 </Button>
               </div>
 
-              {/* Call Status Indicator */}
-              <div className="mb-3 p-3 rounded-lg border bg-muted/30">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {(() => {
-                      const s = status
-                      const dot = s.includes('Ringing') ? 'bg-amber-500 animate-pulse' :
-                        s.startsWith('In Call') ? 'bg-emerald-500 animate-pulse' :
-                          s.includes('Busy') ? 'bg-orange-500' :
-                            s.includes('No Answer') ? 'bg-slate-500' :
-                              s.includes('Failed') ? 'bg-red-500' :
-                                s.includes('Disconnected') ? 'bg-gray-400' :
-                                  (s.includes('Connected') || s.includes('Registered')) ? 'bg-sky-500' :
-                                    'bg-muted-foreground'
-                      return (
-                        <>
-                          <span className={`inline-block h-2.5 w-2.5 rounded-full ${dot}`} />
-                          <span className="text-sm font-medium">{s}</span>
-                        </>
-                      )
-                    })()}
-                  </div>
-                  {status.startsWith("In Call") && (
-                    <span className="text-sm font-mono text-muted-foreground">{elapsed() || "00:00"}</span>
-                  )}
-                </div>
-              </div>
+              {/* Call Status Indicator - Removed legacy display per request */}
 
               {status.startsWith("In Call") && (
                 <div className="mb-3">

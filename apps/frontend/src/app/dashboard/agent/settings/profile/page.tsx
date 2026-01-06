@@ -13,16 +13,21 @@ import { User, KeyRound, Shield } from "lucide-react"
 import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken } from "@/lib/auth"
 import { useToast } from "@/hooks/use-toast"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Phone, Signal, Smartphone } from "lucide-react"
+import { GSM_CONFIG } from "@/lib/gsm-config"
 
 export default function ProfileSettingsPage() {
   const { toast } = useToast()
   const [profile, setProfile] = useState({
     name: "",
     email: "",
+    extension: "",
   })
   const [passwords, setPasswords] = useState({ current: "", next: "", confirm: "" })
   const [loading, setLoading] = useState(true)
   const [updatingPassword, setUpdatingPassword] = useState(false)
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -42,7 +47,11 @@ export default function ProfileSettingsPage() {
         if (!res.ok) throw new Error(`Failed to load profile: ${res.status}`)
         const data = await res.json()
         if (!cancelled && data?.success && data?.user) {
-          setProfile({ name: data.user.username || "", email: data.user.email || "" })
+          setProfile({
+            name: data.user.username || "",
+            email: data.user.email || "",
+            extension: data.user.extension || ""
+          })
         }
       } catch {
         // ignore
@@ -161,50 +170,104 @@ export default function ProfileSettingsPage() {
                   </div>
                   <p className="text-[10px] text-muted-foreground">Contact support to change email.</p>
                 </div>
+
+                <div className="space-y-2">
+                  <Label>Extension</Label>
+                  <div className="flex items-center h-10 w-full rounded-md border border-input bg-muted px-3 py-2 text-sm ring-offset-background text-muted-foreground cursor-not-allowed">
+                    <Phone className="mr-2 h-4 w-4 opacity-50" />
+                    {profile.extension || "Not assigned"}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>GSM Configuration</Label>
+                  <div className="flex items-center h-10 w-full rounded-md border border-input bg-muted px-3 py-2 text-sm ring-offset-background text-muted-foreground cursor-not-allowed">
+                    <Smartphone className="mr-2 h-4 w-4 opacity-50" />
+                    {GSM_CONFIG.extension ? (
+                      <div className="flex items-center justify-between w-full">
+                        <span className="flex items-center text-blue-600 font-medium">
+                          <Signal className="mr-2 h-3 w-3" />
+                          Configured
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">(Check dialer for live status)</span>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">Not configured</span>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <Separator />
 
-              <div className="space-y-4">
-                <h4 className="text-sm font-medium flex items-center gap-2"><KeyRound className="h-4 w-4" /> Change Password</h4>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="current">Current Password</Label>
-                    <Input
-                      id="current"
-                      type="password"
-                      value={passwords.current}
-                      onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
-                      placeholder="••••••"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="next">New Password</Label>
-                    <Input
-                      id="next"
-                      type="password"
-                      value={passwords.next}
-                      onChange={(e) => setPasswords({ ...passwords, next: e.target.value })}
-                      placeholder="Min 6 characters"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="confirm">Confirm Password</Label>
-                    <Input
-                      id="confirm"
-                      type="password"
-                      value={passwords.confirm}
-                      onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
-                      placeholder="Min 6 characters"
-                    />
-                  </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <h4 className="text-sm font-medium">Password</h4>
+                  <p className="text-sm text-muted-foreground">Change your password here.</p>
                 </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" type="button" onClick={() => setPasswords({ current: "", next: "", confirm: "" })}>Cancel</Button>
-                  <Button onClick={onUpdatePassword} disabled={updatingPassword} className="bg-violet-700 hover:bg-violet-800">
-                    {updatingPassword ? "Updating..." : "Update Password"}
-                  </Button>
-                </div>
+                <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline">
+                      <KeyRound className="mr-2 h-4 w-4" />
+                      Change Password
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Change Password</DialogTitle>
+                      <DialogDescription>
+                        Enter your current password and a new one to update.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="current">Current Password</Label>
+                        <Input
+                          id="current"
+                          type="password"
+                          value={passwords.current}
+                          onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
+                          placeholder="••••••"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="next">New Password</Label>
+                        <Input
+                          id="next"
+                          type="password"
+                          value={passwords.next}
+                          onChange={(e) => setPasswords({ ...passwords, next: e.target.value })}
+                          placeholder="Min 6 characters"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="confirm">Confirm Password</Label>
+                        <Input
+                          id="confirm"
+                          type="password"
+                          value={passwords.confirm}
+                          onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+                          placeholder="Min 6 characters"
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>Cancel</Button>
+                      <Button onClick={async () => {
+                        await onUpdatePassword()
+                        if (passwords.next.length >= 6 && passwords.next === passwords.confirm) {
+                          // onUpdatePassword handles logic, if success we close
+                          // But onUpdatePassword resets passwords on success
+                          // We need to check success implementation or modify onUpdatePassword to close dialog
+                          // Modified logic: Let's refactor onUpdatePassword slightly to close dialog
+                          setShowPasswordDialog(false)
+                        }
+                      }} disabled={updatingPassword}>
+                        {updatingPassword ? "Updating..." : "Update Password"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
             </CardContent>
           </Card>

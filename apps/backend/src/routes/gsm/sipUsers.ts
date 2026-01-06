@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { getSIPUsers, getSIPUser } from '../services/asteriskService.js'
+import { getSIPUsers, getSIPUser } from '../../services/gsm/asteriskService.js'
 
 const router = Router()
 

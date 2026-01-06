@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { sendSMS, getSessionCookie } from '../services/gsmGateway.js'
+import { sendSMS, getSessionCookie } from '../../services/gsm/gsmGateway.js'
 
 const router = Router()
 
@@ -22,9 +22,9 @@ router.get('/sms', async (req, res) => {
 router.post('/sms', async (req, res) => {
   try {
     const { number, message, gsmPort } = req.body
-    
+
     console.log('[SMS Route] Received SMS request:', { number, message: message?.substring(0, 50), gsmPort })
-    
+
     if (!number || !message) {
       return res.status(400).json({ error: 'Phone number and message are required' })
     }
@@ -34,10 +34,10 @@ router.post('/sms', async (req, res) => {
     if (!/^\+?\d+$/.test(cleanNumber)) {
       return res.status(400).json({ error: 'Invalid phone number format' })
     }
-    
+
     // Log the number format for debugging
     console.log(`[SMS Route] Phone number: ${cleanNumber} (length: ${cleanNumber.length})`)
-    
+
     // Some gateways require international format - if number is 10 digits and doesn't start with +,
     // it might need country code. But we'll send as-is first and let gateway handle it.
 
@@ -54,30 +54,30 @@ router.post('/sms', async (req, res) => {
 
     // Send SMS via GSM gateway
     const result = await sendSMS(cleanNumber, message, portIndex)
-    
+
     console.log('[SMS Route] SMS send result:', result)
-    
+
     if (!result.success) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Failed to send SMS',
         message: result.message || 'Unknown error'
       })
     }
-    
-    const sms = { 
-      id: Date.now().toString(), 
-      number: cleanNumber, 
-      message, 
-      direction: 'outbound', 
-      status: 'sent', 
-      timestamp: new Date(), 
-      gsmPort: gsmPort || `COM${portIndex}` 
+
+    const sms = {
+      id: Date.now().toString(),
+      number: cleanNumber,
+      message,
+      direction: 'outbound',
+      status: 'sent',
+      timestamp: new Date(),
+      gsmPort: gsmPort || `COM${portIndex}`
     }
-    
+
     res.status(201).json(sms)
   } catch (error) {
     console.error('[SMS Route] Error sending SMS:', error)
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to send SMS',
       message: error instanceof Error ? error.message : 'Unknown error'
     })

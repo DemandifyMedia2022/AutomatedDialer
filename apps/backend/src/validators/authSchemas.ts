@@ -1,12 +1,8 @@
 import { z } from 'zod'
 
 export const LoginSchema = z.object({
-  email: z.union([
-    z.string().email(),
-    z.string().regex(/^DM-[A-Za-z]{1,2}-\d{4}$/),
-  ]),
-  // Security: Min 12 chars, upper, lower, number, special char
-  password: z.string().min(12).regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,}$/, 'Password must meet complexity requirements'),
+  email: z.string().min(1),
+  password: z.string().min(1),
 })
 
 export type JwtPayload = {

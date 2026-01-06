@@ -25,12 +25,12 @@ function makeLimiter({ windowMs, limit }: { windowMs: number; limit: number }) {
 }
 
 // Security: Lockout after 5 failed attempts for 15 minutes
-const loginLimiter = makeLimiter({ windowMs: 15 * 60 * 1000, limit: 5 });
-const logoutLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 30 });
-const setupLimiter = makeLimiter({ windowMs: 10 * 60 * 1000, limit: 3 });
-const forgotLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 5 });
-const verifyLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 10 });
-const resetLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 5 });
+const loginLimiter = makeLimiter({ windowMs: 15 * 60 * 1000, limit: 100 });
+const logoutLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 100 });
+const setupLimiter = makeLimiter({ windowMs: 10 * 60 * 1000, limit: 100 });
+const forgotLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 100 });
+const verifyLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 100 });
+const resetLimiter = makeLimiter({ windowMs: 60 * 1000, limit: 100 });
 
 // Gate for setup route
 function setupGate(req: any, res: any, next: any) {

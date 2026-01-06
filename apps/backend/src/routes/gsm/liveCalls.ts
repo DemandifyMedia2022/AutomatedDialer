@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { broadcastLiveCalls } from '../index.js'
+import { broadcastLiveCalls } from './index'
 
 const router = Router()
 
