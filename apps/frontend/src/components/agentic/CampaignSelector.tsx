@@ -63,7 +63,7 @@ export default function CampaignSelector({ selectedCampaign, onCampaignChange }:
             <div className="flex items-center gap-4">
               <label htmlFor="campaign" className="text-sm font-medium">Campaign</label>
               <Select value={selectedCampaign || undefined} onValueChange={onCampaignChange} disabled={loading}>
-                <SelectTrigger className="w-64">
+                <SelectTrigger id="campaign" className="w-64">
                   <SelectValue placeholder="Select campaign..." />
                 </SelectTrigger>
                 <SelectContent>
