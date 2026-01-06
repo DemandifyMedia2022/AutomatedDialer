@@ -598,13 +598,39 @@ router.get('/analytics/agent/dispositions/daily', requireAuth, requireRoles(['ag
 
     params.push(startOfDay, endOfDay)
     const where = ['(', idParts.join(' OR '), ')', 'AND start_time >= ? AND start_time < ?'].join(' ').trim()
-    const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`
+    // Daily trend: Group by hour
+    const sql = `
+      SELECT 
+        DATE_FORMAT(start_time, '%H') as hour_key,
+        SUM(CASE WHEN UPPER(COALESCE(disposition,'')) = 'ANSWERED' THEN 1 ELSE 0 END) as answered,
+        SUM(CASE WHEN UPPER(COALESCE(disposition,'')) != 'ANSWERED' THEN 1 ELSE 0 END) as failed
+      FROM calls 
+      WHERE ${where}
+      GROUP BY hour_key
+      ORDER BY hour_key ASC
+    `
     const [rows]: any = await pool.query(sql, params)
-    const daily = (rows || []).map((r: any) => ({
-      name: String(r.disp || '') || 'UNKNOWN',
-      count: Number(r.cnt || 0),
-    }))
-    return res.json({ daily })
+
+    // Fill 24h buckets
+    const items = []
+    const map = new Map<string, any>()
+    if (rows) rows.forEach((r: any) => map.set(r.hour_key, r))
+
+    for (let i = 0; i < 24; i += 2) {
+      const h = i.toString().padStart(2, '0')
+      // Check i and i+1
+      const r1 = map.get(h)
+      const r2 = map.get((i + 1).toString().padStart(2, '0'))
+
+      const val = {
+        name: i === 0 ? '12am' : i === 12 ? '12pm' : i > 12 ? `${i - 12}pm` : `${i}am`,
+        answered: Number(r1?.answered || 0) + Number(r2?.answered || 0),
+        failed: Number(r1?.failed || 0) + Number(r2?.failed || 0)
+      }
+      items.push(val)
+    }
+
+    return res.json({ daily: items })
   } catch (e) {
     next(e)
   }
@@ -634,13 +660,40 @@ router.get('/analytics/agent/dispositions/monthly', requireAuth, requireRoles(['
 
     params.push(startOfMonth, endOfMonth)
     const where = ['(', idParts.join(' OR '), ')', 'AND start_time >= ? AND start_time < ?'].join(' ').trim()
-    const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`
+    // Monthly trend: Group by day
+    const sql = `
+      SELECT 
+        DATE_FORMAT(start_time, '%d') as day_key,
+        SUM(CASE WHEN UPPER(COALESCE(disposition,'')) = 'ANSWERED' THEN 1 ELSE 0 END) as answered,
+        SUM(CASE WHEN UPPER(COALESCE(disposition,'')) != 'ANSWERED' THEN 1 ELSE 0 END) as failed
+      FROM calls 
+      WHERE ${where}
+      GROUP BY day_key
+      ORDER BY day_key ASC
+    `
     const [rows]: any = await pool.query(sql, params)
-    const monthly = (rows || []).map((r: any) => ({
-      name: String(r.disp || '') || 'UNKNOWN',
-      count: Number(r.cnt || 0),
-    }))
-    return res.json({ monthly })
+
+    // Fill days of month
+    const items = []
+    const map = new Map<string, any>()
+    if (rows) rows.forEach((r: any) => map.set(r.day_key, r))
+
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+
+    // Aggregate roughly every 2 days if month is long, or just query daily. 
+    // Chart looks better with ~15 points. Let's do daily but client can smooth it if needed.
+    // The previous code had ~15 points. returns day number.
+    for (let i = 1; i <= daysInMonth; i++) {
+      const d = i.toString().padStart(2, '0')
+      const r = map.get(d)
+      items.push({
+        name: String(i),
+        answered: Number(r?.answered || 0),
+        failed: Number(r?.failed || 0)
+      })
+    }
+
+    return res.json({ monthly: items })
   } catch (e) {
     next(e)
   }

@@ -3,49 +3,15 @@
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts"
 import { useTheme } from "next-themes"
 
+
 interface DispositionChartProps {
     view: 'daily' | 'monthly'
+    data?: { name: string; answered: number; failed: number }[]
 }
 
-export function DispositionChart({ view }: DispositionChartProps) {
+export function DispositionChart({ view, data = [] }: DispositionChartProps) {
     const { theme } = useTheme()
     const isDark = theme === "dark"
-
-    // Mock data generator
-    const generateData = () => {
-        const data = []
-        const points = view === 'daily' ? 12 : 15 // 2-hour intervals or 2-day intervals
-
-        for (let i = 0; i < points; i++) {
-            let label = ""
-            if (view === 'daily') {
-                const hour = i * 2
-                label = `${hour === 0 ? 12 : hour > 12 ? hour - 12 : hour}${hour === 0 || hour === 24 ? 'am' : hour >= 12 ? 'pm' : 'am'}`
-            } else {
-                label = `${(i * 2) + 1}`
-            }
-
-            // Make the curve look "sophisticated" - minimal random noise, smooth waves
-            // Answered usually lower than failed in this specific user scenario? Or vice versa.
-            // Let's assume some realistic call center stats.
-            const baseAnswered = view === 'daily'
-                ? 15 + Math.sin(i / 2) * 10 + Math.random() * 5
-                : 40 + Math.sin(i / 3) * 20 + Math.random() * 10
-
-            const baseFailed = view === 'daily'
-                ? 5 + Math.cos(i / 2) * 3 + Math.random() * 2
-                : 15 + Math.cos(i / 3) * 5 + Math.random() * 5
-
-            data.push({
-                name: label,
-                answered: Math.max(0, Math.round(baseAnswered)),
-                failed: Math.max(0, Math.round(baseFailed)),
-            })
-        }
-        return data
-    }
-
-    const data = generateData()
 
     return (
         <div className="h-[300px] w-full">
