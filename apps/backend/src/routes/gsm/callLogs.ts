@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { db } from '../../db/prisma'
 
 const router = Router()
 
@@ -21,10 +22,25 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params
-    // TODO: Fetch specific call log
-    const log = { id, caller: '+1234567890', callee: '+0987654321', direction: 'outbound', duration: 120, status: 'answered' }
-    res.json(log)
+
+    const log = await db.calls.findUnique({
+      where: { id: BigInt(id) }
+    })
+
+    if (!log) {
+      return res.status(404).json({ error: 'Call log not found' })
+    }
+
+    // Handle BigInt serialization
+    const serializedLog = JSON.parse(JSON.stringify(log, (key, value) =>
+      typeof value === 'bigint'
+        ? value.toString()
+        : value
+    ))
+
+    res.json(serializedLog)
   } catch (error) {
+    console.error('Error fetching call log:', error)
     res.status(500).json({ error: 'Failed to fetch call log' })
   }
 })
@@ -41,4 +57,3 @@ router.get('/export', async (req, res) => {
 })
 
 export default router
-
