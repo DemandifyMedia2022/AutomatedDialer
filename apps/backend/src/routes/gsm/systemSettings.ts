@@ -1,35 +1,12 @@
 import { Router } from 'express'
+import { SystemSettingsService } from '../../services/systemSettingsService'
 
 const router = Router()
 
 // Get all settings
 router.get('/', async (req, res) => {
   try {
-    const settings = {
-      asterisk: {
-        host: 'localhost',
-        port: 8088,
-        username: 'admin',
-        password: '',
-      },
-      kamailio: {
-        host: 'localhost',
-        port: 5060,
-      },
-      recording: {
-        enabled: true,
-        path: '/var/spool/asterisk/monitor',
-        format: 'wav',
-      },
-      cdr: {
-        enabled: true,
-        backend: 'mysql',
-      },
-      general: {
-        timezone: 'UTC',
-        language: 'en',
-      },
-    }
+    const settings = await SystemSettingsService.getSettings()
     res.json(settings)
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch settings' })
@@ -40,7 +17,7 @@ router.get('/', async (req, res) => {
 router.put('/', async (req, res) => {
   try {
     const updates = req.body
-    // TODO: Save settings to database/config file
+    await SystemSettingsService.saveSettings(updates)
     res.json({ message: 'Settings updated successfully', settings: updates })
   } catch (error) {
     res.status(500).json({ error: 'Failed to update settings' })
