@@ -3,6 +3,54 @@ import { db } from '../../db/prisma'
 
 const router = Router()
 
+function escapeCSV(value: any): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  const str = String(value);
+
+  // Prevent formula injection
+  if (/^[=+\-@]/.test(str)) {
+    return `"'${str.replace(/"/g, '""')}"`;
+  }
+
+  // If the value contains comma, quote, or newline, wrap it in quotes and escape quotes
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+
+  return str;
+}
+
+function buildWhereClause(query: any) {
+  const { startDate, endDate, status, direction } = query
+  const where: any = {}
+
+  if (startDate) {
+    where.start_time = {
+      gte: new Date(startDate as string)
+    }
+  }
+
+  if (endDate) {
+    where.start_time = {
+      ...where.start_time,
+      lte: new Date(endDate as string)
+    }
+  }
+
+  if (status) {
+    where.disposition = status
+  }
+
+  if (direction) {
+    where.direction = direction
+  }
+
+  return where
+}
+
 // Get call logs
 router.get('/', async (req, res) => {
   try {
@@ -49,8 +97,8 @@ router.get('/', async (req, res) => {
   }
 })
 
-// Get single call log
-router.get('/:id', async (req, res) => {
+// Export call logs
+router.get('/export', async (req, res) => {
   try {
     const { id } = req.params
 
@@ -88,14 +136,45 @@ router.get('/:id', async (req, res) => {
   }
 })
 
-// Export call logs
-router.get('/export', async (req, res) => {
+// Get single call log
+router.get('/:id', async (req, res) => {
   try {
-    const { format } = req.query
-    // TODO: Generate export file (CSV, JSON, etc.)
-    res.json({ message: 'Export functionality to be implemented' })
+    const { id } = req.params
+
+    const log = await db.calls.findUnique({
+      where: {
+        id: BigInt(id)
+      }
+    })
+
+    if (!log) {
+      return res.status(404).json({ error: 'Call log not found' })
+    }
+
+    const transformedLog = {
+      id: log.id.toString(),
+      caller: log.source || log.username || 'Unknown',
+      callee: log.destination || 'Unknown',
+      direction: log.direction,
+      duration: log.call_duration,
+      status: log.disposition,
+      startTime: log.start_time,
+      endTime: log.end_time,
+      recordingUrl: log.recording_url,
+      ...log // Include other fields as well
+    }
+
+    // Handle BigInt in the spread object
+    const safeLog = JSON.parse(JSON.stringify(transformedLog, (key, value) =>
+      typeof value === 'bigint'
+        ? value.toString()
+        : value
+    ));
+
+    res.json(safeLog)
   } catch (error) {
-    res.status(500).json({ error: 'Failed to export call logs' })
+    console.error('Error fetching call log:', error)
+    res.status(500).json({ error: 'Failed to fetch call log' })
   }
 })
 
