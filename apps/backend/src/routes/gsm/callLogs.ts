@@ -54,30 +54,43 @@ function buildWhereClause(query: any) {
 // Get call logs
 router.get('/', async (req, res) => {
   try {
-    const where = buildWhereClause(req.query)
+    const { startDate, endDate, status, direction } = req.query
 
-    const logs = await db.calls.findMany({
+    const where: any = {}
+
+    if (startDate || endDate) {
+      where.start_time = {}
+      if (startDate) where.start_time.gte = new Date(startDate as string)
+      if (endDate) where.start_time.lte = new Date(endDate as string)
+    }
+
+    if (status) {
+      where.disposition = status as string
+    }
+
+    if (direction) {
+      where.direction = direction as string
+    }
+
+    const calls = await db.calls.findMany({
       where,
-      orderBy: {
-        start_time: 'desc'
-      },
+      orderBy: { start_time: 'desc' },
       take: 100
     })
 
-    // Transform logs to match the expected format (converting BigInt to string)
-    const transformedLogs = logs.map(log => ({
-      id: log.id.toString(),
-      caller: log.source || log.username || 'Unknown',
-      callee: log.destination || 'Unknown',
-      direction: log.direction,
-      duration: log.call_duration, // Assuming call_duration is Int, if BigInt, needs toString()
-      status: log.disposition,
-      startTime: log.start_time,
-      endTime: log.end_time,
-      recordingUrl: log.recording_url
+    const logs = calls.map(call => ({
+      id: call.id.toString(),
+      caller: call.source,
+      callee: call.destination,
+      direction: call.direction,
+      duration: call.call_duration,
+      status: call.disposition,
+      startTime: call.start_time,
+      endTime: call.end_time,
+      gsmPort: call.platform
     }))
 
-    res.json(transformedLogs)
+    res.json(logs)
   } catch (error) {
     console.error('Error fetching call logs:', error)
     res.status(500).json({ error: 'Failed to fetch call logs' })
@@ -87,81 +100,39 @@ router.get('/', async (req, res) => {
 // Export call logs
 router.get('/export', async (req, res) => {
   try {
-    const { format } = req.query
-    const where = buildWhereClause(req.query)
+    const { id } = req.params
 
-    const logs = await db.calls.findMany({
-      where,
-      orderBy: {
-        start_time: 'desc'
-      },
-      take: 10000 // Limit to avoid memory issues
-    })
-
-    const exportData = logs.map(log => ({
-      id: log.id.toString(),
-      call_id: log.call_id,
-      campaign_name: log.campaign_name,
-      username: log.username,
-      start_time: log.start_time,
-      end_time: log.end_time,
-      duration: log.call_duration,
-      source: log.source,
-      destination: log.destination,
-      direction: log.direction,
-      disposition: log.disposition,
-      recording_url: log.recording_url
-    }))
-
-    if (format === 'json') {
-      res.setHeader('Content-Type', 'application/json')
-      res.setHeader('Content-Disposition', 'attachment; filename=call_logs.json')
-      return res.send(JSON.stringify(exportData, null, 2))
-    } else {
-      // Default to CSV
-      const headers = [
-        'ID',
-        'Call ID',
-        'Campaign',
-        'Username',
-        'Start Time',
-        'End Time',
-        'Duration',
-        'Source',
-        'Destination',
-        'Direction',
-        'Disposition',
-        'Recording URL'
-      ]
-
-      const rows = exportData.map(log => [
-        log.id,
-        log.call_id,
-        log.campaign_name,
-        log.username,
-        log.start_time?.toISOString(),
-        log.end_time?.toISOString(),
-        log.duration,
-        log.source,
-        log.destination,
-        log.direction,
-        log.disposition,
-        log.recording_url
-      ])
-
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(cell => escapeCSV(cell)).join(','))
-      ].join('\n')
-
-      res.setHeader('Content-Type', 'text/csv')
-      res.setHeader('Content-Disposition', 'attachment; filename=call_logs.csv')
-      return res.send(csvContent)
+    // Validate id is parseable as BigInt
+    try {
+        BigInt(id);
+    } catch {
+        return res.status(400).json({ error: 'Invalid ID format' });
     }
 
+    const call = await db.calls.findUnique({
+      where: { id: BigInt(id) }
+    })
+
+    if (!call) {
+      return res.status(404).json({ error: 'Call log not found' })
+    }
+
+    const log = {
+      id: call.id.toString(),
+      caller: call.source,
+      callee: call.destination,
+      direction: call.direction,
+      duration: call.call_duration,
+      status: call.disposition,
+      startTime: call.start_time,
+      endTime: call.end_time,
+      gsmPort: call.platform
+    }
+
+    res.json(log)
   } catch (error) {
-    console.error('Export error:', error)
-    res.status(500).json({ error: 'Failed to export call logs' })
+    console.error('Error fetching call log:', error)
+    res.status(500).json({ error: 'Failed to fetch call log' })
   }
 })
 
