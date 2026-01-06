@@ -293,11 +293,11 @@ const CallHistory = () => {
 
   const sortedItems = React.useMemo(() => {
     if (!sortDirection) return items
-    
+
     const sorted = [...items].sort((a, b) => {
       let aVal: any = a[sortField]
       let bVal: any = b[sortField]
-      
+
       if (sortField === 'start_time') {
         aVal = new Date(aVal || 0).getTime()
         bVal = new Date(bVal || 0).getTime()
@@ -308,12 +308,12 @@ const CallHistory = () => {
         aVal = (aVal || '').toLowerCase()
         bVal = (bVal || '').toLowerCase()
       }
-      
+
       if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
       return 0
     })
-    
+
     return sorted
   }, [items, sortField, sortDirection])
 
@@ -481,7 +481,7 @@ const CallHistory = () => {
           {/* Header Section */}
           <div className="flex flex-col gap-4">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Call History</h1>
+              <h1 className="text-2xl font-bold tracking-tight mt-2">Call History</h1>
               <p className="text-muted-foreground mt-1">
                 View and manage your call records
               </p>
@@ -525,11 +525,11 @@ const CallHistory = () => {
                     <label className="text-sm font-medium text-muted-foreground">Search</label>
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input 
-                        className="pl-9" 
-                        placeholder="Phone or extension" 
-                        value={query} 
-                        onChange={e => setQuery(e.target.value)} 
+                      <Input
+                        className="pl-9"
+                        placeholder="Phone or extension"
+                        value={query}
+                        onChange={e => setQuery(e.target.value)}
                       />
                     </div>
                   </div>
@@ -570,10 +570,10 @@ const CallHistory = () => {
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button 
-                          variant="outline" 
-                          size="icon" 
-                          onClick={() => { setPage(1); fetchMine(1) }} 
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => { setPage(1); fetchMine(1) }}
                           disabled={loading}
                         >
                           <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -591,7 +591,7 @@ const CallHistory = () => {
                     <Download className="h-4 w-4" />
                     Export CSV
                   </Button>
-                  <Button 
+                  <Button
                     onClick={() => { setPage(1); fetchMine(1) }}
                     disabled={loading}
                   >
@@ -612,7 +612,7 @@ const CallHistory = () => {
                       <TableHead className="w-[60px]">#</TableHead>
                       <TableHead>User</TableHead>
                       <TableHead>
-                        <button 
+                        <button
                           className="flex items-center hover:text-foreground transition-colors"
                           onClick={() => handleSort('destination')}
                         >
@@ -621,7 +621,7 @@ const CallHistory = () => {
                         </button>
                       </TableHead>
                       <TableHead>
-                        <button 
+                        <button
                           className="flex items-center hover:text-foreground transition-colors"
                           onClick={() => handleSort('start_time')}
                         >
@@ -631,7 +631,7 @@ const CallHistory = () => {
                       </TableHead>
                       <TableHead>End Time (UTC)</TableHead>
                       <TableHead>
-                        <button 
+                        <button
                           className="flex items-center hover:text-foreground transition-colors"
                           onClick={() => handleSort('call_duration')}
                         >
@@ -640,7 +640,7 @@ const CallHistory = () => {
                         </button>
                       </TableHead>
                       <TableHead>
-                        <button 
+                        <button
                           className="flex items-center hover:text-foreground transition-colors"
                           onClick={() => handleSort('disposition')}
                         >
@@ -752,7 +752,7 @@ const CallHistory = () => {
                   } else {
                     pageNum = page - 3 + i
                   }
-                  
+
                   return (
                     <Button
                       key={pageNum}

@@ -610,22 +610,17 @@ export default function FollowUpCalls() {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-2xl font-bold">Pending Follow-up Calls</h1>
+                  <h1 className="text-2xl font-bold mt-2">Pending Follow-up Calls</h1>
                   <p className="text-muted-foreground">View calls with remarks: Not Answered, Follow Up's, and Busy records only</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Bell className="w-4 h-4 text-green-500 animate-pulse" />
-                    <span>Notifications Active (10 min)</span>
-                  </div>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={checkScheduledCallsManually}
                     className="ml-2"
                   >
-                    <Bell className="w-4 h-4 mr-2" />
-                    Check Now
+                    <Bell className="w-4 h-4 " />
                   </Button>
                 </div>
               </div>
@@ -850,8 +845,8 @@ export default function FollowUpCalls() {
                                             type="button"
                                             onClick={() => setDisposition(opt)}
                                             className={`px-2 py-1 rounded text-xs font-medium transition-colors ${disposition === opt
-                                                ? 'bg-blue-600 text-white'
-                                                : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'
+                                              ? 'bg-blue-600 text-white'
+                                              : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'
                                               }`}
                                           >
                                             {opt}
