@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { db } from '../../db/prisma'
 
 const router = Router()
 
@@ -6,13 +7,44 @@ const router = Router()
 router.get('/', async (req, res) => {
   try {
     const { startDate, endDate, status, direction } = req.query
-    // TODO: Query CDR database with filters
-    const logs = [
-      { id: '1', caller: '+1234567890', callee: '+0987654321', direction: 'outbound', duration: 120, status: 'answered', startTime: new Date(), endTime: new Date(), gsmPort: 'COM1' },
-      { id: '2', caller: '+1234567891', callee: '+0987654322', direction: 'inbound', duration: 0, status: 'missed', startTime: new Date(), endTime: new Date() },
-    ]
+
+    const where: any = {}
+
+    if (startDate || endDate) {
+      where.start_time = {}
+      if (startDate) where.start_time.gte = new Date(startDate as string)
+      if (endDate) where.start_time.lte = new Date(endDate as string)
+    }
+
+    if (status) {
+      where.disposition = status as string
+    }
+
+    if (direction) {
+      where.direction = direction as string
+    }
+
+    const calls = await db.calls.findMany({
+      where,
+      orderBy: { start_time: 'desc' },
+      take: 100
+    })
+
+    const logs = calls.map(call => ({
+      id: call.id.toString(),
+      caller: call.source,
+      callee: call.destination,
+      direction: call.direction,
+      duration: call.call_duration,
+      status: call.disposition,
+      startTime: call.start_time,
+      endTime: call.end_time,
+      gsmPort: call.platform
+    }))
+
     res.json(logs)
   } catch (error) {
+    console.error('Error fetching call logs:', error)
     res.status(500).json({ error: 'Failed to fetch call logs' })
   }
 })
@@ -21,10 +53,37 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params
-    // TODO: Fetch specific call log
-    const log = { id, caller: '+1234567890', callee: '+0987654321', direction: 'outbound', duration: 120, status: 'answered' }
+
+    // Validate id is parseable as BigInt
+    try {
+        BigInt(id);
+    } catch {
+        return res.status(400).json({ error: 'Invalid ID format' });
+    }
+
+    const call = await db.calls.findUnique({
+      where: { id: BigInt(id) }
+    })
+
+    if (!call) {
+      return res.status(404).json({ error: 'Call log not found' })
+    }
+
+    const log = {
+      id: call.id.toString(),
+      caller: call.source,
+      callee: call.destination,
+      direction: call.direction,
+      duration: call.call_duration,
+      status: call.disposition,
+      startTime: call.start_time,
+      endTime: call.end_time,
+      gsmPort: call.platform
+    }
+
     res.json(log)
   } catch (error) {
+    console.error('Error fetching call log:', error)
     res.status(500).json({ error: 'Failed to fetch call log' })
   }
 })
@@ -41,4 +100,3 @@ router.get('/export', async (req, res) => {
 })
 
 export default router
-
