@@ -18,12 +18,8 @@ import qa from './qa';
 import dmForm from './dmForm';
 import superadmin from './superadmin';
 import calls from './calls';
-<<<<<<< HEAD
-import analyticsEmail from './analyticsEmail';
-=======
 import dialerRoutes from './gsm/dialer';
 import organizationDataRoutes from './organizationDataRoutes';
->>>>>>> 99ad155860d2c418723bca502881a7c76f8b8851
 import { getLiveCalls, updateLiveCallPhase, startLiveCallsSweeper } from './livecalls';
 
 import { env } from '../config/env';
@@ -60,12 +56,8 @@ router.use('/qa', qa);
 router.use('/dm-form', dmForm);
 router.use('/superadmin', superadmin);
 router.use('/calls', calls);
-<<<<<<< HEAD
-router.use('/analytics/email', analyticsEmail);
-=======
 router.use('/dialer', dialerRoutes); // Mount GSM dialer routes
 router.use('/data', organizationDataRoutes); // Mount organization-aware data routes
->>>>>>> 99ad155860d2c418723bca502881a7c76f8b8851
 
 router.get('/sip/config', (_req, res) => {
   res.json({
