@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   frontend:
@@ -12,6 +11,18 @@ services:
       - "3050:3000"
     environment:
       - NEXT_PUBLIC_API_BASE=http://localhost:8050
+      - TELXIO_PUBLIC_KEY=${TELXIO_PUBLIC_KEY}
+      - TELXIO_PRIVATE_KEY=${TELXIO_PRIVATE_KEY}
+      - TELXIO_BASE_URL=${TELXIO_BASE_URL}
+      - TELXIO_ACCOUNT_ID=${TELXIO_ACCOUNT_ID}
+      - TELXIO_ACCOUNT_FALLBACK=${TELXIO_ACCOUNT_FALLBACK}
+      - TELXIO_PLAN_FALLBACK=${TELXIO_PLAN_FALLBACK}
+      - TELXIO_EXTENSIONS_FALLBACK=${TELXIO_EXTENSIONS_FALLBACK}
+      - TELXIO_NUMBERS_FALLBACK=${TELXIO_NUMBERS_FALLBACK}
+      - TELXIO_BYPASS=${TELXIO_BYPASS}
+      - TELXIO_AUTHORIZATION=${TELXIO_AUTHORIZATION}
+      - TELXIO_COOKIE=${TELXIO_COOKIE}
+      - TELXIO_ACCOUNT_IDS=${TELXIO_ACCOUNT_IDS}
     depends_on:
       - backend
 
@@ -23,12 +34,11 @@ services:
     ports:
       - "4050:4000"
     environment:
-      - DATABASE_URL=mysql://demandify:Demandify%40765@192.168.0.238:3306/demandify_db
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379
       - PORT=4000
       - CORS_ORIGIN=http://localhost:8050
-    depends_on:
-      - db
+
 
   nginx:
     image: nginx:alpine
@@ -41,18 +51,4 @@ services:
       - backend
       - frontend
 
-  db:
-    image: mysql:8.0
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: Demandify@765
-      MYSQL_DATABASE: demandify_db
-      MYSQL_USER: demandify
-      MYSQL_PASSWORD: Demandify@765
-    ports:
-      - "3307:3306"
-    volumes:
-      - db_data:/var/lib/mysql
 
-volumes:
-  db_data:

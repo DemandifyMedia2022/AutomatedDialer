@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -41,6 +42,7 @@ export function UserForm({ open, onOpenChange, user, mode }: UserFormProps) {
     role: 'agent' as 'agent' | 'manager' | 'qa' | 'superadmin',
     extension: '',
     status: 'active' as 'active' | 'inactive' | 'suspended',
+    is_demo_user: false,
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -56,6 +58,7 @@ export function UserForm({ open, onOpenChange, user, mode }: UserFormProps) {
           role: user.role,
           extension: user.extension || '',
           status: user.status,
+          is_demo_user: user.is_demo_user || false,
         })
       } else {
         setFormData({
@@ -65,6 +68,7 @@ export function UserForm({ open, onOpenChange, user, mode }: UserFormProps) {
           role: 'agent',
           extension: '',
           status: 'active',
+          is_demo_user: false,
         })
       }
       setErrors({})
@@ -116,6 +120,7 @@ export function UserForm({ open, onOpenChange, user, mode }: UserFormProps) {
           role: formData.role,
           extension: formData.extension.trim() || null,
           status: formData.status,
+          is_demo_user: formData.is_demo_user,
         }
 
         await createUserMutation.mutateAsync(createData)
@@ -130,6 +135,7 @@ export function UserForm({ open, onOpenChange, user, mode }: UserFormProps) {
           role: formData.role,
           extension: formData.extension.trim() || null,
           status: formData.status,
+          is_demo_user: formData.is_demo_user,
         }
 
         // Only include password if it was changed
@@ -289,6 +295,26 @@ export function UserForm({ open, onOpenChange, user, mode }: UserFormProps) {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="is_demo_user"
+                checked={formData.is_demo_user}
+                onCheckedChange={(checked) => handleChange('is_demo_user', checked as any)}
+                disabled={isPending}
+              />
+              <div className="grid gap-1.5 leading-none">
+                <Label
+                  htmlFor="is_demo_user"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Demo User
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Restrict access to certain features for demo purposes.
+                </p>
+              </div>
+            </div>
           </div>
 
           <DialogFooter>
@@ -306,8 +332,8 @@ export function UserForm({ open, onOpenChange, user, mode }: UserFormProps) {
                   ? 'Creating...'
                   : 'Updating...'
                 : mode === 'create'
-                ? 'Create User'
-                : 'Update User'}
+                  ? 'Create User'
+                  : 'Update User'}
             </Button>
           </DialogFooter>
         </form>

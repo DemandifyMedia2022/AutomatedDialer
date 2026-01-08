@@ -46,8 +46,8 @@ type MetricResponse = {
 }
 
 type DispositionData = {
-  daily: { name: string; count: number }[]
-  monthly: { name: string; count: number }[]
+  daily: { name: string; answered: number; failed: number }[]
+  monthly: { name: string; answered: number; failed: number }[]
 }
 
 type LeaderboardData = {
@@ -69,8 +69,8 @@ export default function Page() {
   const [dispositionView, setDispositionView] = useState<'daily' | 'monthly'>('daily')
   const [leaderboardView, setLeaderboardView] = useState<'daily' | 'monthly'>('daily')
 
-  // Format agent name from user email (same logic as sidebar)
-  const agentName = user?.email
+  // Format agent name from user (prefer username, fallback to email prefix)
+  const agentName = user?.username || (user?.email
     ? user.email
       .split("@")[0]
       .replace(/[._-]+/g, " ")
@@ -78,7 +78,7 @@ export default function Page() {
       .filter(Boolean)
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
       .join(" ")
-    : "Agent"
+    : "Agent")
 
 
   const fetchDispositionData = async () => {
@@ -109,16 +109,18 @@ export default function Page() {
       // Fallback demo data
       setDispositionData({
         daily: [
-          { name: "ANSWERED", count: 45 },
-          { name: "NO ANSWER", count: 32 },
-          { name: "VOICEMAIL", count: 18 },
-          { name: "BUSY", count: 5 }
+          { name: "10am", answered: 12, failed: 2 },
+          { name: "11am", answered: 15, failed: 4 },
+          { name: "12pm", answered: 8, failed: 1 },
+          { name: "1pm", answered: 10, failed: 3 },
+          { name: "2pm", answered: 18, failed: 5 }
         ],
         monthly: [
-          { name: "ANSWERED", count: 1240 },
-          { name: "NO ANSWER", count: 890 },
-          { name: "VOICEMAIL", count: 420 },
-          { name: "BUSY", count: 150 }
+          { name: "1", answered: 45, failed: 12 },
+          { name: "2", answered: 52, failed: 8 },
+          { name: "3", answered: 48, failed: 15 },
+          { name: "4", answered: 60, failed: 10 },
+          { name: "5", answered: 55, failed: 18 }
         ]
       })
     }
@@ -351,7 +353,7 @@ export default function Page() {
                     <Skeleton className="w-full h-full rounded-lg" />
                   </div>
                 ) : (
-                  <DispositionChart view={dispositionView} />
+                  <DispositionChart view={dispositionView} data={dispositionData?.[dispositionView]} />
                 )}
               </CardContent>
             </Card>

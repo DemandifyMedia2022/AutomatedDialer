@@ -18,7 +18,12 @@ import qa from './qa';
 import dmForm from './dmForm';
 import superadmin from './superadmin';
 import calls from './calls';
+<<<<<<< HEAD
 import analyticsEmail from './analyticsEmail';
+=======
+import dialerRoutes from './gsm/dialer';
+import organizationDataRoutes from './organizationDataRoutes';
+>>>>>>> 99ad155860d2c418723bca502881a7c76f8b8851
 import { getLiveCalls, updateLiveCallPhase, startLiveCallsSweeper } from './livecalls';
 
 import { env } from '../config/env';
@@ -55,7 +60,12 @@ router.use('/qa', qa);
 router.use('/dm-form', dmForm);
 router.use('/superadmin', superadmin);
 router.use('/calls', calls);
+<<<<<<< HEAD
 router.use('/analytics/email', analyticsEmail);
+=======
+router.use('/dialer', dialerRoutes); // Mount GSM dialer routes
+router.use('/data', organizationDataRoutes); // Mount organization-aware data routes
+>>>>>>> 99ad155860d2c418723bca502881a7c76f8b8851
 
 router.get('/sip/config', (_req, res) => {
   res.json({
@@ -99,11 +109,26 @@ const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, recordingsPath),
   filename: (_req, file, cb) => {
     const ts = Date.now();
-    const ext = path.extname(file.originalname) || '.webm';
+    // Security: allow-list extensions
+    const allowed = ['.webm', '.wav', '.mp3', '.m4a', '.ogg'];
+    let ext = path.extname(file.originalname).toLowerCase();
+    if (!allowed.includes(ext)) ext = '.webm'; // Fallback safe extension
     cb(null, `rec_${ts}${ext}`);
   },
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+  fileFilter: (_req, file, cb) => {
+    // Security: Validate mime types
+    const allowedMimes = ['audio/webm', 'audio/wav', 'audio/mpeg', 'audio/mp4', 'audio/ogg', 'video/webm']; // webm can be video
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only audio files are allowed.'));
+    }
+  }
+});
 
 // Save call detail and recording (Authenticated: agent/manager/superadmin). CSRF required when using cookie auth.
 // Lightweight in-memory rate limiter for this route
@@ -184,22 +209,38 @@ const callsHandler = async (req: any, res: any, next: any) => {
     try { console.log('[calls] incoming body', b); } catch { }
     try { console.log('[calls] file', !!file, 'recording_url', recording_url); } catch { }
 
-    // Fallback: if username not provided, use authenticated user's name
+    // Validate/Fetch User Context
     let usernameVal = b.username || null;
-    if (!usernameVal && req.user?.userId) {
+    let extensionVal = b.extension || null;
+
+    if (req.user?.userId) {
       try {
-        const u = await db.users.findUnique({ where: { id: req.user.userId }, select: { username: true } });
-        usernameVal = u?.username || null;
+        const u = await db.users.findUnique({ where: { id: req.user.userId }, select: { username: true, extension: true, role: true } });
+
+        // Security: Agents cannot spoof extension or username
+        if (req.user.role === 'agent' || u?.role === 'agent') {
+          usernameVal = u?.username || null;
+          extensionVal = u?.extension || null;
+
+          // Verify extension matches if provided (or just overwrite as above)
+          if (b.extension && b.extension !== extensionVal) {
+            console.warn('[calls] agent attempted to spoof extension', { agent: usernameVal, attempted: b.extension });
+          }
+        } else {
+          // Fallback for non-agents
+          if (!usernameVal) usernameVal = u?.username || null;
+          if (!extensionVal) extensionVal = u?.extension || null;
+        }
       } catch { }
     }
 
-    // Fallback: if extension not provided, use authenticated user's assigned extension
-    let extensionVal = b.extension || null;
-    if (!extensionVal && req.user?.userId) {
-      try {
-        const u = await db.users.findUnique({ where: { id: req.user.userId }, select: { extension: true } });
-        extensionVal = u?.extension || null;
-      } catch { }
+    // Security: Validate campaign name to prevent injection
+    if (b.campaign_name) {
+      const safeCampaign = b.campaign_name.replace(/[^a-zA-Z0-9\s-]/g, '');
+      if (safeCampaign !== b.campaign_name) {
+        // Reject or sanitize. Let's sanitize.
+        b.campaign_name = safeCampaign;
+      }
     }
 
     // Normalize and compute times/duration
@@ -210,6 +251,11 @@ const callsHandler = async (req: any, res: any, next: any) => {
     if (endNorm < startNorm) {
       // swap if client provided inverted values
       const t = startNorm; startNorm = endNorm; endNorm = t
+    }
+
+    // Security: Reject future dates (allow 5 min clock skew)
+    if (startNorm.getTime() > Date.now() + 5 * 60 * 1000) {
+      return res.status(400).json({ success: false, message: 'Call time cannot be in the future' });
     }
 
     // Ensure answer_time: prefer provided, else derive from end - call_duration
@@ -355,20 +401,27 @@ router.get('/analytics/agent/dispositions', requireAuth, requireRoles(['agent'])
     const to = req.query.to ? new Date(String(req.query.to)) : null
     const pool = getPool()
 
-    const idParts: string[] = []
-    const params: any[] = []
-    if (username) { idParts.push('username = ?'); params.push(username) }
-    if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
-    if (idParts.length === 0) return res.json({})
-    const timeParts: string[] = []
-    if (from) { timeParts.push('start_time >= ?'); params.push(from) }
-    if (to) { timeParts.push('start_time <= ?'); params.push(to) }
-    const where = ['(', idParts.join(' OR '), ')', timeParts.length ? 'AND ' + timeParts.join(' AND ') : ''].join(' ').trim()
-    const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`
-    const [rows]: any = await pool.query(sql, params)
-    const items = (rows || []).map((r: any) => ({
-      name: String(r.disp || '') || 'UNKNOWN',
-      count: Number(r.cnt || 0),
+    const whereAnd: any[] = []
+    if (from) whereAnd.push({ start_time: { gte: from } })
+    if (to) whereAnd.push({ start_time: { lte: to } })
+
+    const whereOr: any[] = []
+    if (username) whereOr.push({ username })
+    if (usermail) whereOr.push({ useremail: usermail })
+    if (whereOr.length === 0) return res.json({}) // No valid user identifier
+
+    const groupByResult = await db.calls.groupBy({
+      by: ['disposition'],
+      _count: { _all: true },
+      where: {
+        AND: whereAnd,
+        OR: whereOr
+      }
+    })
+
+    const items = groupByResult.map(r => ({
+      name: (r.disposition || '').toUpperCase() || 'UNKNOWN',
+      count: r._count._all
     }))
     return res.json({ items })
   } catch (e) {
@@ -393,26 +446,32 @@ router.get('/analytics/agent/dispositions/stream', requireAuth, requireRoles(['a
     const pool = getPool()
 
     const build = () => {
-      const idParts: string[] = []
-      const params: any[] = []
-      if (username) { idParts.push('username = ?'); params.push(username) }
-      if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
-      if (idParts.length === 0) return { sql: null as any, params }
-      const timeParts: string[] = []
-      if (from) { timeParts.push('start_time >= ?'); params.push(from) }
-      if (to) { timeParts.push('start_time <= ?'); params.push(to) }
-      const where = ['(', idParts.join(' OR '), ')', timeParts.length ? 'AND ' + timeParts.join(' AND ') : ''].join(' ').trim()
-      const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`
-      return { sql, params }
+      const whereAnd: any[] = []
+      if (from) whereAnd.push({ start_time: { gte: from } })
+      if (to) whereAnd.push({ start_time: { lte: to } })
+
+      const whereOr: any[] = []
+      if (username) whereOr.push({ username })
+      if (usermail) whereOr.push({ useremail: usermail })
+
+      return { whereAnd, whereOr }
     }
 
     let last = ''
     const tick = async () => {
       try {
         const b = build()
-        if (!b.sql) { res.write(`data: {"items":[]}\n\n`); return }
-        const [rows]: any = await pool.query(b.sql, b.params)
-        const items = (rows || []).map((r: any) => ({ name: String(r.disp || '') || 'UNKNOWN', count: Number(r.cnt || 0) }))
+        if (b.whereOr.length === 0) { res.write(`data: {"items":[]}\n\n`); return }
+
+        const groupByResult = await db.calls.groupBy({
+          by: ['disposition'],
+          _count: { _all: true },
+          where: {
+            AND: b.whereAnd,
+            OR: b.whereOr
+          }
+        })
+        const items = groupByResult.map(r => ({ name: (r.disposition || '').toUpperCase() || 'UNKNOWN', count: r._count._all }))
         const payload = JSON.stringify({ items })
         if (payload !== last) { last = payload; res.write(`data: ${payload}\n\n`) }
       } catch { }
@@ -546,16 +605,42 @@ router.get('/analytics/agent/dispositions/daily', requireAuth, requireRoles(['ag
     if (username) { idParts.push('username = ?'); params.push(username) }
     if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
     if (idParts.length === 0) return res.json({ daily: [] })
-    
+
     params.push(startOfDay, endOfDay)
     const where = ['(', idParts.join(' OR '), ')', 'AND start_time >= ? AND start_time < ?'].join(' ').trim()
-    const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`
+    // Daily trend: Group by hour
+    const sql = `
+      SELECT 
+        DATE_FORMAT(start_time, '%H') as hour_key,
+        SUM(CASE WHEN UPPER(COALESCE(disposition,'')) = 'ANSWERED' THEN 1 ELSE 0 END) as answered,
+        SUM(CASE WHEN UPPER(COALESCE(disposition,'')) != 'ANSWERED' THEN 1 ELSE 0 END) as failed
+      FROM calls 
+      WHERE ${where}
+      GROUP BY hour_key
+      ORDER BY hour_key ASC
+    `
     const [rows]: any = await pool.query(sql, params)
-    const daily = (rows || []).map((r: any) => ({
-      name: String(r.disp || '') || 'UNKNOWN',
-      count: Number(r.cnt || 0),
-    }))
-    return res.json({ daily })
+
+    // Fill 24h buckets
+    const items = []
+    const map = new Map<string, any>()
+    if (rows) rows.forEach((r: any) => map.set(r.hour_key, r))
+
+    for (let i = 0; i < 24; i += 2) {
+      const h = i.toString().padStart(2, '0')
+      // Check i and i+1
+      const r1 = map.get(h)
+      const r2 = map.get((i + 1).toString().padStart(2, '0'))
+
+      const val = {
+        name: i === 0 ? '12am' : i === 12 ? '12pm' : i > 12 ? `${i - 12}pm` : `${i}am`,
+        answered: Number(r1?.answered || 0) + Number(r2?.answered || 0),
+        failed: Number(r1?.failed || 0) + Number(r2?.failed || 0)
+      }
+      items.push(val)
+    }
+
+    return res.json({ daily: items })
   } catch (e) {
     next(e)
   }
@@ -582,16 +667,43 @@ router.get('/analytics/agent/dispositions/monthly', requireAuth, requireRoles(['
     if (username) { idParts.push('username = ?'); params.push(username) }
     if (usermail) { idParts.push('useremail = ?'); params.push(usermail) }
     if (idParts.length === 0) return res.json({ monthly: [] })
-    
+
     params.push(startOfMonth, endOfMonth)
     const where = ['(', idParts.join(' OR '), ')', 'AND start_time >= ? AND start_time < ?'].join(' ').trim()
-    const sql = `SELECT UPPER(COALESCE(disposition,'')) AS disp, COUNT(*) AS cnt FROM calls WHERE ${where} GROUP BY disp`
+    // Monthly trend: Group by day
+    const sql = `
+      SELECT 
+        DATE_FORMAT(start_time, '%d') as day_key,
+        SUM(CASE WHEN UPPER(COALESCE(disposition,'')) = 'ANSWERED' THEN 1 ELSE 0 END) as answered,
+        SUM(CASE WHEN UPPER(COALESCE(disposition,'')) != 'ANSWERED' THEN 1 ELSE 0 END) as failed
+      FROM calls 
+      WHERE ${where}
+      GROUP BY day_key
+      ORDER BY day_key ASC
+    `
     const [rows]: any = await pool.query(sql, params)
-    const monthly = (rows || []).map((r: any) => ({
-      name: String(r.disp || '') || 'UNKNOWN',
-      count: Number(r.cnt || 0),
-    }))
-    return res.json({ monthly })
+
+    // Fill days of month
+    const items = []
+    const map = new Map<string, any>()
+    if (rows) rows.forEach((r: any) => map.set(r.day_key, r))
+
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+
+    // Aggregate roughly every 2 days if month is long, or just query daily. 
+    // Chart looks better with ~15 points. Let's do daily but client can smooth it if needed.
+    // The previous code had ~15 points. returns day number.
+    for (let i = 1; i <= daysInMonth; i++) {
+      const d = i.toString().padStart(2, '0')
+      const r = map.get(d)
+      items.push({
+        name: String(i),
+        answered: Number(r?.answered || 0),
+        failed: Number(r?.failed || 0)
+      })
+    }
+
+    return res.json({ monthly: items })
   } catch (e) {
     next(e)
   }
@@ -608,12 +720,21 @@ router.get('/analytics/leaderboard/daily', requireAuth, requireRoles(['agent', '
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
 
     params.push(startOfDay, endOfDay)
-    const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
+    
+    let sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
                  FROM calls 
-                 WHERE LOWER(remarks) = 'lead' AND start_time >= ? AND start_time < ?
-                 GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
-                 ORDER BY cnt DESC
-                 LIMIT 10`
+                 WHERE LOWER(remarks) = 'lead' AND start_time >= ? AND start_time < ?`
+    
+    // Add organization filtering for non-superadmin users
+    if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
+      sql += ' AND organization_id = ?';
+      params.push(req.user.organizationId);
+    }
+    
+    sql += ` GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
+             ORDER BY cnt DESC
+             LIMIT 10`;
+    
     const [rows]: any = await pool.query(sql, params)
     const daily = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
     return res.json({ daily })
@@ -633,12 +754,21 @@ router.get('/analytics/leaderboard/monthly', requireAuth, requireRoles(['agent',
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1)
 
     params.push(startOfMonth, endOfMonth)
-    const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
+    
+    let sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
                  FROM calls 
-                 WHERE LOWER(remarks) = 'lead' AND start_time >= ? AND start_time < ?
-                 GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
-                 ORDER BY cnt DESC
-                 LIMIT 10`
+                 WHERE LOWER(remarks) = 'lead' AND start_time >= ? AND start_time < ?`
+    
+    // Add organization filtering for non-superadmin users
+    if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
+      sql += ' AND organization_id = ?';
+      params.push(req.user.organizationId);
+    }
+    
+    sql += ` GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
+             ORDER BY cnt DESC
+             LIMIT 10`;
+    
     const [rows]: any = await pool.query(sql, params)
     const monthly = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
     return res.json({ monthly })
@@ -657,12 +787,21 @@ router.get('/analytics/leaderboard', requireAuth, requireRoles(['agent', 'manage
     if (from) { timeParts.push('start_time >= ?'); params.push(from) }
     if (to) { timeParts.push('start_time <= ?'); params.push(to) }
     const timeWhere = timeParts.length ? `AND ${timeParts.join(' AND ')}` : ''
-    const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
+    
+    let sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
                  FROM calls 
-                 WHERE LOWER(remarks) = 'lead' ${timeWhere}
-                 GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
-                 ORDER BY cnt DESC
-                 LIMIT 10`
+                 WHERE LOWER(remarks) = 'lead' ${timeWhere}`
+    
+    // Add organization filtering for non-superadmin users
+    if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
+      sql += ' AND organization_id = ?';
+      params.push(req.user.organizationId);
+    }
+    
+    sql += ` GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
+             ORDER BY cnt DESC
+             LIMIT 10`;
+    
     const [rows]: any = await pool.query(sql, params)
     const items = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
     return res.json({ items })
@@ -688,12 +827,21 @@ router.get('/analytics/leaderboard/stream', requireAuth, requireRoles(['agent', 
       if (from) { timeParts.push('start_time >= ?'); params.push(from) }
       if (to) { timeParts.push('start_time <= ?'); params.push(to) }
       const timeWhere = timeParts.length ? `AND ${timeParts.join(' AND ')}` : ''
-      const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
+      
+      let sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
                    FROM calls 
-                   WHERE LOWER(remarks) = 'lead' ${timeWhere}
-                   GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
-                   ORDER BY cnt DESC
-                   LIMIT 10`
+                   WHERE LOWER(remarks) = 'lead' ${timeWhere}`
+      
+      // Add organization filtering for non-superadmin users
+      if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
+        sql += ' AND organization_id = ?';
+        params.push(req.user.organizationId);
+      }
+      
+      sql += ` GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
+               ORDER BY cnt DESC
+               LIMIT 10`;
+      
       return { sql, params }
     }
 
@@ -723,6 +871,12 @@ router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'qa', 'super
     const skip = (page - 1) * pageSize
 
     const where: any = { AND: [] as any[] }
+    
+    // Organization filtering - non-superadmin users can only see calls from their organization
+    if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
+      where.AND.push({ organization_id: req.user.organizationId });
+    }
+    
     const from = req.query.from ? new Date(String(req.query.from)) : null
     const to = req.query.to ? new Date(String(req.query.to)) : null
     if (from || to) where.AND.push({ start_time: { gte: from || undefined, lte: to || undefined } })
@@ -740,6 +894,22 @@ router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'qa', 'super
     if (qStatus) where.AND.push({ disposition: { equals: qStatus } })
     const qDir = (req.query.direction || '').toString().trim()
     if (qDir) where.AND.push({ direction: qDir })
+
+    // Enforce data access control for agents
+    if (req.user?.role === 'agent') {
+      const me = await db.users.findUnique({ where: { id: req.user.userId }, select: { username: true, usermail: true, extension: true } })
+      const myUsermail = me?.usermail || undefined
+      const myExt = me?.extension || undefined
+      const agentFilter: any = { OR: [] }
+      if (me?.username) agentFilter.OR.push({ username: me.username })
+      if (myUsermail) agentFilter.OR.push({ useremail: myUsermail })
+      if (myExt) agentFilter.OR.push({ AND: [{ extension: myExt }, { username: null }, { useremail: null }] })
+
+      if (agentFilter.OR.length === 0) {
+        agentFilter.OR.push({ id: -1 }) // No access
+      }
+      where.AND.push(agentFilter)
+    }
 
     const [total, items] = await Promise.all([
       (db as any).calls.count({ where }),
@@ -762,10 +932,19 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     const userId = req.user?.userId
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
 
-    const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true } })
+    const me = await db.users.findUnique({ 
+      where: { id: userId }, 
+      select: { 
+        username: true, 
+        usermail: true, 
+        extension: true, 
+        organization_id: true 
+      } 
+    })
     const username = me?.username || undefined
     const usermail = me?.usermail || undefined
     const extension = me?.extension || undefined
+    const organizationId = me?.organization_id || undefined
 
     // Build base where
     const where: any = { OR: [] as any[], AND: [] as any[] }
@@ -776,6 +955,11 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     if (where.OR.length === 0) {
       // No identifiers -> no results (enforce privacy)
       where.OR.push({ id: -1 })
+    }
+
+    // Add organization filtering
+    if (organizationId) {
+      where.AND.push({ organization_id: organizationId });
     }
 
     // Optional filters

@@ -40,22 +40,16 @@ function parseCookies(cookieHeader?: string): Record<string, string> {
     return out;
 }
 
-interface AuthUser {
+interface AgenticUser {
     userId: number;
     role: string | null;
     email: string;
 }
 
-declare module 'express-serve-static-core' {
-    interface Request {
-        user?: AuthUser;
-    }
-}
-
-function verifyJwt(token: string): AuthUser | null {
+function verifyJwt(token: string): AgenticUser | null {
     try {
         if (!JWT_SECRET) return null;
-        return jwt.verify(token, JWT_SECRET) as AuthUser;
+        return jwt.verify(token, JWT_SECRET) as AgenticUser;
     } catch {
         return null;
     }
@@ -84,7 +78,7 @@ function requireAuth(req: express.Request, res: express.Response, next: express.
             return res.status(401).json({ success: false, message: 'Invalid token' });
         }
 
-        req.user = payload;
+        (req as any).user = payload;
         next();
     } catch (e) {
         return res.status(401).json({ success: false, message: 'Unauthorized' });
@@ -93,7 +87,7 @@ function requireAuth(req: express.Request, res: express.Response, next: express.
 
 function requireRoles(roles: Array<'agent' | 'manager' | 'qa' | 'superadmin'>) {
     return (req: express.Request, res: express.Response, next: express.NextFunction) => {
-        const role = (req.user?.role || '').toLowerCase();
+        const role = ((req as any).user?.role || '').toLowerCase();
         const allowed = new Set(roles);
         if (!role || !allowed.has(role as any)) {
             return res.status(403).json({ success: false, message: 'Forbidden' });
@@ -107,25 +101,25 @@ const uploadAttempts = new Map<string, { count: number; lastAttempt: number }>()
 const MAX_UPLOADS_PER_MINUTE = 10;
 
 function checkUploadRateLimit(req: express.Request): boolean {
-    const userId = req.user?.userId || req.ip;
+    const userId = (req as any).user?.userId || req.ip;
     const key = `upload:${userId}`;
     const now = Date.now();
     const attempts = uploadAttempts.get(key);
-    
+
     if (!attempts) {
         uploadAttempts.set(key, { count: 1, lastAttempt: now });
         return true;
     }
-    
+
     if (now - attempts.lastAttempt > 60000) {
         uploadAttempts.set(key, { count: 1, lastAttempt: now });
         return true;
     }
-    
+
     if (attempts.count >= MAX_UPLOADS_PER_MINUTE) {
         return false;
     }
-    
+
     attempts.count++;
     attempts.lastAttempt = now;
     return true;
@@ -153,17 +147,17 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
     if (!file.originalname.toLowerCase().endsWith('.csv')) {
         return cb(new Error('Only CSV files are allowed'));
     }
-    
+
     // Check MIME type
     const allowedMimeTypes = ['text/csv', 'application/csv', 'text/plain'];
     if (!allowedMimeTypes.includes(file.mimetype)) {
         return cb(new Error('Invalid file type. Only CSV files are allowed'));
     }
-    
+
     cb(null, true);
 };
 
-const upload = multer({ 
+const upload = multer({
     storage,
     fileFilter,
     limits: {
@@ -221,7 +215,7 @@ function readLeads(csvPath: string): any[] {
             console.error('Invalid file path:', csvPath);
             return [];
         }
-        
+
         if (!fs.existsSync(csvPath)) return [];
         const content = fs.readFileSync(csvPath, 'utf-8');
         const records = parse(content, {
@@ -232,7 +226,7 @@ function readLeads(csvPath: string): any[] {
             relax_column_count: true,
             skip_records_with_empty_values: true
         });
-        
+
         // Sanitize all cells to prevent CSV injection
         return records.map((record: any) => {
             const sanitized: any = {};
@@ -282,7 +276,7 @@ app.get('/leads', requireAuth, requireRoles(['agent', 'manager', 'superadmin']),
     const end = Math.min(start + pageSize, leads.length);
     const currentLeads = leads.slice(start, end);
 
-    console.log(`[CSV] Leads accessed by user ${req.user?.userId}: page ${page}, ${leads.length} total leads`);
+    console.log(`[CSV] Leads accessed by user ${(req as any).user?.userId}: page ${page}, ${leads.length} total leads`);
     res.json({
         leads: currentLeads,
         page,
@@ -427,27 +421,27 @@ app.post('/csv/upload', requireAuth, requireRoles(['agent', 'manager', 'superadm
         if (!req.file) {
             return res.status(400).json({ detail: 'No file provided' });
         }
-        
+
         // Rate limiting
         if (!checkUploadRateLimit(req)) {
             fs.unlinkSync(req.file.path);
             return res.status(429).json({ detail: 'Upload rate limit exceeded' });
         }
-        
+
         // Validate uploaded file
         const filePath = req.file.path;
         if (!validateFilePath(filePath, CSV_DIR)) {
             fs.unlinkSync(filePath); // Clean up malicious file
             return res.status(400).json({ detail: 'Invalid file path' });
         }
-        
+
         // Additional file validation
         const stats = fs.statSync(filePath);
         if (stats.size === 0) {
             fs.unlinkSync(filePath);
             return res.status(400).json({ detail: 'Empty file not allowed' });
         }
-        
+
         // Validate CSV content
         try {
             const content = fs.readFileSync(filePath, 'utf-8');
@@ -456,8 +450,8 @@ app.post('/csv/upload', requireAuth, requireRoles(['agent', 'manager', 'superadm
             fs.unlinkSync(filePath);
             return res.status(400).json({ detail: 'Invalid CSV format' });
         }
-        
-        console.log(`[CSV] File uploaded by user ${req.user?.userId}: ${req.file.filename} (${stats.size} bytes)`);
+
+        console.log(`[CSV] File uploaded by user ${(req as any).user?.userId}: ${req.file.filename} (${stats.size} bytes)`);
         res.json({ ok: true, name: req.file.filename });
     } catch (error) {
         console.error('[CSV] Upload error:', error);
@@ -472,7 +466,7 @@ app.post('/csv/select', requireAuth, requireRoles(['agent', 'manager', 'superadm
     try {
         const name = safeCsvName(req.body.name);
         const target = path.join(CSV_DIR, name);
-        
+
         // Validate file path
         if (!validateFilePath(target, CSV_DIR)) {
             return res.status(400).json({ detail: 'Invalid file path' });
@@ -484,7 +478,7 @@ app.post('/csv/select', requireAuth, requireRoles(['agent', 'manager', 'superadm
             if (stats.size === 0) {
                 return res.status(400).json({ detail: 'Empty file not allowed' });
             }
-            
+
             // Quick CSV validation
             try {
                 const content = fs.readFileSync(target, 'utf-8');
@@ -492,10 +486,10 @@ app.post('/csv/select', requireAuth, requireRoles(['agent', 'manager', 'superadm
             } catch (parseError) {
                 return res.status(400).json({ detail: 'Invalid CSV format' });
             }
-            
+
             LEADS_CSV = target;
             fs.writeFileSync(SELECTED_FILE_STORE, JSON.stringify({ local: target }));
-            console.log(`[CSV] File selected by user ${req.user?.userId}: ${name}`);
+            console.log(`[CSV] File selected by user ${(req as any).user?.userId}: ${name}`);
             res.json({ ok: true, active: name });
         } else {
             res.status(404).json({ detail: 'CSV not found' });
@@ -510,7 +504,7 @@ app.delete('/csv/:name', requireAuth, requireRoles(['agent', 'manager', 'superad
     try {
         const name = safeCsvName(req.params.name);
         const target = path.join(CSV_DIR, name);
-        
+
         // Validate file path
         if (!validateFilePath(target, CSV_DIR)) {
             return res.status(400).json({ detail: 'Invalid file path' });
@@ -522,7 +516,7 @@ app.delete('/csv/:name', requireAuth, requireRoles(['agent', 'manager', 'superad
 
         if (fs.existsSync(target)) {
             fs.unlinkSync(target);
-            console.log(`[CSV] File deleted by user ${req.user?.userId}: ${name}`);
+            console.log(`[CSV] File deleted by user ${(req as any).user?.userId}: ${name}`);
             res.json({ ok: true });
         } else {
             res.status(404).json({ detail: 'CSV not found' });
@@ -538,7 +532,7 @@ app.get('/csv/preview', requireAuth, requireRoles(['agent', 'manager', 'superadm
         const name = safeCsvName(req.query.name as string);
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 10)); // Limit preview to 100 rows max
         const target = path.join(CSV_DIR, name);
-        
+
         // Validate file path
         if (!validateFilePath(target, CSV_DIR)) {
             return res.status(400).json({ detail: 'Invalid file path' });
@@ -547,7 +541,7 @@ app.get('/csv/preview', requireAuth, requireRoles(['agent', 'manager', 'superadm
         if (fs.existsSync(target)) {
             const leads = readLeads(target);
             const headers = leads.length > 0 ? Object.keys(leads[0]) : [];
-            console.log(`[CSV] Preview requested by user ${req.user?.userId} for: ${name} (${leads.length} rows)`);
+            console.log(`[CSV] Preview requested by user ${(req as any).user?.userId} for: ${name} (${leads.length} rows)`);
             res.json({ ok: true, headers, rows: leads.slice(0, limit) });
         } else {
             res.status(404).json({ detail: 'CSV not found' });
@@ -562,14 +556,14 @@ app.get('/csv/download/:name', requireAuth, requireRoles(['agent', 'manager', 's
     try {
         const name = safeCsvName(req.params.name);
         const target = path.join(CSV_DIR, name);
-        
+
         // Validate file path
         if (!validateFilePath(target, CSV_DIR)) {
             return res.status(400).json({ detail: 'Invalid file path' });
         }
-        
+
         if (fs.existsSync(target)) {
-            console.log(`[CSV] Download requested by user ${req.user?.userId} for: ${name}`);
+            console.log(`[CSV] Download requested by user ${(req as any).user?.userId} for: ${name}`);
             res.download(target);
         } else {
             res.status(404).json({ detail: 'CSV not found' });

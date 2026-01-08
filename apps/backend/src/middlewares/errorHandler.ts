@@ -10,6 +10,11 @@ export function errorHandler(err: any, _req: Request, res: Response, _next: Next
   // Only include stack trace in non-production environments
   if (env.NODE_ENV !== 'production') {
     response.stack = err?.stack;
+  } else {
+    // In production, genericize 500 errors to prevent info leak
+    if (status === 500) {
+      response.message = 'Internal Server Error';
+    }
   }
 
   res.status(status).json(response);

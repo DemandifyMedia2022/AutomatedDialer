@@ -23,8 +23,8 @@ const UpsertQaReviewSchema = z.object({
 
 router.get('/reviews/:callId', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
-    const userId = req.user?.userId
-    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
 
     const rawId = String(req.params.callId || '').trim()
     const callIdNum = Number(rawId)
@@ -33,8 +33,13 @@ router.get('/reviews/:callId', requireAuth, requireRoles(['qa', 'manager', 'supe
     }
     const callId = BigInt(callIdNum)
 
+    const where: any = { call_id: callId }
+    if (!isSuper && orgId) {
+      where.organization_id = orgId
+    }
+
     const review = await (db as any).qa_call_reviews.findFirst({
-      where: { call_id: callId, reviewer_user_id: userId },
+      where,
     })
 
     if (!review) return res.status(404).json({ success: false, message: 'Not found' })
@@ -72,6 +77,9 @@ router.post('/reviews/:callId', ...upsertMiddlewares, async (req: any, res: any,
     }
     const b = parsed.data
 
+    const orgId = req.user?.organizationId
+    if (!orgId) return res.status(400).json({ success: false, message: 'User must belong to an organization' })
+
     const data: any = {
       call_id: callId,
       reviewer_user_id: userId,
@@ -85,6 +93,7 @@ router.post('/reviews/:callId', ...upsertMiddlewares, async (req: any, res: any,
       comments: b.comments ?? null,
       issues_json: b.issues_json ?? null,
       agent_user_id: b.agent_user_id ?? null,
+      organization_id: orgId,
     }
 
     const existing = await (db as any).qa_call_reviews.findFirst({ where: { call_id: callId, reviewer_user_id: userId } })
@@ -108,16 +117,28 @@ router.post('/reviews/:callId', ...upsertMiddlewares, async (req: any, res: any,
   }
 })
 
-router.get('/reports/summary', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), async (_req: any, res: any, next: any) => {
+router.get('/reports/summary', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     const pool = getPool()
+    let whereClause = ''
+    const params: any[] = []
+
+    if (!isSuper && orgId) {
+      whereClause = ' WHERE organization_id = ?'
+      params.push(orgId)
+    }
 
     const [[summary]]: any = await pool.query(
-      'SELECT COUNT(*) AS totalReviews, AVG(overall_score) AS avgOverall, AVG(tone_score) AS avgTone, AVG(compliance_score) AS avgCompliance FROM qa_call_reviews'
+      `SELECT COUNT(*) AS totalReviews, AVG(overall_score) AS avgOverall, AVG(tone_score) AS avgTone, AVG(compliance_score) AS avgCompliance FROM qa_call_reviews${whereClause}`,
+      params
     )
 
     const [leadRows]: any = await pool.query(
-      'SELECT lead_quality, COUNT(*) AS cnt FROM qa_call_reviews WHERE is_lead = 1 GROUP BY lead_quality'
+      `SELECT lead_quality, COUNT(*) AS cnt FROM qa_call_reviews ${whereClause ? whereClause + ' AND' : 'WHERE'} is_lead = 1 GROUP BY lead_quality`,
+      params
     )
 
     const leads = (leadRows || []).map((r: any) => ({
@@ -145,15 +166,21 @@ router.get('/leads', requireAuth, requireRoles(['qa', 'manager', 'superadmin']),
     const from = req.query.from ? new Date(String(req.query.from)) : null
     const to = req.query.to ? new Date(String(req.query.to)) : null
     const username = (req.query.username || '').toString().trim()
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
 
     const where: any = { is_lead: true }
+    if (!isSuper && orgId) {
+      where.organization_id = orgId
+    }
+
     if (from || to || username) {
       where.calls = {} as any
       if (from || to) {
-        ;(where.calls as any).start_time = { gte: from || undefined, lte: to || undefined }
+        ; (where.calls as any).start_time = { gte: from || undefined, lte: to || undefined }
       }
       if (username) {
-        ;(where.calls as any).username = username
+        ; (where.calls as any).username = username
       }
     }
 
@@ -235,16 +262,24 @@ router.get('/audit/:uniqueId', requireAuth, requireRoles(['qa', 'manager', 'supe
       return res.status(400).json({ success: false, message: 'Invalid unique ID' })
     }
 
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     // Check if DM form exists and has audit data
+    const where: any = { unique_id: uniqueId }
+    if (!isSuper && orgId) {
+      where.organization_id = orgId
+    }
+
     const dmForm = await (db as any).dm_form.findFirst({
-      where: { unique_id: uniqueId }
+      where
     })
 
     if (!dmForm) {
-      return res.json({ 
-        success: true, 
-        isAudited: false, 
-        message: 'No DM form found for this lead' 
+      return res.json({
+        success: true,
+        isAudited: false,
+        message: 'No DM form found for this lead'
       })
     }
 
@@ -283,9 +318,9 @@ router.get('/audit/:uniqueId', requireAuth, requireRoles(['qa', 'manager', 'supe
       f_id: dmForm.f_id
     } : null
 
-    return res.json({ 
-      success: true, 
-      isAudited, 
+    return res.json({
+      success: true,
+      isAudited,
       auditData,
       message: isAudited ? 'Lead has been audited' : 'Lead has not been audited yet'
     })
@@ -320,13 +355,21 @@ router.post('/audit/:uniqueId', ...upsertMiddlewares, async (req: any, res: any,
       call_links
     } = req.body || {}
 
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     // Find existing DM form
+    const where: any = { unique_id: uniqueId }
+    if (!isSuper && orgId) {
+      where.organization_id = orgId
+    }
+
     const existingForm = await (db as any).dm_form.findFirst({
-      where: { unique_id: uniqueId }
+      where
     })
 
     if (!existingForm) {
-      return res.status(404).json({ success: false, message: 'DM form not found for this lead' })
+      return res.status(404).json({ success: false, message: 'DM form not found for this lead or access denied' })
     }
 
     // Update audit fields in DM form
@@ -371,7 +414,7 @@ router.post('/audit/:uniqueId', ...upsertMiddlewares, async (req: any, res: any,
 
     // Also create/update a qa_call_review entry to ensure the call appears in the leads list
     const callId = existingForm.f_lead ? Number(existingForm.f_lead) : null
-    
+
     if (callId) {
       const existingReview = await (db as any).qa_call_reviews.findFirst({
         where: { call_id: BigInt(callId), reviewer_user_id: userId }
@@ -404,8 +447,8 @@ router.post('/audit/:uniqueId', ...upsertMiddlewares, async (req: any, res: any,
       }
     }
 
-    return res.json({ 
-      success: true, 
+    return res.json({
+      success: true,
       message: 'Audit data saved successfully',
       auditData: {
         qa_status: updated.f_qa_status,
@@ -431,7 +474,7 @@ router.post('/audit/:uniqueId', ...upsertMiddlewares, async (req: any, res: any,
 router.get('/dashboard', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
     console.log('🔄 QA Dashboard API called')
-    
+
     // Return demo data for now to isolate the issue
     const demoStats = {
       totalLeads: 2,
@@ -455,8 +498,8 @@ router.get('/dashboard', requireAuth, requireRoles(['qa', 'manager', 'superadmin
     return res.json({ success: true, data: demoStats })
   } catch (e) {
     console.error('❌ Dashboard API error:', e)
-    return res.status(500).json({ 
-      success: false, 
+    return res.status(500).json({
+      success: false,
       message: 'Internal server error',
       error: e instanceof Error ? e.message : 'Unknown error'
     })
@@ -467,12 +510,19 @@ router.get('/dashboard', requireAuth, requireRoles(['qa', 'manager', 'superadmin
 router.get('/recent-activity', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 10, 50) // Max 50 items
-    
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     // Get recent QA reviews from dm_form that have QA fields filled
+    const where: any = {
+      f_qa_status: { not: null }
+    }
+    if (!isSuper && orgId) {
+      where.organization_id = orgId
+    }
+
     const recentForms = await (db as any).dm_form.findMany({
-      where: {
-        f_qa_status: { not: null }
-      },
+      where,
       orderBy: { f_audit_date: 'desc' },
       take: limit,
       include: {

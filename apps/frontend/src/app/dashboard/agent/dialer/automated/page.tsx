@@ -4,6 +4,7 @@ import Script from "next/script"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { AgentSidebar } from "../../components/AgentSidebar"
+import { DemoLockWrapper } from "@/components/DemoLockWrapper"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -18,8 +19,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useCampaigns } from "@/hooks/agentic/useCampaigns"
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { detectRegion, getCountryName } from "@/utils/regionDetection"
+import { GSM_CONFIG } from "@/lib/gsm-config"
+
 
 declare global {
   interface Window {
@@ -112,6 +115,40 @@ const humanizeDmField = (key: string) => {
     .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
+// Local useCampaigns implementation to avoid agentic dependency
+type CampaignOption = { key: string; label: string }
+async function fetchCampaignsFromDb(): Promise<CampaignOption[]> {
+  const headers: Record<string, string> = {}
+  let credentials: RequestCredentials = 'omit'
+  if (USE_AUTH_COOKIE) {
+    credentials = 'include'
+  } else {
+    const token = getToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch(`${API_BASE}/api/campaigns/active`, { headers, credentials })
+  if (!res.ok) throw new Error('Failed to load campaigns')
+  const data = await res.json().catch(() => null) as any
+  const items: any[] = Array.isArray(data?.items) ? data.items : []
+  return items.map((item) => {
+    const key = String(item?.campaign_name || item?.campaign_id || item?.id || '').trim()
+    if (!key) return null
+    const label = String(item?.campaign_name || item?.display_name || key)
+    return { key, label }
+  })
+    .filter((item): item is CampaignOption => !!item && !!item.key)
+}
+
+function useCampaigns() {
+  const queryClient = useQueryClient()
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['campaigns'],
+    queryFn: fetchCampaignsFromDb,
+    staleTime: 5 * 60 * 1000,
+  })
+  return { campaigns: data || [], loading: isLoading, error, refreshCampaigns: () => queryClient.invalidateQueries({ queryKey: ['campaigns'] }) }
+}
+
 export default function AutomatedDialerPage() {
   const WaveBars: React.FC<{ active: boolean }> = ({ active }) => (
     <div className="flex items-end justify-between gap-[2px] h-8 w-full">
@@ -136,6 +173,7 @@ export default function AutomatedDialerPage() {
     </div>
   )
   // SIP/Auth State
+  const [sipMode, setSipMode] = useState<'telxio' | 'gsm'>('telxio')
   const [ext, setExt] = useState("")
   const [pwd, setPwd] = useState("")
   const [status, setStatus] = useState("Idle")
@@ -434,10 +472,10 @@ export default function AutomatedDialerPage() {
         try {
           // Don't auto-initiate calls if last call was BUSY (prospect declined)
           if (lastCallDisposition === 'BUSY') return
-          
+
           // Additional safety: don't initiate if there's any active session
           if (sessionRef.current) return
-          
+
           const ph = String(payload?.lead?.phone || '').replace(/[^0-9+]/g, '').replace(/^00/, '+')
           if (!ph) return
           if (!uaRef.current) return
@@ -613,6 +651,33 @@ export default function AutomatedDialerPage() {
     const run = async () => {
       try {
         setError(null)
+        teardownUA() // Ensure previous UA is stopped before switching
+
+        // GSM MODE
+        if (sipMode === 'gsm') {
+          console.log('[DEBUG] GSM Config Loaded:', {
+            extension: GSM_CONFIG.extension,
+            hasPassword: !!GSM_CONFIG.password,
+            wssUrl: GSM_CONFIG.wssUrl,
+            domain: GSM_CONFIG.domain,
+            realm: GSM_CONFIG.realm
+          });
+
+          if (!GSM_CONFIG.extension || !GSM_CONFIG.password) {
+            console.warn('GSM credentials missing in configuration')
+            // Don't return, let it fail or handle gracefully if you want, 
+            // but here we just want to try connecting if we have creds
+          }
+
+          if (GSM_CONFIG.extension && GSM_CONFIG.password) {
+            setExt(GSM_CONFIG.extension)
+            setPwd(GSM_CONFIG.password)
+            await startUA(GSM_CONFIG.extension, GSM_CONFIG.password)
+          }
+          return
+        }
+
+        // TELXIO MODE (Default)
         const headers: Record<string, string> = {}
         if (!USE_AUTH_COOKIE) {
           const t = getToken()
@@ -635,7 +700,7 @@ export default function AutomatedDialerPage() {
     }
     run()
     return () => { aborted = true }
-  }, [isLoaded])
+  }, [isLoaded, sipMode])
 
   const teardownUA = useCallback(() => {
     try {
@@ -752,11 +817,26 @@ export default function AutomatedDialerPage() {
   const startUA = useCallback(async (extension: string, password: string) => {
     setError(null)
     if (!window.JsSIP) throw new Error("JsSIP not loaded")
-    const { wssUrl, domain, stunServer } = await fetchSipConfig()
+
+    let wssUrl, domain, stunServer;
+
+    if (sipMode === 'gsm') {
+      wssUrl = GSM_CONFIG.wssUrl
+      domain = GSM_CONFIG.domain
+      stunServer = GSM_CONFIG.stunServer
+    } else {
+      const config = await fetchSipConfig()
+      wssUrl = config.wssUrl
+      domain = config.domain
+      stunServer = config.stunServer
+    }
+
     const socket = new window.JsSIP.WebSocketInterface(wssUrl)
     const configuration = {
       uri: `sip:${extension}@${domain}`,
       password,
+      authorization_user: extension,
+      realm: sipMode === 'gsm' ? GSM_CONFIG.realm : undefined,
       sockets: [socket],
       register: true,
       session_timers: true,
@@ -846,7 +926,7 @@ export default function AutomatedDialerPage() {
           clearNextTimeout()
           setNextIn(0)
           // Immediately hang up any active session to prevent reconnection
-          try { session.terminate?.() } catch {}
+          try { session.terminate?.() } catch { }
         } else {
           setLastCallDisposition(isNoAnswer ? 'NO_ANSWER' : 'FAILED')
           scheduleNext()
@@ -864,7 +944,7 @@ export default function AutomatedDialerPage() {
         // For "ended" event, check disposition to determine if auto-dialing should continue
         const disposition = pendingUploadExtra?.hangup_cause
         const shouldStopAutoDialing = disposition === 'busy'
-        
+
         if (shouldStopAutoDialing) {
           setLastCallDisposition('BUSY')
           setAutoRun(false)
@@ -881,7 +961,7 @@ export default function AutomatedDialerPage() {
 
     ua.start()
     uaRef.current = ua
-  }, [attachRemoteAudio, fetchSipConfig, ensureSocket, createLiveSession])
+  }, [attachRemoteAudio, fetchSipConfig, ensureSocket, createLiveSession, sipMode])
 
   const clearTimer = () => {
     if (timerRef.current) window.clearInterval(timerRef.current)
@@ -1669,6 +1749,7 @@ export default function AutomatedDialerPage() {
             <div className="lg:col-span-1 space-y-3">
               <Card className="p-5">
                 <div className="flex flex-col gap-4">
+
                   <div className="mb-4">
                     <Label className="text-xs font-medium text-muted-foreground">Campaign</Label>
                     <Select

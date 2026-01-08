@@ -1,4 +1,6 @@
 "use client"
+import { DemoLockWrapper } from "@/components/DemoLockWrapper"
+
 // Simple waveform animation like in Call History page
 const WaveBars: React.FC<{ active: boolean }> = ({ active }) => (
   <div className="flex items-end justify-between gap-[2px] h-4 w-full">
@@ -30,7 +32,7 @@ const WaveBars: React.FC<{ active: boolean }> = ({ active }) => (
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Script from "next/script"
-import { Phone, PhoneOff, Mic, MicOff, Trash2, Search, Pause, UserPlus, Grid2X2, PhoneCall } from "lucide-react"
+import { Phone, PhoneOff, Mic, MicOff, Trash2, Search, Pause, UserPlus, Grid2X2, PhoneCall, RotateCw } from "lucide-react"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,8 +40,10 @@ import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { Badge } from "@/components/ui/badge"
 import { AgentSidebar } from "../../components/AgentSidebar"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
+import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
@@ -47,7 +51,10 @@ import { API_BASE } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
 import { io } from "socket.io-client"
 import { useCampaigns } from "@/hooks/agentic/useCampaigns"
+import { useAuth } from "@/hooks/useAuth"
 import { detectRegion, getCountryName } from "@/utils/regionDetection"
+import { GSM_CONFIG } from "@/lib/gsm-config"
+
 
 declare global {
   interface Window {
@@ -140,11 +147,21 @@ const humanizeDmField = (key: string) => {
 }
 
 export default function ManualDialerPage() {
+  return (
+    <DemoLockWrapper featureKey="manual-dialer" className="h-[calc(100vh-4rem)]">
+      <ManualDialerPageContent />
+    </DemoLockWrapper>
+  )
+}
+
+function ManualDialerPageContent() {
   const TRANSFER_MODE: 'dtmf' | 'refer-then-dtmf' = 'dtmf'
+  const [sipMode, setSipMode] = useState<'telxio' | 'gsm'>('telxio')
+  const [gsmPort, setGsmPort] = useState<string>('COM1')
   const [ext, setExt] = useState("")
   const [pwd, setPwd] = useState("")
   const [number, setNumber] = useState("")
-  const [countryCode, setCountryCode] = useState("+91")
+
   const [status, setStatus] = useState("Idle")
   const [error, setError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(false)
@@ -179,7 +196,10 @@ export default function ManualDialerPage() {
       return undefined
     }
   })
+
   const { campaigns, loading: campaignsLoading } = useCampaigns()
+  const { user } = useAuth()
+
 
   // Draggable in-call popup position
   const [popupPos, setPopupPos] = useState<{ x: number; y: number }>({ x: 420, y: 160 })
@@ -213,7 +233,11 @@ export default function ManualDialerPage() {
   const remoteRecorderRef = useRef<MediaRecorder | null>(null)
   const remoteRecordedChunksRef = useRef<BlobPart[]>([])
   const wantRemoteRecordingRef = useRef<boolean>(false)
+
   const currentCallIdRef = useRef<number | null>(null)
+
+  // GSM Call Ref
+  const gsmCallIdRef = useRef<string | number | null>(null)
 
   // Busy tone helpers
   const busyGainRef = useRef<GainNode | null>(null)
@@ -264,9 +288,9 @@ export default function ManualDialerPage() {
   }, [campaigns, selectedCampaign])
 
   const currentPhone = useMemo(() => {
-    const dialNum = number ? `${countryCode}${number}` : (lastDialedNumber || "")
+    const dialNum = number ? number.replace(/[^0-9+]/g, '') : (lastDialedNumber || "")
     return dialNum || ""
-  }, [countryCode, number, lastDialedNumber])
+  }, [number, lastDialedNumber])
 
   useEffect(() => {
     if (!currentPhone) return
@@ -325,11 +349,9 @@ export default function ManualDialerPage() {
   }
 
   useEffect(() => {
-    // Load saved country code and local number early
+    // Load saved local number early
     try {
-      const savedCc = localStorage.getItem('dial_cc')
       const savedNum = localStorage.getItem('dial_num')
-      if (savedCc) setCountryCode(savedCc)
       if (savedNum) setNumber(savedNum)
     } catch { }
   }, [])
@@ -340,11 +362,7 @@ export default function ManualDialerPage() {
       try {
         const savedNum = localStorage.getItem('dial_num')
         if (!savedNum) {
-          const m = lastDialedNumber.match(/^\+(\d{1,3})(\d+)$/)
-          if (m) {
-            setCountryCode(`+${m[1]}`)
-            setNumber(m[2])
-          }
+          setNumber(lastDialedNumber)
         }
       } catch { }
       appliedLastDialOnce.current = true
@@ -449,7 +467,7 @@ export default function ManualDialerPage() {
           setLiveSegments(prev => [...prev, { speaker: seg.speaker, text: seg.text }])
         } catch { }
         try {
-          const dest = lastDialDestinationRef.current || `${countryCode}${number}`
+          const dest = lastDialDestinationRef.current || number.replace(/[^0-9+]/g, '')
           void sendPhase('connected', { source: ext, destination: dest || '', direction: 'OUT' }).catch(() => { })
         } catch { }
       })
@@ -521,6 +539,35 @@ export default function ManualDialerPage() {
     const run = async () => {
       try {
         setError(null)
+        teardownUA() // Ensure previous UA is stopped before switching
+
+        // GSM MODE
+        if (sipMode === 'gsm') {
+          console.log('[DEBUG] GSM Config Loaded:', {
+            extension: GSM_CONFIG.extension,
+            hasPassword: !!GSM_CONFIG.password,
+            wssUrl: GSM_CONFIG.wssUrl,
+            domain: GSM_CONFIG.domain,
+            realm: GSM_CONFIG.realm
+          });
+
+          if (!GSM_CONFIG.extension || !GSM_CONFIG.password) {
+            setError('GSM credentials missing in configuration')
+            return
+          }
+
+          setExt(GSM_CONFIG.extension)
+          setPwd(GSM_CONFIG.password)
+          // In GSM mode via API, we don't register SIP UA
+          // Just clear error and return
+          setExt(GSM_CONFIG.extension)
+          setPwd(GSM_CONFIG.password) // Not used for API calls but kept for state consistency
+          // await startUA(GSM_CONFIG.extension, GSM_CONFIG.password)
+          setStatus("GSM Ready")
+          return
+        }
+
+        // TELXIO MODE (Default)
         const headers: Record<string, string> = {}
         if (!USE_AUTH_COOKIE) {
           const t = getToken()
@@ -540,7 +587,6 @@ export default function ManualDialerPage() {
         setPwd(data.password)
         try {
           localStorage.setItem('dial_ext', data.extensionId)
-          localStorage.setItem('dial_cc', countryCode)
         } catch { }
         await startUA(data.extensionId, data.password)
       } catch (e: any) {
@@ -549,7 +595,7 @@ export default function ManualDialerPage() {
     }
     run()
     return () => { aborted = true }
-  }, [isLoaded])
+  }, [isLoaded, sipMode])
 
   const teardownUA = useCallback(() => {
     try {
@@ -721,7 +767,19 @@ export default function ManualDialerPage() {
     setError(null)
     if (!window.JsSIP) throw new Error("JsSIP not loaded")
 
-    const { wssUrl, domain, stunServer } = await fetchSipConfig()
+    let wssUrl, domain, stunServer;
+
+    if (sipMode === 'gsm') {
+      wssUrl = GSM_CONFIG.wssUrl
+      domain = GSM_CONFIG.domain
+      stunServer = GSM_CONFIG.stunServer
+    } else {
+      const config = await fetchSipConfig()
+      wssUrl = config.wssUrl
+      domain = config.domain
+      stunServer = config.stunServer
+    }
+
     sipDomainRef.current = domain
 
     const socket = new window.JsSIP.WebSocketInterface(wssUrl)
@@ -729,6 +787,8 @@ export default function ManualDialerPage() {
     const configuration = {
       uri: `sip:${extension}@${domain}`,
       password,
+      authorization_user: extension,
+      realm: sipMode === 'gsm' ? GSM_CONFIG.realm : undefined,
       sockets: [socket],
       register: true,
       session_timers: true,
@@ -754,8 +814,24 @@ export default function ManualDialerPage() {
       activeSessionAliveRef.current = false
       activeDirectionRef.current = null
     })
-    ua.on("registrationFailed", (e: any) => setError(`Registration failed: ${e?.cause || "unknown"}`))
-    ua.on("registrationFailed", (e: any) => setError(`Registration failed: ${e?.cause || "unknown"}`))
+    ua.on("registrationFailed", (e: any) => {
+      const failureCause = e?.cause;
+      const response = e?.response;
+      console.error("SIP Registration Failed FULL OBJECT:", e);
+      console.error("SIP Registration Cause:", failureCause);
+
+      if (response) {
+        console.error("SIP Response Status:", response.status_code);
+        console.error("SIP Response Reason:", response.reason_phrase);
+        console.error("SIP Response Challenge:", response.getHeader('WWW-Authenticate'));
+      }
+
+      let errorMsg = `Registration failed: ${failureCause || 'Unknown'}`;
+      if (response?.status_code) {
+        errorMsg += ` (${response.status_code} ${response.reason_phrase})`;
+      }
+      setError(errorMsg + " - Check console details");
+    })
 
     ua.on("newRTCSession", (data: any) => {
       const session = data.session
@@ -787,7 +863,7 @@ export default function ManualDialerPage() {
           if (pc) attachRemoteAudio(pc)
         } catch { }
         try {
-          const dest = lastDialDestinationRef.current || `${countryCode}${number}`
+          const dest = lastDialDestinationRef.current || number.replace(/[^0-9+]/g, '')
           void sendPhase('connected', { source: ext, destination: dest || '', direction: 'OUT' }).catch(() => { })
         } catch { }
       })
@@ -796,7 +872,7 @@ export default function ManualDialerPage() {
         if (activeDirectionRef.current === 'outgoing') {
           setStatus('Ringing')
           try { const pc: RTCPeerConnection = (session as any).connection; if (pc) attachRemoteAudio(pc) } catch { }
-          const dest = lastDialDestinationRef.current || `${countryCode}${number}`
+          const dest = lastDialDestinationRef.current || number.replace(/[^0-9+]/g, '')
           try { sendPhase('ringing', { source: ext, destination: dest || '', direction: 'OUT' }) } catch { }
         }
       })
@@ -816,7 +892,7 @@ export default function ManualDialerPage() {
           await createLiveSession()
         } catch { }
         try {
-          const dest = lastDialDestinationRef.current || `${countryCode}${number}`
+          const dest = lastDialDestinationRef.current || number.replace(/[^0-9+]/g, '')
           await sendPhase('connecting', { source: ext, destination: dest || '', direction: 'OUT' })
         } catch { }
         try { await setPresenceStatus('ON_CALL') } catch { }
@@ -851,11 +927,14 @@ export default function ManualDialerPage() {
         } else if (isNoAnswer) {
           finalStatus = "No Answer"
         }
-        setStatus(finalStatus)
+
+        // Reset status to allow re-dialing
+        setStatus(sipMode === 'gsm' ? "GSM Ready" : "Registered")
+
         setError(e?.cause || "Call failed")
         clearTimer()
         setIsOnHold(false)
-        setShowPopup(true)
+        setShowPopup(false) // Fix: Hide popup on failure so it doesn't stick
         // Set last call disposition to block agentic auto-calls if BUSY
         console.log('Disposition logic - isBusy:', isBusy, 'isNoAnswer:', isNoAnswer)
         if (isBusy) {
@@ -883,7 +962,8 @@ export default function ManualDialerPage() {
         activeDirectionRef.current = null
       })
       session.on("ended", async () => {
-        setStatus("Call Ended")
+        // Reset status to allow re-dialing
+        setStatus(sipMode === 'gsm' ? "GSM Ready" : "Registered")
         clearTimer()
         setIsOnHold(false)
         setShowPopup(false)
@@ -1342,6 +1422,27 @@ export default function ManualDialerPage() {
   ]
 
   const hangup = async () => {
+    // GSM API Hangup
+    if (sipMode === 'gsm') {
+      try {
+        const callId = gsmCallIdRef.current || Date.now().toString()
+        await fetch(`${API_PREFIX}/dialer/hangup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callId }),
+        })
+      } catch { }
+      finally {
+        gsmCallIdRef.current = null
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+        setStatus("GSM Ready") // Reset to ready state
+        setIsMuted(false)
+        setIsOnHold(false)
+        setShowPopup(false)
+      }
+      return
+    }
+
     try { sessionRef.current?.terminate() } catch { }
     setShowPopup(false)
     if (!uploadedOnceRef.current) {
@@ -1354,13 +1455,67 @@ export default function ManualDialerPage() {
 
   const placeCall = async () => {
     setError(null)
-    if (!uaRef.current) { setError("UA not ready"); return }
     if (!number) { setError("Empty number"); return }
 
     // Reset last call disposition when manually placing a call
     setLastCallDisposition(null)
 
-    const destination = `${countryCode}${number}`
+    if (sipMode === 'gsm') {
+      setStatus("Calling...")
+      try {
+        const response = await fetch(`${API_PREFIX}/dialer/call`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            number: (() => {
+              const raw = number.replace(/[^0-9+]/g, '')
+              return raw.startsWith('+') ? raw : '+' + raw
+            })(),
+            port: gsmPort,
+            type: 'gsm',
+            username: user?.username,
+            extension: user?.extension || ext
+          }),
+        })
+        if (!response.ok) throw new Error('GSM Call failed')
+
+        // Capture the call ID from the server
+        const data = await response.json()
+        if (data && data.id) {
+          gsmCallIdRef.current = data.id
+        }
+
+        setStatus("In Call")
+        callStartRef.current = Date.now()
+        if (timerRef.current) window.clearInterval(timerRef.current)
+        timerRef.current = window.setInterval(() => {
+          setStatus((s) => (s.startsWith("In Call") ? `In Call ${elapsed()}` : s))
+        }, 1000)
+        setShowPopup(true)
+
+        // Setup popup position
+        try {
+          const w = window.innerWidth
+          const h = window.innerHeight
+          const px = Math.max(8, Math.floor(w / 2 - 180))
+          const py = Math.max(60, Math.floor(h / 2 - 120))
+          setPopupPos({ x: px, y: py })
+        } catch { }
+
+      } catch (e: any) {
+        setError(e?.message || "GSM Call start error")
+        setStatus("Call Failed")
+        setTimeout(() => setStatus("GSM Ready"), 3000)
+      }
+      return
+    }
+
+    if (!uaRef.current) { setError("UA not ready"); return }
+
+    // Normalize number: ensure it starts with + if missing
+    const rawNum = number.replace(/[^0-9+]/g, '')
+    const destination = rawNum.startsWith('+') ? rawNum : '+' + rawNum
+
     const options = {
       eventHandlers: {},
       mediaConstraints: { audio: true, video: false },
@@ -1392,7 +1547,6 @@ export default function ManualDialerPage() {
   const logout = () => {
     setError(null)
     setStatus("Idle")
-    setNumber("")
     setIsMuted(false)
     setIsOnHold(false)
     hasAnsweredRef.current = false
@@ -1564,7 +1718,7 @@ export default function ManualDialerPage() {
         )
       } catch { return null }
     })()
-    const destination = (number ? `${countryCode}${number}` : lastDialDestinationRef.current || sipUser || '').toString()
+    const destination = (number ? number.replace(/[^0-9+]/g, '') : lastDialDestinationRef.current || sipUser || '').toString()
     if (destination) {
       form.append('destination', destination)
       // Detect and append region and country
@@ -1788,6 +1942,9 @@ export default function ManualDialerPage() {
               </BreadcrumbList>
             </Breadcrumb>
             {/* status badge removed per request */}
+            <div className="ml-auto flex items-center gap-2">
+
+            </div>
           </div>
         </header>
 
@@ -1806,11 +1963,40 @@ export default function ManualDialerPage() {
           <div className="grid gap-3 lg:grid-cols-3">
             {/* Dialer */}
             <Card className="p-5 lg:col-span-1 transition-shadow hover:shadow-md">
-              <div className="mb-3 text-lg font-semibold flex items-center gap-2">
-                <PhoneCall className="h-5 w-5 text-primary" />
-                Dialer
+              <div className="mb-3 text-lg font-semibold flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <PhoneCall className="h-5 w-5 text-primary" />
+                  Dialer
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="gsm-mode" className="text-xs font-medium">{sipMode === 'gsm' ? "Domestic" : "International"}</Label>
+                  <Switch
+                    id="gsm-mode"
+                    checked={sipMode === 'gsm'}
+                    onCheckedChange={(checked) => setSipMode(checked ? 'gsm' : 'telxio')}
+                  />
+                  {(() => {
+                    const s = status
+                    let label = 'Offline'
+                    let className = 'bg-slate-500 hover:bg-slate-600'
+
+                    if (s.includes('Registered') || s.includes('GSM Ready') || s.includes('Connected')) {
+                      label = 'Available'
+                      className = 'bg-emerald-500 hover:bg-emerald-600'
+                    } else if (s.startsWith('In Call') || s.includes('Ringing') || s.includes('Calling') || s.includes('Busy')) {
+                      label = 'Busy'
+                      className = 'bg-amber-500 hover:bg-amber-600'
+                    }
+
+                    return (
+                      <Badge className={`ml-2 ${className} border-0`}>
+                        {label}
+                      </Badge>
+                    )
+                  })()}
+                </div>
               </div>
-              <div className="mb-4">
+              <div className="mb-0">
                 <Label className="text-xs font-medium text-muted-foreground">Campaign</Label>
                 <Select
                   value={selectedCampaign ?? undefined}
@@ -1839,26 +2025,38 @@ export default function ManualDialerPage() {
                 </p>
               </div>
 
-              <div className="mb-4">
+              <div className="mb-2">
                 <Label className="text-xs font-medium text-muted-foreground">Phone Number</Label>
                 <div className="mt-1.5 flex gap-2">
-                  <Select value={countryCode} onValueChange={(v) => { setCountryCode(v); try { localStorage.setItem('dial_cc', v) } catch { } }}>
-                    <SelectTrigger className="w-[110px]">
-                      <SelectValue placeholder="+91" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="+1">+1 US</SelectItem>
-                      <SelectItem value="+44">+44 UK</SelectItem>
-                      <SelectItem value="+61">+61 AU</SelectItem>
-                      <SelectItem value="+65">+65 SG</SelectItem>
-                      <SelectItem value="+91">+91 IN</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Input className="flex-1 text-lg tracking-widest font-medium" inputMode="numeric" value={number} onChange={(e) => {
-                    const v = e.target.value.replace(/\D+/g, "")
-                    setNumber(v)
-                    try { localStorage.setItem('dial_num', v) } catch { }
-                  }} placeholder="Enter number" />
+
+                  {sipMode === 'gsm' ? (
+                    <Select value={gsmPort} onValueChange={setGsmPort}>
+                      <SelectTrigger className="w-[110px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {/* Replicating the dropdown from the requested screenshot functionality (COM ports) */}
+                        <SelectItem value="COM1">COM1</SelectItem>
+                        <SelectItem value="COM2">COM2</SelectItem>
+                        <SelectItem value="COM3">COM3</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                  <Input
+                    className="flex-1 text-lg tracking-widest font-medium"
+                    value={number}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/[^0-9+\s-]/g, "")
+                      setNumber(v)
+                      try { localStorage.setItem('dial_num', v) } catch { }
+                    }}
+                    placeholder="Enter number (e.g. +971...)"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        placeCall()
+                      }
+                    }}
+                  />
                 </div>
               </div>
 
@@ -1916,35 +2114,21 @@ export default function ManualDialerPage() {
                 >
                   Clear
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const last = localStorage.getItem('lastDialedNumber')
+                    if (last) setNumber(last)
+                  }}
+                  disabled={!localStorage.getItem('lastDialedNumber')}
+                  className="px-3 transition-all hover:bg-muted active:scale-95"
+                  title="Redial last number"
+                >
+                  <RotateCw className="h-4 w-4" />
+                </Button>
               </div>
 
-              {/* Call Status Indicator */}
-              <div className="mb-3 p-3 rounded-lg border bg-muted/30">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {(() => {
-                      const s = status
-                      const dot = s.includes('Ringing') ? 'bg-amber-500 animate-pulse' :
-                        s.startsWith('In Call') ? 'bg-emerald-500 animate-pulse' :
-                          s.includes('Busy') ? 'bg-orange-500' :
-                            s.includes('No Answer') ? 'bg-slate-500' :
-                              s.includes('Failed') ? 'bg-red-500' :
-                                s.includes('Disconnected') ? 'bg-gray-400' :
-                                  (s.includes('Connected') || s.includes('Registered')) ? 'bg-sky-500' :
-                                    'bg-muted-foreground'
-                      return (
-                        <>
-                          <span className={`inline-block h-2.5 w-2.5 rounded-full ${dot}`} />
-                          <span className="text-sm font-medium">{s}</span>
-                        </>
-                      )
-                    })()}
-                  </div>
-                  {status.startsWith("In Call") && (
-                    <span className="text-sm font-mono text-muted-foreground">{elapsed() || "00:00"}</span>
-                  )}
-                </div>
-              </div>
+              {/* Call Status Indicator - Removed legacy display per request */}
 
               {status.startsWith("In Call") && (
                 <div className="mb-3">
@@ -2217,44 +2401,45 @@ export default function ManualDialerPage() {
           </div>
 
           {/* Draggable In-Call Popup */}
-          {showPopup && (
-            <div
-              className="fixed z-50 w-[380px] rounded-xl border-2 bg-card text-card-foreground shadow-2xl backdrop-blur-sm"
-              style={{ left: popupPos.x, top: popupPos.y }}
-            >
+          {
+            showPopup && (
               <div
-                className="flex items-center justify-between px-5 py-3 rounded-t-xl bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-800/20 border-b-2 border-emerald-200 dark:border-emerald-800 cursor-move"
-                onMouseDown={onPopupMouseDown}
+                className="fixed z-50 w-[380px] rounded-xl border-2 bg-card text-card-foreground shadow-2xl backdrop-blur-sm"
+                style={{ left: popupPos.x, top: popupPos.y }}
               >
-                <div className="flex items-center gap-2.5 text-sm font-semibold">
-                  {(() => {
-                    const s = status
-                    const dot = s.includes('Ringing') ? 'bg-amber-500 animate-pulse' :
-                      s.startsWith('In Call') ? 'bg-emerald-500 animate-pulse' :
-                        s.includes('Busy') ? 'bg-orange-500' :
-                          s.includes('No Answer') ? 'bg-slate-500' :
-                            s.includes('Failed') ? 'bg-red-500' :
-                              s.includes('Disconnected') ? 'bg-gray-400' :
-                                (s.includes('Connected') || s.includes('Registered')) ? 'bg-sky-500' :
-                                  'bg-muted'
-                    return (
-                      <>
-                        <span className={`inline-block h-2.5 w-2.5 rounded-full ${dot} shadow-sm`} />
-                        <span className="text-foreground">{s}</span>
-                      </>
-                    )
-                  })()}
+                <div
+                  className="flex items-center justify-between px-5 py-3 rounded-t-xl bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-800/20 border-b-2 border-emerald-200 dark:border-emerald-800 cursor-move"
+                  onMouseDown={onPopupMouseDown}
+                >
+                  <div className="flex items-center gap-2.5 text-sm font-semibold">
+                    {(() => {
+                      const s = status
+                      const dot = s.includes('Ringing') ? 'bg-amber-500 animate-pulse' :
+                        s.startsWith('In Call') ? 'bg-emerald-500 animate-pulse' :
+                          s.includes('Busy') ? 'bg-orange-500' :
+                            s.includes('No Answer') ? 'bg-slate-500' :
+                              s.includes('Failed') ? 'bg-red-500' :
+                                s.includes('Disconnected') ? 'bg-gray-400' :
+                                  (s.includes('Connected') || s.includes('Registered')) ? 'bg-sky-500' :
+                                    'bg-muted'
+                      return (
+                        <>
+                          <span className={`inline-block h-2.5 w-2.5 rounded-full ${dot} shadow-sm`} />
+                          <span className="text-foreground">{s}</span>
+                        </>
+                      )
+                    })()}
+                  </div>
+                  <div className="text-xs font-medium px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-700 border border-blue-500/20">
+                    Drag to move
+                  </div>
                 </div>
-                <div className="text-xs font-medium px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-700 border border-blue-500/20">
-                  Drag to move
-                </div>
-              </div>
-              <div className="px-5 pt-4 pb-5">
-                <div className="text-center text-xl font-bold tracking-wide text-foreground">{number || lastDialedNumber || "Unknown"}</div>
-                <div className="mt-1.5 text-center text-sm font-mono text-muted-foreground">{elapsed() || "00:00"}</div>
+                <div className="px-5 pt-4 pb-5">
+                  <div className="text-center text-xl font-bold tracking-wide text-foreground">{number || lastDialedNumber || "Unknown"}</div>
+                  <div className="mt-1.5 text-center text-sm font-mono text-muted-foreground">{elapsed() || "00:00"}</div>
 
-                {/* Live client subtitles - Commented out for now */}
-                {/* <div className="mt-4 border-2 rounded-lg bg-muted/30 px-4 py-3 max-h-32 overflow-y-auto">
+                  {/* Live client subtitles - Commented out for now */}
+                  {/* <div className="mt-4 border-2 rounded-lg bg-muted/30 px-4 py-3 max-h-32 overflow-y-auto">
                   <div className="text-xs font-semibold text-muted-foreground mb-2">Live Transcript</div>
                   {liveSegments.length === 0 ? (
                     <div className="text-xs text-muted-foreground italic">Waiting for speech…</div>
@@ -2267,211 +2452,216 @@ export default function ManualDialerPage() {
                     ))
                   )}
                 </div> */}
-                <div className="mt-5 grid grid-cols-5 gap-3 place-items-center">
-                  <Button
-                    size="icon"
-                    variant={isMuted ? "default" : "outline"}
-                    className={`rounded-full h-11 w-11 transition-all hover:scale-110 active:scale-95 ${isMuted ? 'bg-red-500 hover:bg-red-600' : ''}`}
-                    onClick={toggleMute}
-                  >
-                    {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="rounded-full h-11 w-11 transition-all hover:scale-110 active:scale-95 hover:bg-primary/10 hover:border-primary/50"
-                    onClick={() => sendDTMF("5")}
-                  >
-                    <Grid2X2 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="destructive"
-                    className="rounded-full h-14 w-14 transition-all hover:scale-110 active:scale-95 shadow-lg hover:shadow-xl"
-                    onClick={hangup}
-                  >
-                    <PhoneOff className="h-5 w-5" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant={isOnHold ? "default" : "outline"}
-                    className={`rounded-full h-11 w-11 transition-all hover:scale-110 active:scale-95 ${isOnHold ? 'bg-amber-500 hover:bg-amber-600 border-amber-600 text-white' : 'hover:bg-primary/10 hover:border-primary/50'}`}
-                    onClick={toggleHold}
-                  >
-                    <Pause className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="rounded-full h-11 w-11 transition-all hover:scale-110 active:scale-95 hover:bg-primary/10 hover:border-primary/50"
-                    onClick={() => setShowTransfer((v) => !v)}
-                  >
-                    <UserPlus className="h-4 w-4" />
-                  </Button>
-                </div>
-                {showIncomingPrompt && (
-                  <div className="mt-5 flex items-center justify-center gap-3">
+                  <div className="mt-5 grid grid-cols-5 gap-3 place-items-center">
                     <Button
-                      variant="default"
-                      onClick={acceptIncoming}
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 transition-all hover:shadow-md active:scale-95"
+                      size="icon"
+                      variant={isMuted ? "default" : "outline"}
+                      className={`rounded-full h-11 w-11 transition-all hover:scale-110 active:scale-95 ${isMuted ? 'bg-red-500 hover:bg-red-600' : ''}`}
+                      onClick={toggleMute}
                     >
-                      Accept
+                      {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                     </Button>
                     <Button
-                      variant="destructive"
-                      onClick={declineIncoming}
-                      className="flex-1 transition-all hover:shadow-md active:scale-95"
+                      size="icon"
+                      variant="outline"
+                      className="rounded-full h-11 w-11 transition-all hover:scale-110 active:scale-95 hover:bg-primary/10 hover:border-primary/50"
+                      onClick={() => sendDTMF("5")}
                     >
-                      Decline
+                      <Grid2X2 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="destructive"
+                      className="rounded-full h-14 w-14 transition-all hover:scale-110 active:scale-95 shadow-lg hover:shadow-xl"
+                      onClick={hangup}
+                    >
+                      <PhoneOff className="h-5 w-5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant={isOnHold ? "default" : "outline"}
+                      className={`rounded-full h-11 w-11 transition-all hover:scale-110 active:scale-95 ${isOnHold ? 'bg-amber-500 hover:bg-amber-600 border-amber-600 text-white' : 'hover:bg-primary/10 hover:border-primary/50'}`}
+                      onClick={toggleHold}
+                    >
+                      <Pause className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="rounded-full h-11 w-11 transition-all hover:scale-110 active:scale-95 hover:bg-primary/10 hover:border-primary/50"
+                      onClick={() => setShowTransfer((v) => !v)}
+                    >
+                      <UserPlus className="h-4 w-4" />
                     </Button>
                   </div>
-                )}
-                {showTransfer && (
-                  <div className="mt-5 p-4 space-y-3 border-2 rounded-lg bg-muted/30">
-                    <div className="text-xs font-semibold text-muted-foreground">Transfer to user</div>
-                    <Select value={transferTarget} onValueChange={setTransferTarget}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select agent/extension" />
+                  {showIncomingPrompt && (
+                    <div className="mt-5 flex items-center justify-center gap-3">
+                      <Button
+                        variant="default"
+                        onClick={acceptIncoming}
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 transition-all hover:shadow-md active:scale-95"
+                      >
+                        Accept
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={declineIncoming}
+                        className="flex-1 transition-all hover:shadow-md active:scale-95"
+                      >
+                        Decline
+                      </Button>
+                    </div>
+                  )}
+                  {showTransfer && (
+                    <div className="mt-5 p-4 space-y-3 border-2 rounded-lg bg-muted/30">
+                      <div className="text-xs font-semibold text-muted-foreground">Transfer to user</div>
+                      <Select value={transferTarget} onValueChange={setTransferTarget}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select agent/extension" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[240px] overflow-auto">
+                          {staff.filter((u) => !!u.extension).map((u) => (
+                            <SelectItem key={u.id} value={u.extension || ''}>
+                              {(u.username || 'User')} ({u.extension})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex justify-end">
+                        <Button
+                          onClick={transferCall}
+                          disabled={!transferTarget || isTransferring}
+                          className="transition-all hover:shadow-md active:scale-95"
+                        >
+                          {isTransferring ? 'Transferring…' : 'Transfer'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          }
+
+          {/* Mandatory Feedback Modal */}
+          {
+            showDisposition && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
+                <div className="absolute inset-0 bg-background/80" />
+                <Card className="relative z-50 w-[560px] max-w-[95vw] border-2 shadow-2xl">
+                  <div className="px-5 py-4 border-b-2 bg-muted/30">
+                    <div className="font-semibold text-lg">Select Call Feedback</div>
+                    <p className="text-xs text-muted-foreground mt-1">This is required before saving the call.</p>
+                  </div>
+                  <div className="p-5 space-y-4">
+                    <Select value={disposition} onValueChange={setDisposition}>
+                      <SelectTrigger className="w-full h-11">
+                        <SelectValue placeholder="Choose feedback option" />
                       </SelectTrigger>
-                      <SelectContent className="max-h-[240px] overflow-auto">
-                        {staff.filter((u) => !!u.extension).map((u) => (
-                          <SelectItem key={u.id} value={u.extension || ''}>
-                            {(u.username || 'User')} ({u.extension})
-                          </SelectItem>
+                      <SelectContent className="max-h-[300px] overflow-auto">
+                        {[
+                          'Call Failed', 'Lead', 'Lost', 'DNC', 'VM-RPC', 'VM-Operator', 'Not an RPC', 'Invalid Number', 'Invalid Job Title', 'Invalid Country', 'Invalid Industry', 'Invalid EMP-Size', 'Follow-Ups', 'Busy', 'Wrong Number', 'Not Answered', 'Disconnected', 'Contact Discovery'
+                        ].map((opt) => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <div className="flex justify-end">
+                    <div className="flex justify-end gap-3 pt-2">
                       <Button
-                        onClick={transferCall}
-                        disabled={!transferTarget || isTransferring}
+                        variant="outline"
+                        onClick={() => { /* mandatory - no close without selection */ }}
+                        disabled
+                        className="opacity-50"
+                      >
+                        Close
+                      </Button>
+                      <Button
+                        onClick={async () => {
+                          if (!disposition) return
+                          try {
+                            // Save disposition to DM form f_lead column
+                            await saveDispositionToDmForm(disposition)
+
+                            // Continue with existing logic, pass the selected disposition for remarks
+                            if (!uploadedOnceRef.current) uploadedOnceRef.current = true
+                            await stopRecordingAndUpload(pendingUploadExtra || {}, disposition)
+                          } finally {
+                            setShowDisposition(false)
+                            setPendingUploadExtra(null)
+                            setDisposition("")
+                          }
+                        }}
+                        disabled={!disposition}
                         className="transition-all hover:shadow-md active:scale-95"
                       >
-                        {isTransferring ? 'Transferring…' : 'Transfer'}
+                        Save Feedback
                       </Button>
                     </div>
                   </div>
-                )}
+                </Card>
               </div>
-            </div>
-          )}
-
-          {/* Mandatory Feedback Modal */}
-          {showDisposition && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
-              <div className="absolute inset-0 bg-background/80" />
-              <Card className="relative z-50 w-[560px] max-w-[95vw] border-2 shadow-2xl">
-                <div className="px-5 py-4 border-b-2 bg-muted/30">
-                  <div className="font-semibold text-lg">Select Call Feedback</div>
-                  <p className="text-xs text-muted-foreground mt-1">This is required before saving the call.</p>
-                </div>
-                <div className="p-5 space-y-4">
-                  <Select value={disposition} onValueChange={setDisposition}>
-                    <SelectTrigger className="w-full h-11">
-                      <SelectValue placeholder="Choose feedback option" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[300px] overflow-auto">
-                      {[
-                        'Call Failed', 'Lead', 'Lost', 'DNC', 'VM-RPC', 'VM-Operator', 'Not an RPC', 'Invalid Number', 'Invalid Job Title', 'Invalid Country', 'Invalid Industry', 'Invalid EMP-Size', 'Follow-Ups', 'Busy', 'Wrong Number', 'Not Answered', 'Disconnected', 'Contact Discovery'
-                      ].map((opt) => (
-                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="flex justify-end gap-3 pt-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => { /* mandatory - no close without selection */ }}
-                      disabled
-                      className="opacity-50"
-                    >
-                      Close
-                    </Button>
-                    <Button
-                      onClick={async () => {
-                        if (!disposition) return
-                        try {
-                          // Save disposition to DM form f_lead column
-                          await saveDispositionToDmForm(disposition)
-
-                          // Continue with existing logic, pass the selected disposition for remarks
-                          if (!uploadedOnceRef.current) uploadedOnceRef.current = true
-                          await stopRecordingAndUpload(pendingUploadExtra || {}, disposition)
-                        } finally {
-                          setShowDisposition(false)
-                          setPendingUploadExtra(null)
-                          setDisposition("")
-                        }
-                      }}
-                      disabled={!disposition}
-                      className="transition-all hover:shadow-md active:scale-95"
-                    >
-                      Save Feedback
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            </div>
-          )}
+            )
+          }
 
           {/* Document Preview Popup */}
-          {previewDoc && (
-            <div className="fixed inset-0 z-40 flex items-center justify-center backdrop-blur-sm">
-              <div className="absolute inset-0 bg-background/70" onClick={() => setPreviewDoc(null)} />
-              <Card className="relative z-50 w-[720px] max-w-[95vw] max-h-[85vh] overflow-hidden border-2 shadow-2xl">
-                <div className="flex items-center justify-between px-5 py-4 border-b-2 bg-muted/30">
-                  <div className="font-semibold text-base truncate mr-4">{previewDoc.title || 'Document'}</div>
-                  <div className="flex items-center gap-3">
-                    {previewDoc.file_url ? (
-                      <a
-                        className="text-xs text-primary underline hover:text-primary/80 transition-colors"
-                        href={previewDoc.file_url}
-                        target="_blank"
-                        rel="noreferrer"
+          {
+            previewDoc && (
+              <div className="fixed inset-0 z-40 flex items-center justify-center backdrop-blur-sm">
+                <div className="absolute inset-0 bg-background/70" onClick={() => setPreviewDoc(null)} />
+                <Card className="relative z-50 w-[720px] max-w-[95vw] max-h-[85vh] overflow-hidden border-2 shadow-2xl">
+                  <div className="flex items-center justify-between px-5 py-4 border-b-2 bg-muted/30">
+                    <div className="font-semibold text-base truncate mr-4">{previewDoc.title || 'Document'}</div>
+                    <div className="flex items-center gap-3">
+                      {previewDoc.file_url ? (
+                        <a
+                          className="text-xs text-primary underline hover:text-primary/80 transition-colors"
+                          href={previewDoc.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open in new tab
+                        </a>
+                      ) : null}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setPreviewDoc(null)}
+                        className="transition-all hover:bg-muted active:scale-95"
                       >
-                        Open in new tab
-                      </a>
-                    ) : null}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setPreviewDoc(null)}
-                      className="transition-all hover:bg-muted active:scale-95"
-                    >
-                      Close
-                    </Button>
+                        Close
+                      </Button>
+                    </div>
                   </div>
-                </div>
-                <div className="p-4 overflow-auto max-h-[78vh] bg-card">
-                  {(() => {
-                    const url = String(previewDoc.file_url || '')
-                    const mime = String(previewDoc.file_mime || '')
-                    const lower = url.toLowerCase()
-                    if (!url && previewDoc.content_richtext) {
-                      return <div className="whitespace-pre-wrap text-sm p-2">{previewDoc.content_richtext}</div>
-                    }
-                    if (lower.endsWith('.pdf') || mime.includes('pdf')) {
-                      return <iframe src={url} className="w-full h-[70vh] rounded-lg" />
-                    }
-                    if (/(png|jpg|jpeg|gif|webp)$/i.test(lower) || /^image\//.test(mime)) {
-                      return <img src={url} alt="preview" className="max-w-full max-h-[70vh] object-contain mx-auto rounded-lg" />
-                    }
-                    // Fallback: show filename and a link
-                    return (
-                      <div className="text-sm text-muted-foreground text-center py-8">
-                        Preview not available. Use "Open in new tab" to view/download.
-                      </div>
-                    )
-                  })()}
-                </div>
-              </Card>
-            </div>
-          )}
+                  <div className="p-4 overflow-auto max-h-[78vh] bg-card">
+                    {(() => {
+                      const url = String(previewDoc.file_url || '')
+                      const mime = String(previewDoc.file_mime || '')
+                      const lower = url.toLowerCase()
+                      if (!url && previewDoc.content_richtext) {
+                        return <div className="whitespace-pre-wrap text-sm p-2">{previewDoc.content_richtext}</div>
+                      }
+                      if (lower.endsWith('.pdf') || mime.includes('pdf')) {
+                        return <iframe src={url} className="w-full h-[70vh] rounded-lg" />
+                      }
+                      if (/(png|jpg|jpeg|gif|webp)$/i.test(lower) || /^image\//.test(mime)) {
+                        return <img src={url} alt="preview" className="max-w-full max-h-[70vh] object-contain mx-auto rounded-lg" />
+                      }
+                      // Fallback: show filename and a link
+                      return (
+                        <div className="text-sm text-muted-foreground text-center py-8">
+                          Preview not available. Use "Open in new tab" to view/download.
+                        </div>
+                      )
+                    })()}
+                  </div>
+                </Card>
+              </div>
+            )
+          }
 
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+        </div >
+      </SidebarInset >
+    </SidebarProvider >
   )
 
   function numberToSipUri(num: string, ext: string) {

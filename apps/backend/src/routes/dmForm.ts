@@ -134,11 +134,11 @@ router.get('/debug/calls', requireAuth, async (req: any, res, next) => {
       orderBy: { start_time: 'desc' },
       take: 10
     })
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       count: recentCalls.length,
-      data: recentCalls 
+      data: recentCalls
     })
   } catch (e) {
     next(e)
@@ -160,11 +160,11 @@ router.get('/debug/all', requireAuth, async (req: any, res, next) => {
       orderBy: { f_date: 'desc' },
       take: 10
     })
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       count: allForms.length,
-      data: allForms 
+      data: allForms
     })
   } catch (e) {
     next(e)
@@ -174,20 +174,28 @@ router.get('/debug/all', requireAuth, async (req: any, res, next) => {
 router.get('/lead/:leadId', requireAuth, async (req: any, res, next) => {
   try {
     const leadId = req.params.leadId
-    
+
     if (!leadId) {
       return res.status(400).json({ success: false, message: 'Lead ID is required' })
     }
-    
+
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     // Search by f_lead (call ID) - simple approach
+    const where: any = { f_lead: leadId }
+    if (!isSuper && orgId) {
+      where.organization_id = orgId
+    }
+
     const form = await (db as any).dm_form.findFirst({
-      where: { f_lead: leadId },
+      where,
     })
-    
+
     if (!form) {
       return res.status(404).json({ success: false, message: 'DM form not found for this lead' })
     }
-    
+
     res.json({ success: true, data: form })
   } catch (e) {
     next(e)
@@ -198,20 +206,28 @@ router.get('/lead/:leadId', requireAuth, async (req: any, res, next) => {
 router.get('/unique/:uniqueId', requireAuth, async (req: any, res, next) => {
   try {
     const uniqueId = req.params.uniqueId
-    
+
     if (!uniqueId) {
       return res.status(400).json({ success: false, message: 'Unique ID is required' })
     }
-    
+
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     // Search by unique_id
+    const where: any = { unique_id: uniqueId }
+    if (!isSuper && orgId) {
+      where.organization_id = orgId
+    }
+
     const form = await (db as any).dm_form.findFirst({
-      where: { unique_id: uniqueId },
+      where,
     })
-    
+
     if (!form) {
       return res.status(404).json({ success: false, message: 'DM form not found for this unique ID' })
     }
-    
+
     res.json({ success: true, data: form })
   } catch (e) {
     next(e)
@@ -221,12 +237,17 @@ router.get('/unique/:uniqueId', requireAuth, async (req: any, res, next) => {
 router.get('/', requireAuth, async (req: any, res, next) => {
   try {
     const { campaign, limit = 10 } = req.query
-    
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     let whereClause: any = {}
+    if (!isSuper && orgId) {
+      whereClause.organization_id = orgId
+    }
     if (campaign && typeof campaign === 'string') {
       whereClause.f_campaign_name = campaign
     }
-    
+
     const forms = await (db as any).dm_form.findMany({
       where: whereClause,
       orderBy: { f_date: 'desc' },
@@ -239,7 +260,7 @@ router.get('/', requireAuth, async (req: any, res, next) => {
         form_status: true,
       }
     })
-    
+
     res.json({ success: true, forms })
   } catch (e) {
     next(e)
@@ -253,12 +274,16 @@ router.post('/', ...writeMiddlewares, async (req: any, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid payload', issues: parsed.error.flatten() })
     }
 
+    const orgId = req.user?.organizationId
+    if (!orgId) return res.status(400).json({ success: false, message: 'User must belong to an organization' })
+
     const { data } = sanitizePayload(parsed.data)
     const payload = {
       ...data,
       form_status: 1,
       added_by_user_id: req.user?.userId ? String(req.user.userId) : null,
       qualifyleads_by: req.user?.username || null,
+      organization_id: orgId,
     }
 
     const saved = await (db as any).dm_form.create({ data: payload })
@@ -279,6 +304,13 @@ router.patch('/:id', ...writeMiddlewares, async (req: any, res, next) => {
     if (!parsed.success) {
       return res.status(400).json({ success: false, message: 'Invalid payload', issues: parsed.error.flatten() })
     }
+
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
+    const existing = await (db as any).dm_form.findUnique({ where: { f_id: id }, select: { organization_id: true } });
+    if (!existing) return res.status(404).json({ success: false, message: 'Not found' });
+    if (!isSuper && existing.organization_id !== orgId) return res.status(403).json({ success: false, message: 'Access denied' });
 
     const { data, touched } = sanitizePayload(parsed.data)
     if (!touched) {

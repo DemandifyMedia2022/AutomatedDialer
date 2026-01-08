@@ -16,7 +16,8 @@
     "lint": "npm --workspace apps/frontend run lint"
   },
   "devDependencies": {
-    "concurrently": "^9.0.1"
+    "concurrently": "^9.0.1",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "jsonwebtoken": "^9.0.2",

@@ -1,17 +1,20 @@
 import { z } from 'zod'
 
 export const LoginSchema = z.object({
-  email: z.union([
-    z.string().email(),
-    z.string().regex(/^DM-[A-Za-z]{1,2}-\d{4}$/),
-  ]),
+  email: z.string().min(1),
   password: z.string().min(1),
 })
+
+export type JwtPayload = {
+  userId: number
+  role: string | null
+  // email: string // Removed for security (PII in token)
+}
 
 export const LoginResponseSchema = z.object({
   success: z.literal(true),
   token: z.string().optional(),
-  user: z.object({ id: z.number(), role: z.string(), username: z.string().nullable(), email: z.string() })
+  user: z.object({ id: z.number(), role: z.string(), username: z.string().nullable() })
 })
 
 export const ErrorResponseSchema = z.object({

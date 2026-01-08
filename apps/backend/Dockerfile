@@ -13,7 +13,8 @@ COPY apps/backend/package.json ./apps/backend/
 RUN npm install
 
 # Copy source code
-COPY . .
+# Copy source code with ownership
+COPY --chown=node:node . .
 
 WORKDIR /app/apps/backend
 
@@ -27,4 +28,5 @@ RUN npm run build
 EXPOSE 4000
 
 # Start the server
+USER node
 CMD ["npm", "start"]

@@ -12,6 +12,7 @@ export interface User {
   created_at: Date
   updated_at: Date
   last_login: Date | null
+  is_demo_user: boolean
 }
 
 export interface UserDetails extends User {
@@ -55,6 +56,7 @@ export interface CreateUserData {
   role: 'agent' | 'manager' | 'qa' | 'superadmin'
   extension?: string | null
   status?: 'active' | 'inactive' | 'suspended'
+  is_demo_user?: boolean
 }
 
 export interface UpdateUserData {
@@ -64,6 +66,7 @@ export interface UpdateUserData {
   extension?: string | null
   status?: 'active' | 'inactive' | 'suspended'
   password?: string
+  is_demo_user?: boolean
 }
 
 /**

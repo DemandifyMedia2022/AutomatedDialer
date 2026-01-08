@@ -79,13 +79,20 @@ async function ensureTable() {
   }
 }
 
-router.get('/', requireAuth, requireRoles(['manager','superadmin']), async (_req: any, res: any, next: any) => {
+router.get('/', requireAuth, requireRoles(['manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
     await ensureTable()
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     let items: any[] = []
     try {
-      const rows = await (db as any).dialer_sheets.findMany({ orderBy: { updated_at: 'desc' } })
-        items = rows.map((r: any) => ({
+      const where: any = {}
+      if (!isSuper && orgId) {
+        where.organization_id = orgId
+      }
+      const rows = await (db as any).dialer_sheets.findMany({ where, orderBy: { updated_at: 'desc' } })
+      items = rows.map((r: any) => ({
         id: r.id,
         name: r.name,
         size: Number(r.size || 0),
@@ -98,7 +105,7 @@ router.get('/', requireAuth, requireRoles(['manager','superadmin']), async (_req
         updated_at: r.updated_at,
       }))
     } catch (e) {
-      try { console.warn('[dialer-sheets] Prisma list failed, falling back to SQL', (e as any)?.message) } catch {}
+      try { console.warn('[dialer-sheets] Prisma list failed, falling back to SQL', (e as any)?.message) } catch { }
       const pool = getPool()
       const [rows]: any = await pool.query('SELECT id, name, size, mtime, active, campaign_id, campaign_name, assigned_user_ids, created_at, updated_at FROM dialer_sheets ORDER BY updated_at DESC')
       items = (rows || []).map((r: any) => ({
@@ -122,9 +129,21 @@ router.get('/my', requireAuth, async (req: any, res: any, next: any) => {
   try {
     await ensureTable()
     const userId = Number(req.user?.userId)
+    const orgId = req.user?.organizationId
     if (!Number.isFinite(userId)) return res.status(401).json({ message: 'Unauthorized' })
+
     const pool = getPool()
-    const [rows]: any = await pool.query('SELECT id, name, size, mtime, active, assigned_user_ids FROM dialer_sheets ORDER BY updated_at DESC')
+    let sql = 'SELECT id, name, size, mtime, active, assigned_user_ids FROM dialer_sheets'
+    const params: any[] = []
+
+    if (orgId) {
+      sql += ' WHERE organization_id = ?'
+      params.push(orgId)
+    }
+
+    sql += ' ORDER BY updated_at DESC'
+
+    const [rows]: any = await pool.query(sql, params)
     const items = rows
       .map((r: any) => ({
         id: r.id,
@@ -139,7 +158,7 @@ router.get('/my', requireAuth, async (req: any, res: any, next: any) => {
   } catch (e) { next(e) }
 })
 
-const writeMiddlewares: any[] = [requireAuth, requireRoles(['manager','superadmin'])]
+const writeMiddlewares: any[] = [requireAuth, requireRoles(['manager', 'superadmin'])]
 if (env.USE_AUTH_COOKIE) writeMiddlewares.push(csrfProtect)
 
 router.post('/upload', ...writeMiddlewares, upload.single('file'), async (req: any, res: any, next: any) => {
@@ -160,6 +179,9 @@ router.post('/upload', ...writeMiddlewares, upload.single('file'), async (req: a
       }
     }
 
+    const orgId = req.user?.organizationId
+    if (!orgId) return res.status(400).json({ message: 'Manager must belong to an organization' })
+
     const stat = fs.statSync(f.path)
     try {
       const upserted = await (db as any).dialer_sheets.upsert({
@@ -170,6 +192,7 @@ router.post('/upload', ...writeMiddlewares, upload.single('file'), async (req: a
           path: f.path,
           campaign_id: campaignId,
           campaign_name: campaignName,
+          organization_id: orgId,
           updated_at: new Date()
         },
         create: {
@@ -179,12 +202,13 @@ router.post('/upload', ...writeMiddlewares, upload.single('file'), async (req: a
           path: f.path,
           active: false,
           campaign_id: campaignId,
-          campaign_name: campaignName
+          campaign_name: campaignName,
+          organization_id: orgId
         },
       })
       res.status(200).json(upserted)
     } catch (e) {
-      try { console.warn('[dialer-sheets] Prisma upsert failed, falling back to SQL', (e as any)?.message) } catch {}
+      try { console.warn('[dialer-sheets] Prisma upsert failed, falling back to SQL', (e as any)?.message) } catch { }
       const pool = getPool()
       const [existing]: any = await pool.query('SELECT id FROM dialer_sheets WHERE name = ?', [f.filename])
       if (existing?.length) {
@@ -212,6 +236,14 @@ router.post('/:id/assign', ...writeMiddlewares, async (req: any, res: any, next:
     await ensureTable()
     const id = parseInt(String(req.params.id || ''), 10)
     if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ message: 'Invalid id' })
+
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
+    const item = await (db as any).dialer_sheets.findUnique({ where: { id } })
+    if (!item) return res.status(404).json({ message: 'Not found' })
+    if (!isSuper && item.organization_id !== orgId) return res.status(403).json({ message: 'Access denied' })
+
     let agentIds: number[] = Array.isArray(req.body?.agentIds) ? req.body.agentIds.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n)) : []
     if ((!agentIds || agentIds.length === 0) && Array.isArray(req.body?.usernames)) {
       const usernames = req.body.usernames.map((s: any) => String(s || '').trim()).filter(Boolean)
@@ -231,7 +263,17 @@ router.post('/:id/activate', ...writeMiddlewares, async (req: any, res: any, nex
     await ensureTable()
     const id = parseInt(String(req.params.id || ''), 10)
     if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ message: 'Invalid id' })
-    await (db as any).dialer_sheets.updateMany({ data: { active: false } })
+
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
+    const item = await (db as any).dialer_sheets.findUnique({ where: { id } })
+    if (!item) return res.status(404).json({ message: 'Not found' })
+    if (!isSuper && item.organization_id !== orgId) return res.status(403).json({ message: 'Access denied' })
+
+    const where: any = { active: true }
+    if (!isSuper && orgId) where.organization_id = orgId
+    await (db as any).dialer_sheets.updateMany({ where, data: { active: false } })
     await (db as any).dialer_sheets.update({ where: { id }, data: { active: true, updated_at: new Date() } })
     res.json({ success: true })
   } catch (e) { next(e) }
@@ -242,10 +284,16 @@ router.delete('/:id', ...writeMiddlewares, async (req: any, res: any, next: any)
     await ensureTable()
     const id = parseInt(String(req.params.id || ''), 10)
     if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ message: 'Invalid id' })
+
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     const item = await (db as any).dialer_sheets.findUnique({ where: { id } })
     if (!item) return res.status(404).json({ message: 'Not found' })
+    if (!isSuper && item.organization_id !== orgId) return res.status(403).json({ message: 'Access denied' })
+
     if (item.active) return res.status(400).json({ message: 'Cannot delete active sheet' })
-    try { if (item.path && fs.existsSync(item.path)) fs.unlinkSync(item.path) } catch {}
+    try { if (item.path && fs.existsSync(item.path)) fs.unlinkSync(item.path) } catch { }
     await (db as any).dialer_sheets.delete({ where: { id } })
     res.json({ success: true })
   } catch (e) { next(e) }
@@ -257,8 +305,15 @@ router.get('/download/:id', requireAuth, async (req: any, res: any, next: any) =
     await ensureTable()
     const id = parseInt(String(req.params.id || ''), 10)
     if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ message: 'Invalid id' })
+
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     const item = await (db as any).dialer_sheets.findUnique({ where: { id } })
     if (!item) return res.status(404).json({ message: 'Not found' })
+
+    if (!isSuper && item.organization_id !== orgId) return res.status(403).json({ message: 'Access denied' })
+
     const roles: string[] = Array.isArray(req.user?.roles) ? req.user.roles : []
     const isManager = roles.includes('manager') || roles.includes('superadmin')
     if (!isManager) {

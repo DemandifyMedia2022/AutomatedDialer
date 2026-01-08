@@ -25,6 +25,11 @@ router.use('/users', usersRoutes);
 router.use('/roles', rolesRoutes);
 router.use('/activity', activityRoutes);
 router.use('/audit', auditRoutes);
+import demoRestrictionsRoutes from './demoRestrictions';
+import organizationsRoutes from './organizations';
+
+router.use('/demo-restrictions', demoRestrictionsRoutes);
+router.use('/organizations', organizationsRoutes);
 
 /**
  * TODO: Import and mount additional superadmin route modules:

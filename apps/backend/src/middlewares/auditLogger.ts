@@ -31,17 +31,17 @@ export function auditLogger(action: string, resource: string) {
     // Capture the response
     res.json = function (body: any) {
       const responseTime = Date.now() - startTime;
-      
+
       // Determine outcome based on response
       const outcome = body?.success === false || res.statusCode >= 400 ? 'failure' : 'success';
-      
+
       // Extract resource ID from response or request
       const resourceId = body?.data?.id || req.params?.id || req.body?.id;
-      
+
       // Log audit entry asynchronously (don't block response)
       logAuditEntry({
-        userId: req.user?.userId,
-        username: req.user?.email,
+        userId: (req.user as any)?.userId,
+        username: (req.user as any)?.email,
         action,
         resource,
         resourceId: resourceId?.toString(),

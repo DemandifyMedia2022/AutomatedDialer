@@ -93,37 +93,45 @@ export async function login(req: Request, res: Response) {
     const { email, password } = parsed.data;
 
     // Allow login via email OR unique_user_id
-    const user = await db.users.findFirst({ where: { OR: [ { usermail: email }, { unique_user_id: email } ] } });
-    if (!user || !user.password) {
-      console.warn('[auth] failed login (no user)', { email });
+    // Timing attack protection: always compare password
+    const user = await db.users.findFirst({ where: { OR: [{ usermail: email }, { unique_user_id: email }] } });
+
+    // Use a dummy hash for timing if user not found (generated once or cached)
+    const dummyHash = '$2a$10$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'; // 60 chars
+    const targetHash = (user && user.password) ? user.password : dummyHash;
+
+    const ok = await bcrypt.compare(password, targetHash);
+
+    if (!user || !user.password || !ok) {
+      console.warn('[auth] failed login'); // Don't log email
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
+
+
+    // Only proceed if user exists and password correct (handled above by !ok check combined)
+    // But we need to separate status check
 
     // Check if user status is active
     if (user.status !== 'active') {
-      console.warn('[auth] failed login (inactive user)', { email, status: user.status });
+      console.warn('[auth] failed login (inactive user)');
       return res.status(401).json({ success: false, message: 'Account is inactive. Please contact administrator.' });
     }
 
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) {
-      console.warn('[auth] failed login (bad password)', { email });
-      // Log failed login attempt
-      logAuthActivity(
-        'failed_login',
-        null,
-        email,
-        req.ip || req.socket.remoteAddress || 'unknown',
-        req.get('user-agent') || 'unknown'
-      ).catch(err => console.error('Failed to log auth activity:', err));
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
-    }
-
-    const token = signJwt({ userId: user.id, role: (user.role || '').toLowerCase(), email: user.usermail || email });
+    const token = signJwt({
+      userId: user.id,
+      role: (user.role || '').toLowerCase(),
+      organizationId: user.organization_id
+    });
 
     // Ensure agent session is opened on successful login
-    try { await ensureSession(user.id, { ip: (req as any).ip, userAgent: req.headers['user-agent'] as any }) } catch {}
-    
+    // Force logout from other devices/browser tabs
+    try {
+      await closeActiveSession(user.id, 'New login detected from another device/browser');
+      await ensureSession(user.id, { ip: (req as any).ip, userAgent: req.headers['user-agent'] as any });
+    } catch (err) {
+      console.error('Failed to manage sessions during login:', err);
+    }
+
     // Log successful login (only once)
     logAuthActivity(
       'login',
@@ -150,15 +158,15 @@ export async function login(req: Request, res: Response) {
         maxAge: 1000 * 60 * 30,
         path: '/',
       });
-      
+
       return res.json({
         success: true,
         user: { id: user.id, role: user.role, username: user.username, email: user.usermail },
         csrfToken,
       });
     }
-    
-    return res.json({ success: true, token, user: { id: user.id, role: user.role, username: user.username, email: user.usermail } });
+
+    return res.json({ success: true, token, user: { id: user.id, role: user.role, username: user.username, email: user.usermail, is_demo_user: user.is_demo_user } });
   } catch (e: any) {
     return res.status(500).json({ success: false, message: e?.message || 'Login failed' });
   }
@@ -168,27 +176,73 @@ export async function me(req: Request, res: Response) {
   const u = req.user;
   if (!u) return res.status(401).json({ success: false, message: 'Unauthorized' });
   try {
-    const user = await db.users.findUnique({ where: { id: u.userId }, select: { username: true, usermail: true, role: true, id: true } });
-    return res.json({ success: true, user: { id: user?.id || u.userId, role: user?.role || u.role, username: user?.username || null, email: user?.usermail || u.email } });
+    const user = await db.users.findUnique({
+      where: { id: u.userId },
+      select: {
+        username: true,
+        usermail: true,
+        role: true,
+        id: true,
+        extension: true,
+        is_demo_user: true,
+        organization_id: true,
+        organizations: {
+          select: {
+            id: true,
+            name: true,
+            is_demo: true
+          }
+        }
+      }
+    });
+
+    const is_demo_org = user?.organizations?.is_demo || false;
+    const is_demo_user = user?.is_demo_user || is_demo_org;
+
+    return res.json({
+      success: true,
+      user: {
+        id: user?.id || u.userId,
+        role: user?.role || u.role,
+        username: user?.username || null,
+        email: user?.usermail || null,
+        extension: user?.extension || null,
+        is_demo_user,
+        is_demo_organization: is_demo_org,
+        organization_id: user?.organization_id || null,
+        organization_name: user?.organizations?.name || null
+      }
+    });
   } catch {
-    return res.json({ success: true, user: { id: u.userId, role: u.role, username: null, email: u.email } });
+    return res.json({
+      success: true,
+      user: {
+        id: u.userId,
+        role: u.role,
+        username: null,
+        email: null,
+        extension: null,
+        organization_id: u.organizationId,
+        organization_name: null
+      }
+    });
   }
 }
 
 export async function logout(req: Request, res: Response) {
-  try { if (req.user?.userId) await closeActiveSession(req.user.userId, 'user_logout') } catch {}
-  
+  try { if (req.user?.userId) await closeActiveSession(req.user.userId, 'user_logout') } catch { }
+
   // Log logout activity
   if (req.user?.userId) {
     logAuthActivity(
       'logout',
       req.user.userId,
-      req.user.email || 'unknown',
+      'unknown', // email no longer in token
       req.ip || req.socket.remoteAddress || 'unknown',
       req.get('user-agent') || 'unknown'
     ).catch(err => console.error('Failed to log auth activity:', err));
   }
-  
+
   if (env.USE_AUTH_COOKIE) {
     res.clearCookie(env.AUTH_COOKIE_NAME, { path: '/' });
     res.clearCookie('csrf_token', { path: '/' });

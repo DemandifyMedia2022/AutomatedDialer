@@ -1,5 +1,6 @@
 import { db } from '../../db/prisma';
 import { getPool } from '../../db/pool';
+import { Workbook } from 'exceljs';
 
 /**
  * Audit log service for superadmin dashboard
@@ -253,44 +254,41 @@ export async function exportAuditLogs(
       return JSON.stringify(exportData, null, 2);
 
     case 'excel':
-      // For Excel, we'll use a simple approach with CSV-like structure
-      // In a production environment, you'd use a library like exceljs
-      const excelHeaders = [
-        'ID',
-        'Timestamp',
-        'User ID',
-        'Username',
-        'Action',
-        'Resource',
-        'Resource ID',
-        'Changes',
-        'IP Address',
-        'User Agent',
-        'Outcome',
+      const workbook = new Workbook();
+      const worksheet = workbook.addWorksheet('Audit Logs');
+
+      worksheet.columns = [
+        { header: 'ID', key: 'id', width: 10 },
+        { header: 'Timestamp', key: 'timestamp', width: 25 },
+        { header: 'User ID', key: 'userId', width: 10 },
+        { header: 'Username', key: 'username', width: 20 },
+        { header: 'Action', key: 'action', width: 20 },
+        { header: 'Resource', key: 'resource', width: 20 },
+        { header: 'Resource ID', key: 'resourceId', width: 20 },
+        { header: 'Changes', key: 'changes', width: 40 },
+        { header: 'IP Address', key: 'ip', width: 15 },
+        { header: 'User Agent', key: 'userAgent', width: 30 },
+        { header: 'Outcome', key: 'outcome', width: 10 },
       ];
 
-      const excelRows = exportData.map(log => [
-        log.id,
-        log.timestamp,
-        log.userId,
-        log.username,
-        log.action,
-        log.resource,
-        log.resourceId,
-        log.changes ? JSON.stringify(log.changes) : '',
-        log.ip,
-        log.userAgent,
-        log.outcome,
-      ]);
+      exportData.forEach(log => {
+        worksheet.addRow({
+          id: log.id,
+          timestamp: log.timestamp,
+          userId: log.userId,
+          username: log.username,
+          action: log.action,
+          resource: log.resource,
+          resourceId: log.resourceId,
+          changes: log.changes ? JSON.stringify(log.changes) : '',
+          ip: log.ip,
+          userAgent: log.userAgent,
+          outcome: log.outcome,
+        });
+      });
 
-      // For now, return CSV format for Excel (can be opened in Excel)
-      // TODO: Implement proper Excel format using exceljs library
-      const excelCsvLines = [
-        excelHeaders.join(','),
-        ...excelRows.map(row => row.map(cell => escapeCSV(cell)).join(',')),
-      ];
-
-      return excelCsvLines.join('\n');
+      const buffer = await workbook.xlsx.writeBuffer();
+      return Buffer.from(buffer);
 
     case 'csv':
     default:

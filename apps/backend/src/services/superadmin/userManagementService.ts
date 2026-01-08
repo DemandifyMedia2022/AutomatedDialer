@@ -11,6 +11,7 @@ export interface UserFilters {
   search?: string;
   role?: string;
   status?: string;
+  organization_id?: number;
   page?: number;
   limit?: number;
 }
@@ -22,6 +23,8 @@ export interface CreateUserData {
   role: 'agent' | 'manager' | 'qa' | 'superadmin';
   extension?: string | null;
   status?: 'active' | 'inactive' | 'suspended';
+  is_demo_user?: boolean;
+  organization_id?: number | null;
 }
 
 export interface UpdateUserData {
@@ -31,16 +34,20 @@ export interface UpdateUserData {
   extension?: string | null;
   status?: 'active' | 'inactive' | 'suspended';
   password?: string;
+  is_demo_user?: boolean;
+  organization_id?: number | null;
 }
 
 /**
  * Get paginated list of users with optional filters
+ * For non-superadmin users, automatically filter by their organization
  */
-export async function getUsers(filters: UserFilters = {}) {
+export async function getUsers(filters: UserFilters = {}, requestingUser?: { role?: string; organizationId?: number | null }) {
   const {
     search = '',
     role,
     status,
+    organization_id,
     page = 1,
     limit = 20,
   } = filters;
@@ -66,6 +73,17 @@ export async function getUsers(filters: UserFilters = {}) {
     where.status = status;
   }
 
+  // Organization filtering logic
+  if (requestingUser?.role !== 'superadmin') {
+    // Non-superadmin users can only see users from their own organization
+    where.organization_id = requestingUser?.organizationId;
+  } else if (organization_id !== undefined) {
+    // Superadmin can filter by specific organization
+    // If organization_id is provided, only show users from that organization
+    // If organization_id is null, show users without organization
+    where.organization_id = organization_id;
+  }
+
   // Get total count for pagination
   const total = await db.users.count({ where });
 
@@ -83,8 +101,16 @@ export async function getUsers(filters: UserFilters = {}) {
       role: true,
       status: true,
       extension: true,
+      organization_id: true,
       created_at: true,
       updated_at: true,
+      is_demo_user: true,
+      organizations: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       // Get last login from agent_sessions
       agent_sessions: {
         where: { is_active: false },
@@ -95,7 +121,7 @@ export async function getUsers(filters: UserFilters = {}) {
     },
   });
 
-  // Transform data to include last_login
+  // Transform data to include last_login and organization info
   const transformedUsers = users.map(user => ({
     id: Number(user.id),
     username: user.username,
@@ -104,8 +130,11 @@ export async function getUsers(filters: UserFilters = {}) {
     role: user.role,
     status: user.status,
     extension: user.extension,
+    organization_id: user.organization_id,
+    organization_name: user.organizations?.name || null,
     created_at: user.created_at,
     updated_at: user.updated_at,
+    is_demo_user: user.is_demo_user,
     last_login: user.agent_sessions[0]?.logout_at || null,
   }));
 
@@ -122,10 +151,18 @@ export async function getUsers(filters: UserFilters = {}) {
 
 /**
  * Get user by ID with detailed information
+ * For non-superadmin users, ensure they can only access users from their organization
  */
-export async function getUserById(userId: number) {
+export async function getUserById(userId: number, requestingUser?: { role?: string; organizationId?: number | null }) {
+  const whereClause: any = { id: userId };
+
+  // Non-superadmin users can only access users from their own organization
+  if (requestingUser?.role !== 'superadmin') {
+    whereClause.organization_id = requestingUser?.organizationId;
+  }
+
   const user = await db.users.findUnique({
-    where: { id: userId },
+    where: whereClause,
     select: {
       id: true,
       username: true,
@@ -134,8 +171,16 @@ export async function getUserById(userId: number) {
       role: true,
       status: true,
       extension: true,
+      organization_id: true,
       created_at: true,
       updated_at: true,
+      is_demo_user: true,
+      organizations: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       // Get session statistics
       agent_sessions: {
         select: {
@@ -161,19 +206,29 @@ export async function getUserById(userId: number) {
     return null;
   }
 
-  // Get call count using raw query for performance
+  // Get call count using raw query for performance (with organization filter)
   const pool = getPool();
-  const [callRows]: any = await pool.query(
-    'SELECT COUNT(*) as call_count FROM calls WHERE useremail = ?',
-    [user.usermail]
-  );
+  let callQuery = 'SELECT COUNT(*) as call_count FROM calls WHERE useremail = ?';
+  let callParams = [user.usermail];
+
+  if (user.organization_id) {
+    callQuery += ' AND organization_id = ?';
+    callParams.push(String(user.organization_id));
+  }
+
+  const [callRows]: any = await pool.query(callQuery, callParams);
   const callCount = Number(callRows[0]?.call_count || 0);
 
-  // Get campaign count
-  const [campaignRows]: any = await pool.query(
-    'SELECT COUNT(DISTINCT campaign_name) as campaign_count FROM calls WHERE useremail = ?',
-    [user.usermail]
-  );
+  // Get campaign count (with organization filter)
+  let campaignQuery = 'SELECT COUNT(DISTINCT campaign_name) as campaign_count FROM calls WHERE useremail = ?';
+  let campaignParams = [user.usermail];
+
+  if (user.organization_id) {
+    campaignQuery += ' AND organization_id = ?';
+    campaignParams.push(String(user.organization_id));
+  }
+
+  const [campaignRows]: any = await pool.query(campaignQuery, campaignParams);
   const campaignCount = Number(campaignRows[0]?.campaign_count || 0);
 
   return {
@@ -184,8 +239,11 @@ export async function getUserById(userId: number) {
     role: user.role,
     status: user.status,
     extension: user.extension,
+    organization_id: user.organization_id,
+    organization_name: user.organizations?.name || null,
     created_at: user.created_at,
     updated_at: user.updated_at,
+    is_demo_user: user.is_demo_user,
     last_login: user.agent_sessions[0]?.logout_at || null,
     statistics: {
       total_calls: callCount,
@@ -207,7 +265,16 @@ export async function getUserById(userId: number) {
  * Create a new user
  */
 export async function createUser(data: CreateUserData) {
-  const { username, email, password, role, extension, status = 'active' } = data;
+  const {
+    username,
+    email,
+    password,
+    role,
+    extension,
+    status = 'active',
+    is_demo_user = false,
+    organization_id
+  } = data;
 
   // Check if user already exists
   const existing = await db.users.findFirst({
@@ -216,6 +283,54 @@ export async function createUser(data: CreateUserData) {
 
   if (existing) {
     throw new Error('User with this email already exists');
+  }
+
+  // Validate organization if provided
+  if (organization_id) {
+    const organization = await db.organizations.findUnique({
+      where: { id: organization_id },
+      select: {
+        id: true,
+        status: true,
+        max_users: true,
+        max_agents: true,
+        max_managers: true,
+        max_qa: true,
+        _count: { select: { users: true } }
+      },
+    });
+
+    if (!organization) {
+      throw new Error('Organization not found');
+    }
+
+    if (organization.status !== 'active') {
+      throw new Error('Cannot add users to inactive organization');
+    }
+
+    // Check organization total user limit
+    if (organization._count.users >= organization.max_users) {
+      throw new Error(`Organization has reached its total user limit of ${organization.max_users}`);
+    }
+
+    // Check role-specific limits
+    if (role === 'agent' || role === 'manager' || role === 'qa') {
+      const roleCount = await db.users.count({
+        where: { organization_id, role }
+      });
+
+      const limit = role === 'agent' ? organization.max_agents :
+        role === 'manager' ? organization.max_managers :
+          organization.max_qa;
+
+      const limitLabel = role === 'agent' ? 'Agent' :
+        role === 'manager' ? 'Manager' :
+          'QA';
+
+      if (roleCount >= (limit || 0)) {
+        throw new Error(`Organization has reached its ${limitLabel} limit of ${limit}`);
+      }
+    }
   }
 
   // If creating an agent, validate extension
@@ -256,6 +371,8 @@ export async function createUser(data: CreateUserData) {
       status,
       unique_user_id: uniqueUserId,
       extension: extension || null,
+      is_demo_user,
+      organization_id,
     },
     select: {
       id: true,
@@ -265,8 +382,16 @@ export async function createUser(data: CreateUserData) {
       role: true,
       status: true,
       extension: true,
+      organization_id: true,
+      is_demo_user: true,
       created_at: true,
       updated_at: true,
+      organizations: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
     },
   });
 
@@ -278,6 +403,9 @@ export async function createUser(data: CreateUserData) {
     role: user.role,
     status: user.status,
     extension: user.extension,
+    organization_id: user.organization_id,
+    organization_name: user.organizations?.name || null,
+    is_demo_user: user.is_demo_user,
     created_at: user.created_at,
     updated_at: user.updated_at,
   };
@@ -373,6 +501,76 @@ export async function updateUser(userId: number, data: UpdateUserData) {
     updateData.password = await bcrypt.hash(data.password, 10);
   }
 
+  if (data.is_demo_user !== undefined) {
+    updateData.is_demo_user = data.is_demo_user;
+  }
+
+  if (data.organization_id !== undefined) {
+    if (data.organization_id === null) {
+      updateData.organization_id = null;
+    } else {
+      // Validate organization exists and is active
+      const organization = await db.organizations.findUnique({
+        where: { id: data.organization_id },
+        select: {
+          id: true,
+          status: true,
+          max_users: true,
+          max_agents: true,
+          max_managers: true,
+          max_qa: true,
+          _count: { select: { users: true } }
+        },
+      });
+
+      if (!organization) {
+        throw new Error('Organization not found');
+      }
+
+      if (organization.status !== 'active') {
+        throw new Error('Cannot assign users to inactive organization');
+      }
+
+      // Check organization total user limit (excluding current user if already in this org)
+      const currentUserCountInOrg = await db.users.count({
+        where: {
+          organization_id: data.organization_id,
+          NOT: { id: userId },
+        },
+      });
+
+      if (currentUserCountInOrg >= (organization.max_users || 0)) {
+        throw new Error(`Organization has reached its total user limit of ${organization.max_users}`);
+      }
+
+      // Check role-specific limits
+      const effectiveRole = data.role || existingUser.role;
+      if (effectiveRole === 'agent' || effectiveRole === 'manager' || effectiveRole === 'qa') {
+        const roleCount = await db.users.count({
+          where: {
+            organization_id: data.organization_id,
+            role: effectiveRole,
+            NOT: { id: userId }
+          }
+        });
+
+        const limit = effectiveRole === 'agent' ? organization.max_agents :
+          effectiveRole === 'manager' ? organization.max_managers :
+            organization.max_qa;
+
+        const limitLabel = effectiveRole === 'agent' ? 'Agent' :
+          effectiveRole === 'manager' ? 'Manager' :
+            'QA';
+
+        if (roleCount >= (limit || 0)) {
+          throw new Error(`Organization has reached its ${limitLabel} limit of ${limit}`);
+        }
+      }
+
+      updateData.organization_id = data.organization_id;
+    }
+  }
+
   // Update user
   const updatedUser = await db.users.update({
     where: { id: userId },
@@ -385,8 +583,16 @@ export async function updateUser(userId: number, data: UpdateUserData) {
       role: true,
       status: true,
       extension: true,
+      organization_id: true,
       created_at: true,
       updated_at: true,
+      is_demo_user: true,
+      organizations: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
     },
   });
 
@@ -398,6 +604,9 @@ export async function updateUser(userId: number, data: UpdateUserData) {
     role: updatedUser.role,
     status: updatedUser.status,
     extension: updatedUser.extension,
+    organization_id: updatedUser.organization_id,
+    organization_name: updatedUser.organizations?.name || null,
+    is_demo_user: updatedUser.is_demo_user,
     created_at: updatedUser.created_at,
     updated_at: updatedUser.updated_at,
   };
@@ -477,8 +686,15 @@ export async function updateUserStatus(
       role: true,
       status: true,
       extension: true,
+      organization_id: true,
       created_at: true,
       updated_at: true,
+      organizations: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
     },
   });
 
@@ -490,6 +706,8 @@ export async function updateUserStatus(
     role: updatedUser.role,
     status: updatedUser.status,
     extension: updatedUser.extension,
+    organization_id: updatedUser.organization_id,
+    organization_name: updatedUser.organizations?.name || null,
     created_at: updatedUser.created_at,
     updated_at: updatedUser.updated_at,
   };
@@ -533,8 +751,15 @@ export async function assignRole(
       role: true,
       status: true,
       extension: true,
+      organization_id: true,
       created_at: true,
       updated_at: true,
+      organizations: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
     },
   });
 
@@ -546,6 +771,8 @@ export async function assignRole(
     role: updatedUser.role,
     status: updatedUser.status,
     extension: updatedUser.extension,
+    organization_id: updatedUser.organization_id,
+    organization_name: updatedUser.organizations?.name || null,
     created_at: updatedUser.created_at,
     updated_at: updatedUser.updated_at,
   };

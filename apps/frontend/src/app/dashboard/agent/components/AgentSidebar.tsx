@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { PhoneCall, ListCheck, Users, Settings2, Phone, Bot, TrendingUp } from "lucide-react"
+import { LucideIcon, PhoneCall, ListCheck, Users, Settings2, Phone } from "lucide-react"
 import { NavMain } from "@/components/layout/nav-main"
 import { NavUser } from "@/components/layout/nav-user"
 import {
@@ -17,7 +17,24 @@ import {
 import { useAuth } from "@/hooks/useAuth"
 import AgentPresenceWidget from "@/components/agent/AgentPresenceWidget"
 
-const data = {
+interface NavItem {
+  title: string
+  url: string
+  icon?: LucideIcon
+  isActive?: boolean
+  featureKey?: string
+  items?: {
+    title: string
+    url: string
+    featureKey?: string
+  }[]
+}
+
+const data: {
+  user: { name: string; email: string; avatar: string }
+  company: { name: string; logo: LucideIcon }
+  navMain: NavItem[]
+} = {
   user: {
     name: "Agent",
     email: "agent@example.com",
@@ -28,21 +45,22 @@ const data = {
     logo: Phone,
   },
   navMain: [
-
     {
       title: "Dialer",
       url: "/dashboard/agent/dialer",
       icon: PhoneCall,
       isActive: true,
       items: [
-        { title: "Manual", url: "/dashboard/agent/dialer/manual" },
-        { title: "Automated", url: "/dashboard/agent/dialer/automated" },
+        { title: "Manual", url: "/dashboard/agent/dialer/manual", featureKey: 'agent-dialer-manual' },
+        { title: "Automated", url: "/dashboard/agent/dialer/automated", featureKey: 'agent-dialer-automated' },
+        { title: "GSM Dialer", url: "/dashboard/agent/dialer/gsm-dialer", featureKey: 'agent-dialer-gsm' },
       ],
     },
     {
       title: "Campaigns",
       url: "/dashboard/agent/campaigns",
       icon: ListCheck,
+      featureKey: 'agent-campaigns',
       items: [
         { title: "Active Campaigns", url: "/dashboard/agent/campaigns/active" },
         { title: "Campaign History", url: "/dashboard/agent/campaigns/campaign-history" },
@@ -52,6 +70,7 @@ const data = {
       title: "My Calls",
       url: "/dashboard/agent/my-calls",
       icon: Users,
+      featureKey: 'agent-calls',
       items: [
         { title: "Call History", url: "/dashboard/agent/my-calls/call-history" },
         { title: "Lead Details", url: "/dashboard/agent/my-calls/lead-details" },
@@ -62,6 +81,7 @@ const data = {
       title: "Settings",
       url: "/dashboard/agent/settings",
       icon: Settings2,
+      featureKey: 'settings',
       items: [
         { title: "Profile", url: "/dashboard/agent/settings/profile" },
       ],
@@ -71,19 +91,21 @@ const data = {
 
 export function AgentSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user } = useAuth()
+
   const displayUser = {
-    name: user?.email
+    name: user?.username || (user?.email
       ? user.email
         .split("@")[0]
         .replace(/[._-]+/g, " ")
         .split(" ")
         .filter(Boolean)
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(" ")
-      : data.user.name,
+      : data.user.name),
     email: user?.email || data.user.email,
     avatar: "",
   }
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>

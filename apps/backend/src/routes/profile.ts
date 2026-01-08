@@ -10,13 +10,48 @@ const router = Router()
 
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
-    const u = req.user!
-    const user = await db.users.findUnique({ where: { id: u.userId }, select: { username: true, usermail: true, id: true, role: true } })
-    return res.json({ success: true, user: { id: user?.id || u.userId, role: user?.role || u.role, username: user?.username || null, email: user?.usermail || u.email } })
+    const u = (req.user as any)!
+    const user = await db.users.findUnique({ where: { id: u.userId }, select: { username: true, usermail: true, id: true, role: true, extension: true, status: true } })
+    return res.json({ success: true, user: { id: user?.id || u.userId, role: user?.role || u.role, username: user?.username || null, email: user?.usermail || u.email, extension: user?.extension || null, status: user?.status || null } })
   } catch (e) {
     next(e)
   }
 })
+
+// Get restrictions for current user (if demo)
+router.get('/me/restrictions', requireAuth, async (req: any, res, next) => {
+  try {
+    const userId = req.user?.userId;
+    const user = await db.users.findUnique({
+      where: { id: userId },
+      select: {
+        role: true,
+        is_demo_user: true,
+        organizations: {
+          select: { is_demo: true }
+        }
+      }
+    });
+
+    const isDemo = user?.is_demo_user || user?.organizations?.is_demo;
+
+    if (!user || !isDemo) {
+      return res.json({ restrictions: [] });
+    }
+
+    const restrictions = await db.demo_feature_restrictions.findMany({
+      where: {
+        role: user.role,
+        is_locked: true
+      },
+      select: { feature_key: true }
+    });
+
+    res.json({ restrictions: restrictions.map(r => r.feature_key) });
+  } catch (e) {
+    next(e);
+  }
+});
 
 const protectIfCookie = env.USE_AUTH_COOKIE ? [csrfProtect] : []
 

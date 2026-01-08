@@ -417,7 +417,7 @@ export default function Page() {
             />
           </div>
 
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-3">
             <CallsTrendChart
               data={series}
               range={range}
@@ -436,7 +436,12 @@ export default function Page() {
                       <CardDescription>Top performers</CardDescription>
                     </div>
                   </div>
-                  <PeriodSwitcher value={leaderboardView} onChange={setLeaderboardView} />
+                  <Tabs value={leaderboardView} onValueChange={(v) => setLeaderboardView(v as 'daily' | 'monthly')} className="w-auto">
+                    <TabsList className="grid w-full grid-cols-2 h-8">
+                      <TabsTrigger value="daily" className="text-xs px-2 h-6">Daily</TabsTrigger>
+                      <TabsTrigger value="monthly" className="text-xs px-2 h-6">Monthly</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
                 </div>
               </CardHeader>
               <CardContent>

@@ -61,6 +61,7 @@ model calls {
   follow_up                   Boolean?                     @default(false)
   schedule_call               DateTime?                    @db.Timestamp(0)
   Followup_notes              String?                      @db.Text
+  organization_id             Int?
   call_transcription_metadata call_transcription_metadata?
   notes                       notes[]
   qa_call_reviews             qa_call_reviews[]
@@ -68,20 +69,26 @@ model calls {
   transcription_segments      transcription_segments[]
   transcription_sessions      transcription_sessions[]
   transcripts                 transcripts[]
+
+  @@index([organization_id], map: "idx_calls_organization")
 }
 
 model campaigns {
-  id            Int       @id @default(autoincrement())
-  campaign_id   Int?
-  campaign_name String?   @db.VarChar(255)
-  start_date    DateTime? @db.DateTime(6)
-  end_date      DateTime? @db.DateTime(6)
-  allocations   String?   @db.VarChar(255)
-  assigned_to   String?   @db.VarChar(255)
-  status        String?   @db.VarChar(255)
-  method        String?   @db.VarChar(255)
-  created_at    DateTime? @db.Timestamp(6)
-  updated_at    DateTime? @db.Timestamp(6)
+  id              Int            @id @default(autoincrement())
+  campaign_id     Int?
+  campaign_name   String?        @db.VarChar(255)
+  start_date      DateTime?      @db.DateTime(6)
+  end_date        DateTime?      @db.DateTime(6)
+  allocations     String?        @db.VarChar(255)
+  assigned_to     String?        @db.VarChar(255)
+  status          String?        @db.VarChar(255)
+  method          String?        @db.VarChar(255)
+  created_at      DateTime?      @db.Timestamp(6)
+  updated_at      DateTime?      @db.Timestamp(6)
+  organization_id Int?
+  organizations   organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_campaigns_organization")
+
+  @@index([organization_id], map: "idx_campaigns_organization")
 }
 
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
@@ -106,6 +113,8 @@ model users {
   status                                                  String?                  @db.VarChar(255)
   created_at                                              DateTime?                @db.Timestamp(6)
   updated_at                                              DateTime?                @db.Timestamp(6)
+  is_demo_user                                            Boolean?                 @default(false)
+  organization_id                                         Int?
   agent_breaks                                            agent_breaks[]
   agent_heartbeats                                        agent_heartbeats[]
   agent_presence_events                                   agent_presence_events[]
@@ -117,6 +126,9 @@ model users {
   qa_call_reviews_qa_call_reviews_agent_user_idTousers    qa_call_reviews[]        @relation("qa_call_reviews_agent_user_idTousers")
   qa_call_reviews_qa_call_reviews_reviewer_user_idTousers qa_call_reviews[]        @relation("qa_call_reviews_reviewer_user_idTousers")
   transcription_sessions                                  transcription_sessions[]
+  organizations                                           organizations?           @relation(fields: [organization_id], references: [id], map: "fk_users_organization")
+
+  @@index([organization_id], map: "idx_users_organization")
 }
 
 model transcripts {
@@ -141,45 +153,57 @@ model transcripts {
 }
 
 model agentic_campaigns {
-  id           Int      @id @default(autoincrement())
-  module       String   @unique @db.VarChar(255)
-  name         String   @db.VarChar(255)
-  agent_text   String   @db.Text
-  session_text String   @db.Text
-  created_at   DateTime @default(now()) @db.Timestamp(0)
-  updated_at   DateTime @default(now()) @db.Timestamp(0)
+  id              Int            @id @default(autoincrement())
+  module          String         @unique @db.VarChar(255)
+  name            String         @db.VarChar(255)
+  agent_text      String         @db.Text
+  session_text    String         @db.Text
+  created_at      DateTime       @default(now()) @db.Timestamp(0)
+  updated_at      DateTime       @default(now()) @db.Timestamp(0)
+  organization_id Int?
+  organizations   organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_agentic_campaigns_organization")
+
+  @@index([organization_id], map: "idx_agentic_campaigns_organization")
 }
 
 model agentic_csv_files {
-  id         Int      @id @default(autoincrement())
-  name       String   @unique @db.VarChar(255)
-  size       Int
-  mtime      BigInt
-  active     Boolean  @default(false)
-  created_at DateTime @default(now()) @db.Timestamp(0)
-  updated_at DateTime @default(now()) @db.Timestamp(0)
+  id              Int            @id @default(autoincrement())
+  name            String         @unique @db.VarChar(255)
+  size            Int
+  mtime           BigInt
+  active          Boolean        @default(false)
+  created_at      DateTime       @default(now()) @db.Timestamp(0)
+  updated_at      DateTime       @default(now()) @db.Timestamp(0)
+  organization_id Int?
+  organizations   organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_agentic_csv_files_organization")
+
+  @@index([organization_id], map: "idx_agentic_csv_files_organization")
 }
 
 model dialing_contacts {
-  id             BigInt                  @id @default(autoincrement())
-  campaign_id    BigInt?
-  csv_name       String?                 @db.VarChar(255)
-  phone          String                  @db.VarChar(64)
-  name           String?                 @db.VarChar(255)
-  email          String?                 @db.VarChar(255)
-  company        String?                 @db.VarChar(255)
-  job_title      String?                 @db.VarChar(255)
-  job_level      String?                 @db.VarChar(64)
-  region         String?                 @db.VarChar(64)
-  remarks        String?                 @db.Text
-  priority       Int?                    @default(0)
-  timezone       String?                 @db.VarChar(64)
-  consent        Boolean?
-  status         dialing_contacts_status @default(PENDING)
-  attempts       Int                     @default(0)
-  last_called_at DateTime?               @db.DateTime(0)
-  created_at     DateTime                @default(now()) @db.DateTime(0)
-  updated_at     DateTime                @default(now()) @db.DateTime(0)
+  id              BigInt                  @id @default(autoincrement())
+  campaign_id     BigInt?
+  csv_name        String?                 @db.VarChar(255)
+  phone           String                  @db.VarChar(64)
+  name            String?                 @db.VarChar(255)
+  email           String?                 @db.VarChar(255)
+  company         String?                 @db.VarChar(255)
+  job_title       String?                 @db.VarChar(255)
+  job_level       String?                 @db.VarChar(64)
+  region          String?                 @db.VarChar(64)
+  remarks         String?                 @db.Text
+  priority        Int?                    @default(0)
+  timezone        String?                 @db.VarChar(64)
+  consent         Boolean?
+  status          dialing_contacts_status @default(PENDING)
+  attempts        Int                     @default(0)
+  last_called_at  DateTime?               @db.DateTime(0)
+  created_at      DateTime                @default(now()) @db.DateTime(0)
+  updated_at      DateTime                @default(now()) @db.DateTime(0)
+  organization_id Int?
+  organizations   organizations?          @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_dialing_contacts_organization")
+
+  @@index([organization_id], map: "idx_dialing_contacts_organization")
 }
 
 model document_shares {
@@ -210,31 +234,37 @@ model documents {
   visibility       documents_visibility @default(org)
   created_at       DateTime             @default(now()) @db.Timestamp(0)
   updated_at       DateTime             @default(now()) @db.Timestamp(0)
+  organization_id  Int?
   document_shares  document_shares[]
+  organizations    organizations?       @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_documents_organization")
   users            users                @relation(fields: [created_by], references: [id], map: "fk_documents_user")
 
   @@index([created_by], map: "idx_documents_created_by")
   @@index([type], map: "idx_documents_type")
   @@index([visibility], map: "idx_documents_visibility")
+  @@index([organization_id], map: "idx_documents_organization")
 }
 
 model notes {
-  id         Int              @id @default(autoincrement())
-  user_id    Int
-  call_id    BigInt?
-  phone_e164 String           @default("") @db.VarChar(32)
-  title      String           @db.VarChar(255)
-  body       String           @db.Text
-  tags_csv   String           @default("") @db.VarChar(500)
-  visibility notes_visibility @default(private)
-  created_at DateTime         @default(now()) @db.Timestamp(0)
-  updated_at DateTime         @default(now()) @db.Timestamp(0)
-  calls      calls?           @relation(fields: [call_id], references: [id], map: "fk_notes_call")
-  users      users            @relation(fields: [user_id], references: [id], onDelete: Cascade, map: "fk_notes_user")
+  id              Int              @id @default(autoincrement())
+  user_id         Int
+  call_id         BigInt?
+  phone_e164      String           @default("") @db.VarChar(32)
+  title           String           @db.VarChar(255)
+  body            String           @db.Text
+  tags_csv        String           @default("") @db.VarChar(500)
+  visibility      notes_visibility @default(private)
+  created_at      DateTime         @default(now()) @db.Timestamp(0)
+  updated_at      DateTime         @default(now()) @db.Timestamp(0)
+  organization_id Int?
+  calls           calls?           @relation(fields: [call_id], references: [id], map: "fk_notes_call")
+  organizations   organizations?   @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_notes_organization")
+  users           users            @relation(fields: [user_id], references: [id], onDelete: Cascade, map: "fk_notes_user")
 
   @@index([call_id], map: "idx_notes_call_id")
   @@index([phone_e164], map: "idx_notes_phone")
   @@index([user_id, created_at], map: "idx_notes_user_created")
+  @@index([organization_id], map: "idx_notes_organization")
 }
 
 model agent_breaks {
@@ -245,6 +275,8 @@ model agent_breaks {
   start_at        DateTime               @default(now()) @db.DateTime(6)
   end_at          DateTime?              @db.DateTime(6)
   ended_by        agent_breaks_ended_by?
+  organization_id Int?
+  organizations   organizations?         @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_agent_breaks_organization")
   break_reasons   break_reasons?         @relation(fields: [break_reason_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_breaks_reason")
   agent_sessions  agent_sessions         @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_breaks_session")
   users           users                  @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_breaks_user")
@@ -253,37 +285,44 @@ model agent_breaks {
   @@index([session_id], map: "idx_breaks_session")
   @@index([start_at, end_at], map: "idx_breaks_time")
   @@index([user_id, session_id], map: "idx_breaks_user_session")
+  @@index([organization_id], map: "idx_agent_breaks_organization")
 }
 
 model agent_heartbeats {
-  id             BigInt         @id @default(autoincrement())
-  user_id        Int
-  session_id     BigInt
-  ts             DateTime       @default(now()) @db.DateTime(6)
-  client_state   String?        @db.LongText
-  ip             String?        @db.VarChar(45)
-  agent_sessions agent_sessions @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_heartbeats_session")
-  users          users          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_heartbeats_user")
+  id              BigInt         @id @default(autoincrement())
+  user_id         Int
+  session_id      BigInt
+  ts              DateTime       @default(now()) @db.DateTime(6)
+  client_state    String?        @db.LongText
+  ip              String?        @db.VarChar(45)
+  organization_id Int?
+  organizations   organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_agent_heartbeats_organization")
+  agent_sessions  agent_sessions @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_heartbeats_session")
+  users           users          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_heartbeats_user")
 
   @@index([session_id, ts], map: "idx_heartbeats_session_ts")
   @@index([user_id, ts], map: "idx_heartbeats_user_ts")
+  @@index([organization_id], map: "idx_agent_heartbeats_organization")
 }
 
 model agent_presence_events {
-  id             BigInt                             @id @default(autoincrement())
-  user_id        Int
-  session_id     BigInt
-  event_type     agent_presence_events_event_type
-  from_status    agent_presence_events_from_status?
-  to_status      agent_presence_events_to_status?
-  ts             DateTime                           @default(now()) @db.DateTime(6)
-  meta           String?                            @db.LongText
-  agent_sessions agent_sessions                     @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_presence_events_session")
-  users          users                              @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_presence_events_user")
+  id              BigInt                             @id @default(autoincrement())
+  user_id         Int
+  session_id      BigInt
+  event_type      agent_presence_events_event_type
+  from_status     agent_presence_events_from_status?
+  to_status       agent_presence_events_to_status?
+  ts              DateTime                           @default(now()) @db.DateTime(6)
+  meta            String?                            @db.LongText
+  organization_id Int?
+  organizations   organizations?                     @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_agent_presence_events_organization")
+  agent_sessions  agent_sessions                     @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_presence_events_session")
+  users           users                              @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_presence_events_user")
 
   @@index([session_id, ts], map: "idx_presence_session_ts")
   @@index([event_type, ts], map: "idx_presence_type_ts")
   @@index([user_id, ts], map: "idx_presence_user_ts")
+  @@index([organization_id], map: "idx_agent_presence_events_organization")
 }
 
 model agent_sessions {
@@ -298,54 +337,68 @@ model agent_sessions {
   end_reason            String?                       @db.VarChar(255)
   is_active             Boolean                       @default(true)
   initial_status        agent_sessions_initial_status @default(AVAILABLE)
+  organization_id       Int?
   agent_breaks          agent_breaks[]
   agent_heartbeats      agent_heartbeats[]
   agent_presence_events agent_presence_events[]
+  organizations         organizations?                @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_agent_sessions_organization")
   users                 users                         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_agent_sessions_user")
 
   @@index([is_active], map: "idx_agent_sessions_active")
   @@index([last_activity_at], map: "idx_agent_sessions_last_activity")
   @@index([user_id, is_active], map: "idx_agent_sessions_user_active")
+  @@index([organization_id], map: "idx_agent_sessions_organization")
 }
 
 model break_reasons {
-  id           Int            @id @default(autoincrement())
-  code         String         @unique(map: "code") @db.VarChar(64)
-  label        String         @db.VarChar(255)
-  active       Boolean        @default(true)
-  created_at   DateTime       @default(now()) @db.DateTime(6)
-  updated_at   DateTime       @default(now()) @db.DateTime(6)
-  agent_breaks agent_breaks[]
+  id              Int            @id @default(autoincrement())
+  code            String         @unique(map: "code") @db.VarChar(64)
+  label           String         @db.VarChar(255)
+  active          Boolean        @default(true)
+  created_at      DateTime       @default(now()) @db.DateTime(6)
+  updated_at      DateTime       @default(now()) @db.DateTime(6)
+  organization_id Int?
+  agent_breaks    agent_breaks[]
+  organizations   organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_break_reasons_organization")
+
+  @@index([organization_id], map: "idx_break_reasons_organization")
 }
 
 model dialer_sheets {
-  id                Int       @id @default(autoincrement())
-  name              String    @db.VarChar(255)
+  id                Int            @id @default(autoincrement())
+  name              String         @db.VarChar(255)
   size              BigInt?
   mtime             BigInt?
-  path              String    @db.VarChar(512)
-  active            Boolean?  @default(false)
+  path              String         @db.VarChar(512)
+  active            Boolean?       @default(false)
   campaign_id       Int?
-  campaign_name     String?   @db.VarChar(255)
-  assigned_user_ids String?   @db.Text
-  created_at        DateTime? @default(now()) @db.DateTime(0)
-  updated_at        DateTime? @default(now()) @db.DateTime(0)
+  campaign_name     String?        @db.VarChar(255)
+  assigned_user_ids String?        @db.Text
+  created_at        DateTime?      @default(now()) @db.DateTime(0)
+  updated_at        DateTime?      @default(now()) @db.DateTime(0)
+  organization_id   Int?
+  organizations     organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_dialer_sheets_organization")
+
+  @@index([organization_id], map: "idx_dialer_sheets_organization")
 }
 
 model password_resets {
-  id          BigInt    @id @default(autoincrement())
-  user_id     Int
-  otp_hash    String    @db.VarChar(255)
-  reset_token String    @unique(map: "uq_password_resets_reset_token") @db.Char(36)
-  expires_at  DateTime  @db.DateTime(6)
-  attempts    Int       @default(0)
-  used_at     DateTime? @db.DateTime(6)
-  created_at  DateTime  @default(now()) @db.DateTime(6)
-  updated_at  DateTime  @default(now()) @db.DateTime(6)
-  users       users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_password_resets_user")
+  id              BigInt         @id @default(autoincrement())
+  user_id         Int
+  otp_hash        String         @db.VarChar(255)
+  reset_token     String         @unique(map: "uq_password_resets_reset_token") @db.Char(36)
+  expires_at      DateTime       @db.DateTime(6)
+  attempts        Int            @default(0)
+  used_at         DateTime?      @db.DateTime(6)
+  created_at      DateTime       @default(now()) @db.DateTime(6)
+  updated_at      DateTime       @default(now()) @db.DateTime(6)
+  organization_id Int?
+  organizations   organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_password_resets_organization")
+  users           users          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_password_resets_user")
 
   @@index([user_id, used_at, expires_at], map: "idx_password_resets_active")
   @@index([user_id], map: "idx_password_resets_user")
+  @@index([organization_id], map: "idx_password_resets_organization")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -427,157 +480,177 @@ model transcription_sessions {
 }
 
 model qa_call_reviews {
-  id                                            BigInt   @id @default(autoincrement())
+  id                                            BigInt         @id @default(autoincrement())
   call_id                                       BigInt
   reviewer_user_id                              Int
   agent_user_id                                 Int?
-  overall_score                                 Int?     @db.TinyInt
-  tone_score                                    Int?     @db.TinyInt
-  compliance_score                              Int?     @db.TinyInt
-  is_lead                                       Boolean  @default(false)
-  lead_quality                                  String   @default("none") @db.VarChar(32)
-  lead_tags_csv                                 String   @default("") @db.VarChar(500)
-  disposition_override                          String?  @db.VarChar(255)
-  comments                                      String?  @db.Text
-  issues_json                                   String?  @db.LongText
-  created_at                                    DateTime @default(now()) @db.Timestamp(0)
-  updated_at                                    DateTime @default(now()) @db.Timestamp(0)
-  users_qa_call_reviews_agent_user_idTousers    users?   @relation("qa_call_reviews_agent_user_idTousers", fields: [agent_user_id], references: [id], onUpdate: Restrict, map: "fk_qa_reviews_agent")
-  calls                                         calls    @relation(fields: [call_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_qa_reviews_call")
-  users_qa_call_reviews_reviewer_user_idTousers users    @relation("qa_call_reviews_reviewer_user_idTousers", fields: [reviewer_user_id], references: [id], onUpdate: Restrict, map: "fk_qa_reviews_reviewer")
+  overall_score                                 Int?           @db.TinyInt
+  tone_score                                    Int?           @db.TinyInt
+  compliance_score                              Int?           @db.TinyInt
+  is_lead                                       Boolean        @default(false)
+  lead_quality                                  String         @default("none") @db.VarChar(32)
+  lead_tags_csv                                 String         @default("") @db.VarChar(500)
+  disposition_override                          String?        @db.VarChar(255)
+  comments                                      String?        @db.Text
+  issues_json                                   String?        @db.LongText
+  created_at                                    DateTime       @default(now()) @db.Timestamp(0)
+  updated_at                                    DateTime       @default(now()) @db.Timestamp(0)
+  organization_id                               Int?
+  organizations                                 organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_qa_call_reviews_organization")
+  users_qa_call_reviews_agent_user_idTousers    users?         @relation("qa_call_reviews_agent_user_idTousers", fields: [agent_user_id], references: [id], onUpdate: Restrict, map: "fk_qa_reviews_agent")
+  calls                                         calls          @relation(fields: [call_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_qa_reviews_call")
+  users_qa_call_reviews_reviewer_user_idTousers users          @relation("qa_call_reviews_reviewer_user_idTousers", fields: [reviewer_user_id], references: [id], onUpdate: Restrict, map: "fk_qa_reviews_reviewer")
 
   @@index([agent_user_id], map: "idx_qa_reviews_agent_id")
   @@index([call_id], map: "idx_qa_reviews_call_id")
   @@index([is_lead], map: "idx_qa_reviews_is_lead")
   @@index([lead_quality], map: "idx_qa_reviews_lead_quality")
   @@index([reviewer_user_id], map: "idx_qa_reviews_reviewer_id")
+  @@index([organization_id], map: "idx_qa_call_reviews_organization")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model dm_form {
-  f_id              Int      @id @default(autoincrement())
-  f_campaign_name   String?  @db.VarChar(255)
-  f_lead            String?  @db.VarChar(255)
-  f_resource_name   String?  @db.VarChar(255)
-  f_data_source     String?  @db.VarChar(255)
-  unique_id         String?  @db.VarChar(255)
-  f_salutation      String?  @db.VarChar(255)
-  f_first_name      String?  @db.Text
-  f_last_name       String?  @db.Text
-  f_job_title       String?  @db.VarChar(255)
-  f_department      String?  @db.VarChar(255)
-  f_job_level       String?  @db.VarChar(255)
-  f_email_add       String?  @db.VarChar(255)
-  Secondary_Email   String?  @db.VarChar(255)
-  f_conatct_no      String?  @db.VarChar(50)
-  f_company_name    String?  @db.VarChar(255)
-  f_website         String?  @db.VarChar(1000)
-  f_address1        String?  @db.VarChar(1000)
-  f_city            String?  @db.VarChar(255)
-  f_state           String?  @db.VarChar(255)
-  f_zip_code        String?  @db.VarChar(255)
-  f_country         String?  @db.VarChar(255)
-  f_emp_size        String?  @db.VarChar(255)
-  f_industry        String?  @db.VarChar(255)
-  f_sub_industry    String?  @db.VarChar(255)
-  f_revenue         String?  @db.VarChar(255)
-  f_revenue_link    String?  @db.VarChar(1000)
-  f_profile_link    String?  @db.Text
-  f_company_link    String?  @db.Text
-  f_address_link    String?  @db.Text
-  f_cq1             String?  @db.VarChar(255)
-  f_cq2             String?  @db.Text
-  f_cq3             String?  @db.VarChar(255)
-  f_cq4             String?  @db.VarChar(255)
-  f_cq5             String?  @db.VarChar(255)
-  f_cq6             String?  @db.VarChar(255)
-  f_cq7             String?  @db.VarChar(255)
-  f_cq8             String?  @db.VarChar(255)
-  f_cq9             String?  @db.VarChar(255)
-  f_cq10            String?  @db.VarChar(255)
-  f_asset_name1     String?  @db.VarChar(255)
-  f_asset_name2     String?  @db.VarChar(255)
-  f_call_recording  String?  @db.VarChar(255)
-  f_email_status    String?  @db.VarChar(255)
-  f_qa_status       String?  @db.VarChar(255)
-  f_dq_reason1      String?  @db.VarChar(255)
-  f_dq_reason2      String?  @db.VarChar(255)
-  f_dq_reason3      String?  @db.VarChar(255)
-  f_dq_reason4      String?  @db.VarChar(255)
-  f_qa_comments     String?  @db.Text
-  f_call_rating     String?  @db.VarChar(255)
-  f_call_notes      String?  @db.Text
-  feedback          String?  @db.Text
-  f_call_links      String?  @db.VarChar(255)
-  f_qa_name         String?  @db.VarChar(255)
-  f_audit_date      String?  @db.VarChar(55)
-  f_delivary_status String?  @db.VarChar(11)
-  f_delivary_date   String?  @db.VarChar(11)
-  f_delivary_by     String?  @db.VarChar(11)
-  f_reject_reason   String?  @db.VarChar(255)
-  added_by_user_id  String?  @db.VarChar(55)
-  qualifyleads_by   String?  @db.VarChar(255)
-  f_date            DateTime @default(now()) @db.Timestamp(0)
+  f_id              Int            @id @default(autoincrement())
+  f_campaign_name   String?        @db.VarChar(255)
+  f_lead            String?        @db.VarChar(255)
+  f_resource_name   String?        @db.VarChar(255)
+  f_data_source     String?        @db.VarChar(255)
+  unique_id         String?        @db.VarChar(255)
+  f_salutation      String?        @db.VarChar(255)
+  f_first_name      String?        @db.Text
+  f_last_name       String?        @db.Text
+  f_job_title       String?        @db.VarChar(255)
+  f_department      String?        @db.VarChar(255)
+  f_job_level       String?        @db.VarChar(255)
+  f_email_add       String?        @db.VarChar(255)
+  Secondary_Email   String?        @db.VarChar(255)
+  f_conatct_no      String?        @db.VarChar(50)
+  f_company_name    String?        @db.VarChar(255)
+  f_website         String?        @db.VarChar(1000)
+  f_address1        String?        @db.VarChar(1000)
+  f_city            String?        @db.VarChar(255)
+  f_state           String?        @db.VarChar(255)
+  f_zip_code        String?        @db.VarChar(255)
+  f_country         String?        @db.VarChar(255)
+  f_emp_size        String?        @db.VarChar(255)
+  f_industry        String?        @db.VarChar(255)
+  f_sub_industry    String?        @db.VarChar(255)
+  f_revenue         String?        @db.VarChar(255)
+  f_revenue_link    String?        @db.VarChar(1000)
+  f_profile_link    String?        @db.Text
+  f_company_link    String?        @db.Text
+  f_address_link    String?        @db.Text
+  f_cq1             String?        @db.VarChar(255)
+  f_cq2             String?        @db.Text
+  f_cq3             String?        @db.VarChar(255)
+  f_cq4             String?        @db.VarChar(255)
+  f_cq5             String?        @db.VarChar(255)
+  f_cq6             String?        @db.VarChar(255)
+  f_cq7             String?        @db.VarChar(255)
+  f_cq8             String?        @db.VarChar(255)
+  f_cq9             String?        @db.VarChar(255)
+  f_cq10            String?        @db.VarChar(255)
+  f_asset_name1     String?        @db.VarChar(255)
+  f_asset_name2     String?        @db.VarChar(255)
+  f_call_recording  String?        @db.VarChar(255)
+  f_email_status    String?        @db.VarChar(255)
+  f_qa_status       String?        @db.VarChar(255)
+  f_dq_reason1      String?        @db.VarChar(255)
+  f_dq_reason2      String?        @db.VarChar(255)
+  f_dq_reason3      String?        @db.VarChar(255)
+  f_dq_reason4      String?        @db.VarChar(255)
+  f_qa_comments     String?        @db.Text
+  f_call_rating     String?        @db.VarChar(255)
+  f_call_notes      String?        @db.Text
+  feedback          String?        @db.Text
+  f_call_links      String?        @db.VarChar(255)
+  f_qa_name         String?        @db.VarChar(255)
+  f_audit_date      String?        @db.VarChar(55)
+  f_delivary_status String?        @db.VarChar(11)
+  f_delivary_date   String?        @db.VarChar(11)
+  f_delivary_by     String?        @db.VarChar(11)
+  f_reject_reason   String?        @db.VarChar(255)
+  added_by_user_id  String?        @db.VarChar(55)
+  qualifyleads_by   String?        @db.VarChar(255)
+  f_date            DateTime       @default(now()) @db.Timestamp(0)
   form_status       Int
-  f_script_url      String?  @db.VarChar(512)
+  f_script_url      String?        @db.VarChar(512)
+  organization_id   Int?
+  organizations     organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_dm_form_organization")
 
   @@index([unique_id], map: "idx_dm_form_unique_id")
+  @@index([organization_id], map: "idx_dm_form_organization")
 }
 
 model extension_dids {
-  extension_id String   @id @db.VarChar(64)
-  did          String?  @db.VarChar(64)
-  updated_at   DateTime @default(now()) @db.DateTime(0)
+  extension_id    String         @id @db.VarChar(64)
+  did             String?        @db.VarChar(64)
+  updated_at      DateTime       @default(now()) @db.DateTime(0)
+  organization_id Int?
+  organizations   organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_extension_dids_organization")
+
+  @@index([organization_id], map: "idx_extension_dids_organization")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model api_metrics {
-  id            BigInt   @id @default(autoincrement())
-  endpoint      String   @db.VarChar(500)
-  method        String   @db.VarChar(10)
-  status_code   Int
-  response_time Int
-  user_id       Int?
-  ip            String?  @db.VarChar(45)
-  user_agent    String?  @db.VarChar(500)
-  error_message String?  @db.Text
-  timestamp     DateTime @default(now()) @db.Timestamp(0)
+  id              BigInt         @id @default(autoincrement())
+  endpoint        String         @db.VarChar(500)
+  method          String         @db.VarChar(10)
+  status_code     Int
+  response_time   Int
+  user_id         Int?
+  ip              String?        @db.VarChar(45)
+  user_agent      String?        @db.VarChar(500)
+  error_message   String?        @db.Text
+  timestamp       DateTime       @default(now()) @db.Timestamp(0)
+  organization_id Int?
+  organizations   organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_api_metrics_organization")
 
   @@index([endpoint(length: 255), timestamp], map: "idx_api_metrics_endpoint_time")
   @@index([status_code, timestamp], map: "idx_api_metrics_status_time")
   @@index([timestamp], map: "idx_api_metrics_time")
+  @@index([organization_id], map: "idx_api_metrics_organization")
 }
 
 model audit_logs {
-  id          BigInt   @id @default(autoincrement())
-  user_id     Int?
-  username    String?  @db.VarChar(255)
-  action      String   @db.VarChar(255)
-  resource    String   @db.VarChar(255)
-  resource_id String?  @db.VarChar(255)
-  changes     String?  @db.LongText
-  ip          String?  @db.VarChar(45)
-  user_agent  String?  @db.VarChar(500)
-  outcome     String   @db.VarChar(50)
-  timestamp   DateTime @default(now()) @db.Timestamp(0)
+  id              BigInt         @id @default(autoincrement())
+  user_id         Int?
+  username        String?        @db.VarChar(255)
+  action          String         @db.VarChar(255)
+  resource        String         @db.VarChar(255)
+  resource_id     String?        @db.VarChar(255)
+  changes         String?        @db.LongText
+  ip              String?        @db.VarChar(45)
+  user_agent      String?        @db.VarChar(500)
+  outcome         String         @db.VarChar(50)
+  timestamp       DateTime       @default(now()) @db.Timestamp(0)
+  organization_id Int?
+  organizations   organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_audit_logs_organization")
 
   @@index([action, timestamp], map: "idx_audit_logs_action_time")
   @@index([resource, timestamp], map: "idx_audit_logs_resource_time")
   @@index([user_id, timestamp], map: "idx_audit_logs_user_time")
+  @@index([organization_id], map: "idx_audit_logs_organization")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model feature_flags {
-  id                 Int      @id @default(autoincrement())
-  name               String   @unique(map: "name") @db.VarChar(255)
-  description        String?  @db.Text
-  enabled            Boolean  @default(false)
-  rollout_percentage Int      @default(0)
-  target_roles       String?  @db.LongText
-  target_users       String?  @db.LongText
-  created_at         DateTime @default(now()) @db.Timestamp(0)
-  modified_at        DateTime @default(now()) @db.Timestamp(0)
+  id                 Int            @id @default(autoincrement())
+  name               String         @unique(map: "name") @db.VarChar(255)
+  description        String?        @db.Text
+  enabled            Boolean        @default(false)
+  rollout_percentage Int            @default(0)
+  target_roles       String?        @db.LongText
+  target_users       String?        @db.LongText
+  created_at         DateTime       @default(now()) @db.Timestamp(0)
+  modified_at        DateTime       @default(now()) @db.Timestamp(0)
   modified_by        Int?
+  organization_id    Int?
+  organizations      organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_feature_flags_organization")
+
+  @@index([organization_id], map: "idx_feature_flags_organization")
 }
 
 model resource_metrics {
@@ -620,6 +693,54 @@ model system_health_snapshots {
   timestamp         DateTime @default(now()) @db.Timestamp(0)
 
   @@index([timestamp], map: "idx_system_health_time")
+}
+
+model demo_feature_restrictions {
+  id          Int       @id @default(autoincrement())
+  role        String    @db.VarChar(50)
+  feature_key String    @db.VarChar(255)
+  label       String    @db.VarChar(255)
+  is_locked   Boolean?  @default(true)
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+  updated_at  DateTime? @default(now()) @db.Timestamp(0)
+
+  @@unique([role, feature_key], map: "unique_role_feature")
+}
+
+model organizations {
+  id                    Int                     @id @default(autoincrement())
+  name                  String                  @unique(map: "unique_org_name") @db.VarChar(255)
+  status                String                  @default("active") @db.VarChar(50)
+  is_demo               Boolean?                @default(false)
+  valid_until           DateTime?               @db.DateTime(0)
+  max_users             Int?                    @default(10)
+  billing_info          String?                 @db.LongText
+  contact_email         String?                 @db.VarChar(255)
+  created_at            DateTime?               @default(now()) @db.DateTime(0)
+  updated_at            DateTime?               @default(now()) @db.DateTime(0)
+  max_agents            Int?                    @default(10)
+  max_managers          Int?                    @default(2)
+  max_qa                Int?                    @default(2)
+  agent_breaks          agent_breaks[]
+  agent_heartbeats      agent_heartbeats[]
+  agent_presence_events agent_presence_events[]
+  agent_sessions        agent_sessions[]
+  agentic_campaigns     agentic_campaigns[]
+  agentic_csv_files     agentic_csv_files[]
+  api_metrics           api_metrics[]
+  audit_logs            audit_logs[]
+  break_reasons         break_reasons[]
+  campaigns             campaigns[]
+  dialer_sheets         dialer_sheets[]
+  dialing_contacts      dialing_contacts[]
+  dm_form               dm_form[]
+  documents             documents[]
+  extension_dids        extension_dids[]
+  feature_flags         feature_flags[]
+  notes                 notes[]
+  password_resets       password_resets[]
+  qa_call_reviews       qa_call_reviews[]
+  users                 users[]
 }
 
 enum documents_type {
