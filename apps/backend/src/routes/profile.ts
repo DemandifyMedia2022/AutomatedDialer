@@ -22,9 +22,20 @@ router.get('/me', requireAuth, async (req, res, next) => {
 router.get('/me/restrictions', requireAuth, async (req: any, res, next) => {
   try {
     const userId = req.user?.userId;
-    const user = await db.users.findUnique({ where: { id: userId }, select: { role: true, is_demo_user: true } });
+    const user = await db.users.findUnique({
+      where: { id: userId },
+      select: {
+        role: true,
+        is_demo_user: true,
+        organizations: {
+          select: { is_demo: true }
+        }
+      }
+    });
 
-    if (!user || !user.is_demo_user) {
+    const isDemo = user?.is_demo_user || user?.organizations?.is_demo;
+
+    if (!user || !isDemo) {
       return res.json({ restrictions: [] });
     }
 

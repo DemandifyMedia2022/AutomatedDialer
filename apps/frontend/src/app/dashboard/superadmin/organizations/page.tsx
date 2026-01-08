@@ -19,9 +19,7 @@ interface Organization {
     valid_until?: string | null
     max_users: number
     created_at: string
-    _count: {
-        users: number
-    }
+    user_count: number
 }
 
 export default function OrganizationsPage() {
@@ -37,7 +35,8 @@ export default function OrganizationsPage() {
         try {
             setLoading(true)
             const res = await api.get('/api/superadmin/organizations')
-            setOrganizations(res.data)
+            // Backend returns { success: true, data: { organizations: [...], pagination: {...} } }
+            setOrganizations(res.data.data?.organizations || [])
         } catch (err) {
             console.error(err)
         } finally {
@@ -49,14 +48,14 @@ export default function OrganizationsPage() {
         <div className="flex flex-1 flex-col gap-4 p-4">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Organizations</h1>
+                    <h1 className="text-3xl mt-8 font-bold tracking-tight">Organizations</h1>
                     <p className="text-muted-foreground mt-2">
                         Manage organizations and demo accounts
                     </p>
                 </div>
                 <Button onClick={() => router.push('/dashboard/superadmin/organizations/create')}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create Organization
+                    <Plus className="mr-1 h-4 w-4" />
+                    Create
                 </Button>
             </div>
 
@@ -110,12 +109,21 @@ export default function OrganizationsPage() {
                                         <TableCell>
                                             <div className="flex items-center gap-1">
                                                 <Users className="h-4 w-4 text-muted-foreground" />
-                                                <span>{org._count?.users || 0} / {org.max_users}</span>
+                                                <span>{org.user_count || 0} / {org.max_users}</span>
                                             </div>
                                         </TableCell>
                                         <TableCell>{new Date(org.created_at).toLocaleDateString()}</TableCell>
                                         <TableCell className="text-right">
-                                            <Button variant="ghost" size="sm">Manage</Button>
+                                            <Button 
+                                                variant="ghost" 
+                                                size="sm"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    router.push(`/dashboard/superadmin/organizations/${org.id}`);
+                                                }}
+                                            >
+                                                Manage
+                                            </Button>
                                         </TableCell>
                                     </TableRow>
                                 ))

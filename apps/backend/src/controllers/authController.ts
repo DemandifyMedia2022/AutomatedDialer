@@ -117,7 +117,11 @@ export async function login(req: Request, res: Response) {
       return res.status(401).json({ success: false, message: 'Account is inactive. Please contact administrator.' });
     }
 
-    const token = signJwt({ userId: user.id, role: (user.role || '').toLowerCase() });
+    const token = signJwt({
+      userId: user.id,
+      role: (user.role || '').toLowerCase(),
+      organizationId: user.organization_id
+    });
 
     // Ensure agent session is opened on successful login
     try { await ensureSession(user.id, { ip: (req as any).ip, userAgent: req.headers['user-agent'] as any }) } catch { }
@@ -166,10 +170,56 @@ export async function me(req: Request, res: Response) {
   const u = req.user;
   if (!u) return res.status(401).json({ success: false, message: 'Unauthorized' });
   try {
-    const user = await db.users.findUnique({ where: { id: u.userId }, select: { username: true, usermail: true, role: true, id: true, extension: true, is_demo_user: true } });
-    return res.json({ success: true, user: { id: user?.id || u.userId, role: user?.role || u.role, username: user?.username || null, email: user?.usermail || null, extension: user?.extension || null, is_demo_user: user?.is_demo_user || false } });
+    const user = await db.users.findUnique({
+      where: { id: u.userId },
+      select: {
+        username: true,
+        usermail: true,
+        role: true,
+        id: true,
+        extension: true,
+        is_demo_user: true,
+        organization_id: true,
+        organizations: {
+          select: {
+            id: true,
+            name: true,
+            is_demo: true
+          }
+        }
+      }
+    });
+
+    const is_demo_org = user?.organizations?.is_demo || false;
+    const is_demo_user = user?.is_demo_user || is_demo_org;
+
+    return res.json({
+      success: true,
+      user: {
+        id: user?.id || u.userId,
+        role: user?.role || u.role,
+        username: user?.username || null,
+        email: user?.usermail || null,
+        extension: user?.extension || null,
+        is_demo_user,
+        is_demo_organization: is_demo_org,
+        organization_id: user?.organization_id || null,
+        organization_name: user?.organizations?.name || null
+      }
+    });
   } catch {
-    return res.json({ success: true, user: { id: u.userId, role: u.role, username: null, email: null, extension: null } });
+    return res.json({
+      success: true,
+      user: {
+        id: u.userId,
+        role: u.role,
+        username: null,
+        email: null,
+        extension: null,
+        organization_id: u.organizationId,
+        organization_name: null
+      }
+    });
   }
 }
 

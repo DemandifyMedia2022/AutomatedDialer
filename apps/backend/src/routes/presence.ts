@@ -35,7 +35,7 @@ if (env.USE_AUTH_COOKIE) {
       const userId = req.user?.userId
       if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
       const to = String(req.body?.status || '').toUpperCase()
-      const allowed = new Set(['OFFLINE','AVAILABLE','ON_CALL','IDLE','BREAK'])
+      const allowed = new Set(['OFFLINE', 'AVAILABLE', 'ON_CALL', 'IDLE', 'BREAK'])
       if (!allowed.has(to)) return res.status(400).json({ success: false, message: 'Invalid status' })
       const result = await setStatus(userId, to as any, req.body?.meta || null)
       res.json({ success: true, status: result.status })
@@ -47,7 +47,7 @@ if (env.USE_AUTH_COOKIE) {
       const userId = req.user?.userId
       if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
       const to = String(req.body?.status || '').toUpperCase()
-      const allowed = new Set(['OFFLINE','AVAILABLE','ON_CALL','IDLE','BREAK'])
+      const allowed = new Set(['OFFLINE', 'AVAILABLE', 'ON_CALL', 'IDLE', 'BREAK'])
       if (!allowed.has(to)) return res.status(400).json({ success: false, message: 'Invalid status' })
       const result = await setStatus(userId, to as any, req.body?.meta || null)
       res.json({ success: true, status: result.status })
@@ -57,7 +57,7 @@ if (env.USE_AUTH_COOKIE) {
 
 // Break start
 if (env.USE_AUTH_COOKIE) {
-  router.post('/break/start', requireAuth, requireRoles(['agent','manager','superadmin']), csrfProtect, async (req: any, res: any, next: any) => {
+  router.post('/break/start', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), csrfProtect, async (req: any, res: any, next: any) => {
     try {
       const userId = req.user?.userId
       if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
@@ -66,7 +66,7 @@ if (env.USE_AUTH_COOKIE) {
     } catch (e) { next(e) }
   })
 } else {
-  router.post('/break/start', requireAuth, requireRoles(['agent','manager','superadmin']), async (req: any, res: any, next: any) => {
+  router.post('/break/start', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
     try {
       const userId = req.user?.userId
       if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
@@ -78,7 +78,7 @@ if (env.USE_AUTH_COOKIE) {
 
 // Break end
 if (env.USE_AUTH_COOKIE) {
-  router.post('/break/end', requireAuth, requireRoles(['agent','manager','superadmin']), csrfProtect, async (req: any, res: any, next: any) => {
+  router.post('/break/end', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), csrfProtect, async (req: any, res: any, next: any) => {
     try {
       const userId = req.user?.userId
       if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
@@ -87,7 +87,7 @@ if (env.USE_AUTH_COOKIE) {
     } catch (e) { next(e) }
   })
 } else {
-  router.post('/break/end', requireAuth, requireRoles(['agent','manager','superadmin']), async (req: any, res: any, next: any) => {
+  router.post('/break/end', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
     try {
       const userId = req.user?.userId
       if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
@@ -100,7 +100,7 @@ if (env.USE_AUTH_COOKIE) {
 export default router
 
 // Manager endpoints: presence summaries
-router.get('/break-reasons', requireAuth, requireRoles(['agent','manager','superadmin']), async (_req: any, res: any, next: any) => {
+router.get('/break-reasons', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (_req: any, res: any, next: any) => {
   try {
     const items: any[] = await (db as any).break_reasons.findMany({ orderBy: { label: 'asc' } })
     const filtered = (items || []).filter((r: any) => r.active === null || r.active === undefined || r.active === true)
@@ -111,7 +111,7 @@ router.get('/break-reasons', requireAuth, requireRoles(['agent','manager','super
 // Manager summary counts for dashboard
 router.get('/manager/summary', requireAuth, requireRoles(['manager', 'superadmin']), async (_req: any, res: any, next: any) => {
   try {
-    const todayStart = new Date(); todayStart.setHours(0,0,0,0)
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
     const users: any[] = await (db as any).users.findMany({ where: { role: { in: ['agent', 'Agent'] as any } }, select: { id: true } })
     const totalAgents = users.length
 
@@ -135,12 +135,12 @@ router.get('/manager/summary', requireAuth, requireRoles(['manager', 'superadmin
 })
 
 // Current user's presence summary for today
-router.get('/me/summary', requireAuth, requireRoles(['agent','manager','superadmin']), async (req: any, res: any, next: any) => {
+router.get('/me/summary', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
     const userId = req.user?.userId
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
 
-    const todayStart = new Date(); todayStart.setHours(0,0,0,0)
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
     const now = new Date()
 
     // Fetch sessions that overlap today
@@ -168,7 +168,7 @@ router.get('/me/summary', requireAuth, requireRoles(['agent','manager','superadm
 })
 
 // Return current presence status and since timestamp for the authenticated agent
-router.get('/me', requireAuth, requireRoles(['agent','manager','superadmin']), async (req: any, res: any, next: any) => {
+router.get('/me', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
     const userId = req.user?.userId
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
@@ -186,7 +186,7 @@ router.get('/manager/agents', requireAuth, requireRoles(['manager', 'superadmin'
     // Get all users with role agent (and optionally managers if needed)
     const users: any[] = await (db as any).users.findMany({ where: { role: { in: ['agent', 'Agent'] as any } }, select: { id: true, username: true, usermail: true, extension: true } })
 
-    const todayStart = new Date(); todayStart.setHours(0,0,0,0)
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
     const now = new Date()
 
     const results = [] as any[]
@@ -266,7 +266,7 @@ router.get('/manager/agents', requireAuth, requireRoles(['manager', 'superadmin'
 })
 
 // Calls series for dashboard charts (placed calls)
-router.get('/manager/calls-series', requireAuth, requireRoles(['manager','superadmin']), async (req: any, res: any, next: any) => {
+router.get('/manager/calls-series', requireAuth, requireRoles(['manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
     const range = String(req.query.range || 'daily')
     const now = new Date()
@@ -275,14 +275,14 @@ router.get('/manager/calls-series', requireAuth, requireRoles(['manager','supera
       // last 30 days by day
       const buckets: { start: Date; end: Date; label: string }[] = []
       for (let i = 29; i >= 0; i--) {
-        const start = new Date(now); start.setHours(0,0,0,0); start.setDate(start.getDate() - i)
+        const start = new Date(now); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - i)
         const end = new Date(start); end.setDate(end.getDate() + 1)
         const label = start.toLocaleDateString(undefined, { month: 'short', day: '2-digit' })
         buckets.push({ start, end, label })
       }
       const calls: any[] = await (db as any).calls.findMany({
         where: {
-          created_at: { gte: buckets[0].start, lte: buckets[buckets.length-1].end },
+          created_at: { gte: buckets[0].start, lte: buckets[buckets.length - 1].end },
           // If you only want outbound calls, uncomment:
           // direction: 'outbound'
         },
@@ -299,7 +299,7 @@ router.get('/manager/calls-series', requireAuth, requireRoles(['manager','supera
     } else {
       // last 24 hours by hour
       const buckets: { start: Date; end: Date; label: string }[] = []
-      const endTop = new Date(now); endTop.setMinutes(0,0,0)
+      const endTop = new Date(now); endTop.setMinutes(0, 0, 0)
       for (let i = 23; i >= 0; i--) {
         const start = new Date(endTop); start.setHours(endTop.getHours() - i)
         const end = new Date(start); end.setHours(start.getHours() + 1)
@@ -308,7 +308,7 @@ router.get('/manager/calls-series', requireAuth, requireRoles(['manager','supera
       }
       const calls: any[] = await (db as any).calls.findMany({
         where: {
-          created_at: { gte: buckets[0].start, lte: buckets[buckets.length-1].end },
+          created_at: { gte: buckets[0].start, lte: buckets[buckets.length - 1].end },
           // direction: 'outbound'
         },
         select: { created_at: true, direction: true },

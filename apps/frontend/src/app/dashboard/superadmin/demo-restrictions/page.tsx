@@ -19,15 +19,30 @@ interface DemoRestriction {
     is_locked: boolean;
 }
 
-// Predefined features that can be restricted
+// Predefined features that can be restricted categorized by role
 const AVAILABLE_FEATURES = [
-    { key: 'manual-dialer', label: 'Manual Dialer' },
-    { key: 'predictive-dialer', label: 'Predictive Dialer' },
-    { key: 'campaigns', label: 'Campaign Management' },
-    { key: 'reports', label: 'Analytics & Reports' },
-    { key: 'settings', label: 'Settings' },
-    { key: 'users', label: 'User Management' },
-    { key: 'leads', label: 'Lead Management' },
+    // Agent Features
+    { key: 'agent-dialer-manual', label: 'Agent: Manual Dialer', role: 'agent' },
+    { key: 'agent-dialer-automated', label: 'Agent: Automated Dialer', role: 'agent' },
+    { key: 'agent-dialer-gsm', label: 'Agent: GSM Dialer', role: 'agent' },
+    { key: 'agent-campaigns', label: 'Agent: Campaigns', role: 'agent' },
+    { key: 'agent-calls', label: 'Agent: My Calls', role: 'agent' },
+
+    // Manager Features
+    { key: 'manager-monitoring', label: 'Manager: Monitoring', role: 'manager' },
+    { key: 'manager-call-mgmt', label: 'Manager: Call Management', role: 'manager' },
+    { key: 'manager-admin', label: 'Manager: Administration', role: 'manager' },
+    { key: 'manager-playbook', label: 'Manager: Playbook', role: 'manager' },
+    { key: 'manager-agentic', label: 'Manager: Agentic Dialer', role: 'manager' },
+
+    // QA Features
+    { key: 'qa-workbench', label: 'QA: Workbench', role: 'qa' },
+    { key: 'qa-review', label: 'QA: Call Review', role: 'qa' },
+    { key: 'qa-transcripts', label: 'QA: Transcripts', role: 'qa' },
+    { key: 'qa-analytics', label: 'QA: Analytics', role: 'qa' },
+
+    // Common
+    { key: 'settings', label: 'Settings', role: 'all' },
 ]
 
 export default function DemoRestrictionsPage() {
@@ -96,7 +111,7 @@ export default function DemoRestrictionsPage() {
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-6">
-                                {AVAILABLE_FEATURES.map((feature) => {
+                                {AVAILABLE_FEATURES.filter(f => f.role === role || f.role === 'all').map((feature) => {
                                     const restriction = getRestriction(role, feature.key)
                                     // Default to locked if not found, or use DB value
                                     // wait, default in DB was TRUE. If no record, we assume... unlocked? 

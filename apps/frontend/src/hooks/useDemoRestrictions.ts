@@ -36,10 +36,11 @@ export function useDemoRestrictions() {
     });
 
     const isFeatureLocked = (featureKey: string) => {
-        // If superadmin, nothing is locked for them personally (unless testing?)
-        // But this hook is used by components.
-        // If user is demo user, check myLockedKeys.
-        if (user?.is_demo_user) {
+        // If superadmin, nothing is locked for them personally
+        if (user?.role === 'superadmin') return false;
+
+        // If user is demo user OR from demo organization, check myLockedKeys.
+        if (user?.is_demo_user || user?.is_demo_organization) {
             return myLockedKeys?.includes(featureKey) ?? false;
         }
         return false;

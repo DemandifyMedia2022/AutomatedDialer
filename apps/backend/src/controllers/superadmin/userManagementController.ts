@@ -12,6 +12,7 @@ const GetUsersQuerySchema = z.object({
   search: z.string().optional(),
   role: z.enum(['agent', 'manager', 'qa', 'superadmin']).optional(),
   status: z.enum(['active', 'inactive', 'suspended']).optional(),
+  organization_id: z.string().optional().transform(val => (val ? parseInt(val, 10) : undefined)),
   page: z.string().optional().transform(val => (val ? parseInt(val, 10) : 1)),
   limit: z.string().optional().transform(val => (val ? parseInt(val, 10) : 20)),
 });
@@ -24,6 +25,7 @@ const CreateUserSchema = z.object({
   extension: z.string().trim().optional().nullable(),
   status: z.enum(['active', 'inactive', 'suspended']).optional(),
   is_demo_user: z.boolean().optional(),
+  organization_id: z.number().int().positive().optional().nullable(),
 });
 
 const UpdateUserSchema = z.object({
@@ -34,6 +36,7 @@ const UpdateUserSchema = z.object({
   status: z.enum(['active', 'inactive', 'suspended']).optional(),
   password: z.string().min(6).optional(),
   is_demo_user: z.boolean().optional(),
+  organization_id: z.number().int().positive().optional().nullable(),
 });
 
 const UpdateUserStatusSchema = z.object({
@@ -60,7 +63,10 @@ export async function getUsers(req: Request, res: Response, next: NextFunction) 
       });
     }
 
-    const result = await userManagementService.getUsers(parsed.data);
+    const result = await userManagementService.getUsers(parsed.data, {
+      role: req.user?.role,
+      organizationId: req.user?.organizationId,
+    });
 
     res.json({
       success: true,
@@ -89,7 +95,10 @@ export async function getUserById(req: Request, res: Response, next: NextFunctio
       });
     }
 
-    const user = await userManagementService.getUserById(userId);
+    const user = await userManagementService.getUserById(userId, {
+      role: req.user?.role,
+      organizationId: req.user?.organizationId,
+    });
 
     if (!user) {
       return res.status(404).json({
@@ -138,7 +147,7 @@ export async function createUser(req: Request, res: Response, next: NextFunction
       });
     }
 
-    if (error.message.includes('Extension')) {
+    if (error.message.includes('Organization')) {
       return res.status(400).json({
         success: false,
         message: error.message,
@@ -192,6 +201,7 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
     if (
       error.message.includes('already in use') ||
       error.message.includes('Extension') ||
+      error.message.includes('Organization') ||
       error.message.includes('superadmin')
     ) {
       return res.status(400).json({

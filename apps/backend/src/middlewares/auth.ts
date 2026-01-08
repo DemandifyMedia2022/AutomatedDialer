@@ -41,13 +41,37 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     if (!payload) return res.status(401).json({ success: false, message: 'Invalid token' })
 
     // Check if user is still active and verify role from DB
-    db.users.findUnique({ where: { id: payload.userId }, select: { status: true, role: true } })
+    db.users.findUnique({ 
+      where: { id: payload.userId }, 
+      select: { 
+        status: true, 
+        role: true, 
+        organization_id: true,
+        organizations: {
+          select: {
+            id: true,
+            name: true,
+            status: true
+          }
+        }
+      } 
+    })
       .then(user => {
         if (!user || user.status !== 'active') {
           return res.status(401).json({ success: false, message: 'Account is inactive' })
         }
-        // Use role from DB, not from token, to prevent tampering
-        req.user = { ...payload, role: user.role }
+        
+        // Check if organization is active (if user belongs to one)
+        if (user.organization_id && user.organizations && user.organizations.status !== 'active') {
+          return res.status(401).json({ success: false, message: 'Organization is inactive' })
+        }
+        
+        // Use role and organization from DB, not from token, to prevent tampering
+        req.user = { 
+          ...payload, 
+          role: user.role,
+          organizationId: user.organization_id
+        }
         next()
       })
       .catch((err) => {

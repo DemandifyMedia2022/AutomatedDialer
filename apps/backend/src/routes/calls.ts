@@ -200,6 +200,18 @@ const callsHandler = async (req: any, res: any, next: any) => {
       console.log('[calls] Debug - detected country:', detectedCountry)
     }
 
+    // Get user's organization_id for the call
+    let organizationId = null;
+    if (req.user?.userId) {
+      try {
+        const u = await db.users.findUnique({ 
+          where: { id: req.user.userId }, 
+          select: { organization_id: true } 
+        });
+        organizationId = u?.organization_id || null;
+      } catch { }
+    }
+
     const data = {
       campaign_name: b.campaign_name || null,
       useremail: b.useremail || null,
@@ -229,6 +241,7 @@ const callsHandler = async (req: any, res: any, next: any) => {
       sip_status: b.sip_status ?? null,
       sip_reason: b.sip_reason || null,
       hangup_cause: b.hangup_cause || null,
+      organization_id: organizationId,
     }
 
     console.log('[calls] Debug - final data.region:', data.region)
@@ -272,6 +285,12 @@ router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'qa', 'super
     const skip = (page - 1) * pageSize
 
     const where: any = { AND: [] as any[] }
+    
+    // Organization filtering - non-superadmin users can only see calls from their organization
+    if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
+      where.AND.push({ organization_id: req.user.organizationId });
+    }
+    
     const from = req.query.from ? new Date(String(req.query.from)) : null
     const to = req.query.to ? new Date(String(req.query.to)) : null
     if (from && to) {
@@ -411,16 +430,30 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     const userId = req.user?.userId
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
 
-    const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true } })
+    const me = await db.users.findUnique({ 
+      where: { id: userId }, 
+      select: { 
+        username: true, 
+        usermail: true, 
+        extension: true, 
+        organization_id: true 
+      } 
+    })
     const username = me?.username || undefined
     const usermail = me?.usermail || undefined
     const extension = me?.extension || undefined
+    const organizationId = me?.organization_id || undefined
 
     const where: any = { OR: [] as any[], AND: [] as any[] }
     if (username) where.OR.push({ username })
     if (usermail) where.OR.push({ useremail: usermail })
     if (extension) where.OR.push({ extension })
     if (where.OR.length === 0) { where.OR.push({ id: -1 }) }
+
+    // Add organization filtering
+    if (organizationId) {
+      where.AND.push({ organization_id: organizationId });
+    }
 
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1)
     const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize || '20'), 10) || 20))
@@ -446,6 +479,11 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     if (extension) conditions.push(`c.extension = '${extension}'`)
     if (conditions.length === 0) conditions.push('1=0')
     whereClause += conditions.join(' OR ') + ')'
+    
+    // Add organization filter to raw query
+    if (organizationId) {
+      whereClause += ` AND c.organization_id = ${organizationId}`;
+    }
     
     if (from || to) {
       whereClause += ` AND (c.start_time >= '${from || '1970-01-01'}' AND c.start_time <= '${to || new Date().toISOString()}')`

@@ -19,6 +19,7 @@ import dmForm from './dmForm';
 import superadmin from './superadmin';
 import calls from './calls';
 import dialerRoutes from './gsm/dialer';
+import organizationDataRoutes from './organizationDataRoutes';
 import { getLiveCalls, updateLiveCallPhase, startLiveCallsSweeper } from './livecalls';
 
 import { env } from '../config/env';
@@ -56,6 +57,7 @@ router.use('/dm-form', dmForm);
 router.use('/superadmin', superadmin);
 router.use('/calls', calls);
 router.use('/dialer', dialerRoutes); // Mount GSM dialer routes
+router.use('/data', organizationDataRoutes); // Mount organization-aware data routes
 
 router.get('/sip/config', (_req, res) => {
   res.json({
@@ -710,12 +712,21 @@ router.get('/analytics/leaderboard/daily', requireAuth, requireRoles(['agent', '
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
 
     params.push(startOfDay, endOfDay)
-    const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
+    
+    let sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
                  FROM calls 
-                 WHERE LOWER(remarks) = 'lead' AND start_time >= ? AND start_time < ?
-                 GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
-                 ORDER BY cnt DESC
-                 LIMIT 10`
+                 WHERE LOWER(remarks) = 'lead' AND start_time >= ? AND start_time < ?`
+    
+    // Add organization filtering for non-superadmin users
+    if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
+      sql += ' AND organization_id = ?';
+      params.push(req.user.organizationId);
+    }
+    
+    sql += ` GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
+             ORDER BY cnt DESC
+             LIMIT 10`;
+    
     const [rows]: any = await pool.query(sql, params)
     const daily = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
     return res.json({ daily })
@@ -735,12 +746,21 @@ router.get('/analytics/leaderboard/monthly', requireAuth, requireRoles(['agent',
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1)
 
     params.push(startOfMonth, endOfMonth)
-    const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
+    
+    let sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
                  FROM calls 
-                 WHERE LOWER(remarks) = 'lead' AND start_time >= ? AND start_time < ?
-                 GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
-                 ORDER BY cnt DESC
-                 LIMIT 10`
+                 WHERE LOWER(remarks) = 'lead' AND start_time >= ? AND start_time < ?`
+    
+    // Add organization filtering for non-superadmin users
+    if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
+      sql += ' AND organization_id = ?';
+      params.push(req.user.organizationId);
+    }
+    
+    sql += ` GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
+             ORDER BY cnt DESC
+             LIMIT 10`;
+    
     const [rows]: any = await pool.query(sql, params)
     const monthly = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
     return res.json({ monthly })
@@ -759,12 +779,21 @@ router.get('/analytics/leaderboard', requireAuth, requireRoles(['agent', 'manage
     if (from) { timeParts.push('start_time >= ?'); params.push(from) }
     if (to) { timeParts.push('start_time <= ?'); params.push(to) }
     const timeWhere = timeParts.length ? `AND ${timeParts.join(' AND ')}` : ''
-    const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
+    
+    let sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
                  FROM calls 
-                 WHERE LOWER(remarks) = 'lead' ${timeWhere}
-                 GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
-                 ORDER BY cnt DESC
-                 LIMIT 10`
+                 WHERE LOWER(remarks) = 'lead' ${timeWhere}`
+    
+    // Add organization filtering for non-superadmin users
+    if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
+      sql += ' AND organization_id = ?';
+      params.push(req.user.organizationId);
+    }
+    
+    sql += ` GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
+             ORDER BY cnt DESC
+             LIMIT 10`;
+    
     const [rows]: any = await pool.query(sql, params)
     const items = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
     return res.json({ items })
@@ -790,12 +819,21 @@ router.get('/analytics/leaderboard/stream', requireAuth, requireRoles(['agent', 
       if (from) { timeParts.push('start_time >= ?'); params.push(from) }
       if (to) { timeParts.push('start_time <= ?'); params.push(to) }
       const timeWhere = timeParts.length ? `AND ${timeParts.join(' AND ')}` : ''
-      const sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
+      
+      let sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
                    FROM calls 
-                   WHERE LOWER(remarks) = 'lead' ${timeWhere}
-                   GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
-                   ORDER BY cnt DESC
-                   LIMIT 10`
+                   WHERE LOWER(remarks) = 'lead' ${timeWhere}`
+      
+      // Add organization filtering for non-superadmin users
+      if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
+        sql += ' AND organization_id = ?';
+        params.push(req.user.organizationId);
+      }
+      
+      sql += ` GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
+               ORDER BY cnt DESC
+               LIMIT 10`;
+      
       return { sql, params }
     }
 
@@ -825,6 +863,12 @@ router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'qa', 'super
     const skip = (page - 1) * pageSize
 
     const where: any = { AND: [] as any[] }
+    
+    // Organization filtering - non-superadmin users can only see calls from their organization
+    if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
+      where.AND.push({ organization_id: req.user.organizationId });
+    }
+    
     const from = req.query.from ? new Date(String(req.query.from)) : null
     const to = req.query.to ? new Date(String(req.query.to)) : null
     if (from || to) where.AND.push({ start_time: { gte: from || undefined, lte: to || undefined } })
@@ -880,10 +924,19 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     const userId = req.user?.userId
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
 
-    const me = await db.users.findUnique({ where: { id: userId }, select: { username: true, usermail: true, extension: true } })
+    const me = await db.users.findUnique({ 
+      where: { id: userId }, 
+      select: { 
+        username: true, 
+        usermail: true, 
+        extension: true, 
+        organization_id: true 
+      } 
+    })
     const username = me?.username || undefined
     const usermail = me?.usermail || undefined
     const extension = me?.extension || undefined
+    const organizationId = me?.organization_id || undefined
 
     // Build base where
     const where: any = { OR: [] as any[], AND: [] as any[] }
@@ -894,6 +947,11 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     if (where.OR.length === 0) {
       // No identifiers -> no results (enforce privacy)
       where.OR.push({ id: -1 })
+    }
+
+    // Add organization filtering
+    if (organizationId) {
+      where.AND.push({ organization_id: organizationId });
     }
 
     // Optional filters

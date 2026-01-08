@@ -4,6 +4,7 @@ import { env } from '../config/env'
 export type JwtPayload = {
   userId: number
   role: string | null
+  organizationId: number | null
 }
 
 export function signJwt(payload: JwtPayload): string {
