@@ -18,6 +18,7 @@ import qa from './qa';
 import dmForm from './dmForm';
 import superadmin from './superadmin';
 import calls from './calls';
+import analyticsEmail from './analyticsEmail';
 import { getLiveCalls, updateLiveCallPhase, startLiveCallsSweeper } from './livecalls';
 
 import { env } from '../config/env';
@@ -54,6 +55,7 @@ router.use('/qa', qa);
 router.use('/dm-form', dmForm);
 router.use('/superadmin', superadmin);
 router.use('/calls', calls);
+router.use('/analytics/email', analyticsEmail);
 
 router.get('/sip/config', (_req, res) => {
   res.json({

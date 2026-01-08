@@ -11,7 +11,16 @@ const transport = nodemailer.createTransport({
   },
 })
 
-export async function sendMail(opts: { to: string; subject: string; text?: string; html?: string }) {
+export async function sendMail(opts: { 
+  to: string; 
+  subject: string; 
+  text?: string; 
+  html?: string;
+  attachments?: Array<{
+    filename: string;
+    path: string;
+  }>;
+}) {
   const fromName = env.MAIL_FROM_NAME || 'App'
   const fromAddr = env.MAIL_FROM_ADDRESS || env.MAIL_USERNAME
   await transport.sendMail({
@@ -20,5 +29,6 @@ export async function sendMail(opts: { to: string; subject: string; text?: strin
     subject: opts.subject,
     text: opts.text,
     html: opts.html,
+    attachments: opts.attachments,
   })
 }
