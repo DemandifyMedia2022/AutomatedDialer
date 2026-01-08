@@ -31,12 +31,20 @@ router.get('/', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), a
     const offset = (page - 1) * pageSize
     const q = (req.query.q || '').toString().trim()
 
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     const pool = getPool()
     const whereParts: string[] = []
     const params: any[] = []
-    const roles: string[] = Array.isArray(req.user?.roles) ? req.user.roles : []
-    const isManager = roles.includes('manager') || roles.includes('superadmin')
-    if (!isManager) {
+
+    // Organization filtering
+    if (!isSuper && orgId) {
+      whereParts.push("organization_id = ?")
+      params.push(orgId)
+    }
+
+    if (!isSuper) {
       whereParts.push("visibility IN ('org','public')")
     }
     if (q) {
@@ -62,14 +70,20 @@ router.get('/:id', requireAuth, requireRoles(['agent', 'manager', 'superadmin'])
     const id = parseInt(String(req.params.id || ''), 10)
     if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ success: false, message: 'Invalid id' })
 
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     const pool = getPool()
     const [rows]: any = await pool.query(
       `SELECT id, type, title, description, file_url, file_mime, file_size_bytes, content_richtext,
-              version, tags_csv, created_by, visibility, created_at, updated_at
+              version, tags_csv, created_by, visibility, created_at, updated_at, organization_id
        FROM documents WHERE id = ?`,
       [id]
     )
     if (!rows.length) return res.status(404).json({ success: false, message: 'Not found' })
+    if (!isSuper && orgId && rows[0].organization_id !== orgId) {
+      return res.status(403).json({ success: false, message: 'Access denied' })
+    }
     res.json(rows[0])
   } catch (e) { next(e) }
 })
@@ -87,10 +101,16 @@ router.put('/:id', ...updateMiddlewares, upload.single('file'), async (req: any,
     if (!parsed.success) return res.status(400).json({ success: false, message: 'Invalid payload', issues: parsed.error.flatten() })
     const b = parsed.data
 
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     const pool = getPool()
-    // Check existence
-    const [existing]: any = await pool.query('SELECT id FROM documents WHERE id = ?', [id])
+    // Check existence and org
+    const [existing]: any = await pool.query('SELECT id, organization_id FROM documents WHERE id = ?', [id])
     if (!existing.length) return res.status(404).json({ success: false, message: 'Not found' })
+    if (!isSuper && orgId && existing[0].organization_id !== orgId) {
+      return res.status(403).json({ success: false, message: 'Access denied' })
+    }
 
     const updates: string[] = []
     const params: any[] = []
@@ -135,7 +155,18 @@ router.delete('/:id', ...deleteMiddlewares, async (req: any, res: any, next: any
     const id = parseInt(String(req.params.id || ''), 10)
     if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ success: false, message: 'Invalid id' })
 
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
     const pool = getPool()
+    // Verify org
+    if (!isSuper && orgId) {
+      const [existing]: any = await pool.query('SELECT organization_id FROM documents WHERE id = ?', [id])
+      if (existing.length && existing[0].organization_id !== orgId) {
+        return res.status(403).json({ success: false, message: 'Access denied' })
+      }
+    }
+
     const [result]: any = await pool.query('DELETE FROM documents WHERE id = ?', [id])
     const affected = Number(result?.affectedRows || 0)
     if (affected === 0) return res.status(404).json({ success: false, message: 'Not found' })
@@ -174,11 +205,14 @@ router.post('/', ...createMiddlewares, upload.single('file'), async (req: any, r
       return res.status(400).json({ success: false, message: 'Provide a file or content_richtext' })
     }
 
+    const orgId = req.user?.organizationId
+    if (!orgId) return res.status(400).json({ success: false, message: 'User must belong to an organization' })
+
     const pool = getPool()
     const [result]: any = await pool.query(
-      `INSERT INTO documents (type, title, description, file_url, file_mime, file_size_bytes, content_richtext, version, tags_csv, created_by, visibility)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
-      [b.type, b.title, (b.description || ''), file_url, file_mime, file_size_bytes, content_richtext, (b.tags_csv || ''), userId, b.visibility]
+      `INSERT INTO documents (type, title, description, file_url, file_mime, file_size_bytes, content_richtext, version, tags_csv, created_by, visibility, organization_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+      [b.type, b.title, (b.description || ''), file_url, file_mime, file_size_bytes, content_richtext, (b.tags_csv || ''), userId, b.visibility, orgId]
     )
     const insertId = Number(result?.insertId || 0)
     const [rows]: any = await pool.query(

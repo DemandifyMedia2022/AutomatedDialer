@@ -26,10 +26,19 @@ const cleanupExpiredCampaigns = async () => {
 };
 
 // List campaigns (Manager+, QA)
-router.get('/', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), async (_req, res, next) => {
+router.get('/', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), async (req: any, res, next) => {
   try {
     await cleanupExpiredCampaigns();
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
+    const where: any = {}
+    if (!isSuper && orgId) {
+      where.organization_id = orgId
+    }
+
     const items = await (db as any).campaigns.findMany({
+      where,
       orderBy: { id: 'desc' },
     });
     res.json({ success: true, items });
@@ -39,11 +48,19 @@ router.get('/', requireAuth, requireRoles(['qa', 'manager', 'superadmin']), asyn
 });
 
 // List only active campaigns (Agent+)
-router.get('/active', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (_req, res, next) => {
+router.get('/active', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res, next) => {
   try {
     await cleanupExpiredCampaigns();
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
+    const where: any = { status: 'active' }
+    if (!isSuper && orgId) {
+      where.organization_id = orgId
+    }
+
     const items = await (db as any).campaigns.findMany({
-      where: { status: 'active' },
+      where,
       orderBy: { id: 'desc' },
     });
     res.json({ success: true, items });
@@ -53,11 +70,19 @@ router.get('/active', requireAuth, requireRoles(['agent', 'manager', 'superadmin
 });
 
 // List only inactive campaigns (Agent+)
-router.get('/inactive', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (_req, res, next) => {
+router.get('/inactive', requireAuth, requireRoles(['agent', 'manager', 'superadmin']), async (req: any, res, next) => {
   try {
     await cleanupExpiredCampaigns();
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
+    const where: any = { status: 'inactive' }
+    if (!isSuper && orgId) {
+      where.organization_id = orgId
+    }
+
     const items = await (db as any).campaigns.findMany({
-      where: { status: 'inactive' },
+      where,
       orderBy: { id: 'desc' },
     });
     res.json({ success: true, items });
@@ -67,8 +92,11 @@ router.get('/inactive', requireAuth, requireRoles(['agent', 'manager', 'superadm
 });
 
 // Create a new campaign (Manager+)
-router.post('/', requireAuth, requireRoles(['manager', 'superadmin']), async (req, res, next) => {
+router.post('/', requireAuth, requireRoles(['manager', 'superadmin']), async (req: any, res, next) => {
   try {
+    const orgId = req.user?.organizationId
+    if (!orgId) return res.status(400).json({ success: false, message: 'Manager must belong to an organization' })
+
     const b = req.body || {};
 
     // Coerce date strings if provided
@@ -84,6 +112,7 @@ router.post('/', requireAuth, requireRoles(['manager', 'superadmin']), async (re
       assigned_to: b.assigned_to ?? null,
       status: b.status ?? null,
       method: b.method ?? null,
+      organization_id: orgId,
       created_at: new Date(),
       updated_at: new Date(),
     } as any;
@@ -102,6 +131,13 @@ router.put('/:id', requireAuth, requireRoles(['manager', 'superadmin']), async (
     if (!Number.isInteger(id)) {
       return res.status(400).json({ success: false, message: 'Invalid id' });
     }
+
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
+    const campaign = await (db as any).campaigns.findUnique({ where: { id }, select: { organization_id: true } });
+    if (!campaign) return res.status(404).json({ success: false, message: 'Not found' });
+    if (!isSuper && campaign.organization_id !== orgId) return res.status(403).json({ success: false, message: 'Access denied' });
 
     const b = req.body || {};
     const data: any = { updated_at: new Date() };
@@ -132,6 +168,13 @@ router.delete('/:id', requireAuth, requireRoles(['manager', 'superadmin']), asyn
     if (!Number.isInteger(id)) {
       return res.status(400).json({ success: false, message: 'Invalid id' })
     }
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
+    const campaign = await (db as any).campaigns.findUnique({ where: { id }, select: { organization_id: true } });
+    if (!campaign) return res.status(404).json({ success: false, message: 'Not found' });
+    if (!isSuper && campaign.organization_id !== orgId) return res.status(403).json({ success: false, message: 'Access denied' });
+
     const deleted = await (db as any).campaigns.delete({ where: { id } })
     res.json({ success: true, item: deleted })
   } catch (err: any) {

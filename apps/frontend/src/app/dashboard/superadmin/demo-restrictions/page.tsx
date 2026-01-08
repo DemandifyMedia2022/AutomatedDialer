@@ -32,6 +32,8 @@ const AVAILABLE_FEATURES = [
     { key: 'manager-monitoring', label: 'Manager: Monitoring', role: 'manager' },
     { key: 'manager-call-mgmt', label: 'Manager: Call Management', role: 'manager' },
     { key: 'manager-admin', label: 'Manager: Administration', role: 'manager' },
+    { key: 'manager-campaigns', label: 'Manager: Campaigns', role: 'manager' },
+    { key: 'manager-automated', label: 'Manager: Automated Dialer', role: 'manager' },
     { key: 'manager-playbook', label: 'Manager: Playbook', role: 'manager' },
     { key: 'manager-agentic', label: 'Manager: Agentic Dialer', role: 'manager' },
 

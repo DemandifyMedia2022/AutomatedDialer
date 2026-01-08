@@ -1,6 +1,6 @@
 import { db } from '../db/prisma'
 import { env } from '../config/env'
-import { getIo } from '../utils/ws'
+import { getIo, emitToUser } from '../utils/ws'
 import { updateLiveCallPhase } from '../routes/livecalls'
 
 export type AgentStatus = 'OFFLINE' | 'AVAILABLE' | 'ON_CALL' | 'IDLE' | 'BREAK'
@@ -32,7 +32,7 @@ export async function ensureSession(userId: number, meta?: { ip?: string; userAg
     await (db as any).agent_presence_events.create({
       data: { user_id: userId, session_id: s.id, event_type: 'LOGIN', from_status: 'OFFLINE', to_status: 'AVAILABLE' },
     })
-    try { getIo()?.emit('session:opened', { userId, sessionId: Number(s.id) }) } catch {}
+    try { emitToUser(userId, 'session:opened', { userId, sessionId: Number(s.id) }) } catch { }
   }
   return s
 }
@@ -52,7 +52,7 @@ export async function setStatus(userId: number, to: AgentStatus, meta?: any) {
     data: { user_id: userId, session_id: s.id, event_type: 'STATUS_CHANGE', from_status: from, to_status: to, meta: meta || null },
   })
   await (db as any).agent_sessions.update({ where: { id: s.id }, data: { last_activity_at: new Date() } })
-  try { getIo()?.emit('presence:update', { userId, sessionId: Number(s.id), from, to }) } catch {}
+  try { getIo()?.emit('presence:update', { userId, sessionId: Number(s.id), from, to }) } catch { }
 
   // Auto-wire live calls without manual posts: ON_CALL -> connected; leaving ON_CALL -> ended
   try {
@@ -64,7 +64,7 @@ export async function setStatus(userId: number, to: AgentStatus, meta?: any) {
     } else if (prevWasOnCall) {
       await updateLiveCallPhase(reqShim, 'ended' as any, callId)
     }
-  } catch {}
+  } catch { }
   return { session: s, status: to }
 }
 
@@ -73,7 +73,7 @@ export async function startBreak(userId: number, break_reason_id?: number | null
   await setStatus(userId, 'BREAK')
   const br = await (db as any).agent_breaks.create({ data: { user_id: userId, session_id: s.id, break_reason_id: break_reason_id || null } })
   await (db as any).agent_presence_events.create({ data: { user_id: userId, session_id: s.id, event_type: 'BREAK_START', to_status: 'BREAK' } })
-  try { getIo()?.emit('break:started', { userId, sessionId: Number(s.id), breakId: Number(br.id), reasonId: break_reason_id || null }) } catch {}
+  try { getIo()?.emit('break:started', { userId, sessionId: Number(s.id), breakId: Number(br.id), reasonId: break_reason_id || null }) } catch { }
   return br
 }
 
@@ -85,7 +85,7 @@ export async function endBreak(userId: number) {
   }
   await (db as any).agent_presence_events.create({ data: { user_id: userId, session_id: s.id, event_type: 'BREAK_END', from_status: 'BREAK' } })
   await setStatus(userId, 'AVAILABLE')
-  try { getIo()?.emit('break:ended', { userId, sessionId: Number(s.id), breakId: open ? Number(open.id) : null }) } catch {}
+  try { getIo()?.emit('break:ended', { userId, sessionId: Number(s.id), breakId: open ? Number(open.id) : null }) } catch { }
 }
 
 export async function closeActiveSession(userId: number, reason: string) {
@@ -94,7 +94,7 @@ export async function closeActiveSession(userId: number, reason: string) {
   const lastStatus = await getLastStatus(userId, s.id)
   const updated = await (db as any).agent_sessions.update({ where: { id: s.id }, data: { is_active: false, logout_at: new Date(), ended_by: 'user', end_reason: reason } })
   await (db as any).agent_presence_events.create({ data: { user_id: userId, session_id: s.id, event_type: 'LOGOUT', from_status: lastStatus, to_status: 'OFFLINE', meta: { reason } } })
-  try { getIo()?.emit('session:closed', { userId, sessionId: Number(s.id), reason }) } catch {}
+  try { emitToUser(userId, 'session:closed', { userId, sessionId: Number(s.id), reason }) } catch { }
   return updated
 }
 
@@ -112,7 +112,7 @@ export async function autoIdleAndTimeoutSweep() {
       // Auto close session
       await (db as any).agent_sessions.update({ where: { id: s.id }, data: { is_active: false, logout_at: new Date(), ended_by: 'system', end_reason: 'session_timeout' } })
       await (db as any).agent_presence_events.create({ data: { user_id: s.user_id, session_id: s.id, event_type: 'LOGOUT', from_status: 'IDLE', to_status: 'OFFLINE', meta: { reason: 'timeout' } } })
-      try { getIo()?.emit('session:closed', { userId: s.user_id, sessionId: Number(s.id), reason: 'timeout' }) } catch {}
+      try { emitToUser(s.user_id, 'session:closed', { userId: s.user_id, sessionId: Number(s.id), reason: 'timeout' }) } catch { }
       continue
     }
 
@@ -121,7 +121,7 @@ export async function autoIdleAndTimeoutSweep() {
       const lastStatus = await getLastStatus(s.user_id, s.id)
       if (lastStatus !== 'IDLE' && lastStatus !== 'BREAK' && lastStatus !== 'ON_CALL') {
         await (db as any).agent_presence_events.create({ data: { user_id: s.user_id, session_id: s.id, event_type: 'IDLE_AUTO', from_status: lastStatus, to_status: 'IDLE' } })
-        try { getIo()?.emit('presence:update', { userId: s.user_id, sessionId: Number(s.id), from: lastStatus, to: 'IDLE', source: 'auto' }) } catch {}
+        try { getIo()?.emit('presence:update', { userId: s.user_id, sessionId: Number(s.id), from: lastStatus, to: 'IDLE', source: 'auto' }) } catch { }
       }
     }
   }
@@ -130,5 +130,5 @@ export async function autoIdleAndTimeoutSweep() {
 let sweepTimer: NodeJS.Timer | null = null
 export function startPresenceScheduler() {
   if (sweepTimer) return
-  sweepTimer = setInterval(() => { autoIdleAndTimeoutSweep().catch(() => {}) }, 15 * 1000)
+  sweepTimer = setInterval(() => { autoIdleAndTimeoutSweep().catch(() => { }) }, 15 * 1000)
 }

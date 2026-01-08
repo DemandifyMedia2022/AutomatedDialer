@@ -21,6 +21,9 @@ const CreateOrganizationSchema = z.object({
   is_demo: z.boolean().optional().default(false),
   valid_until: z.string().datetime().optional().nullable(),
   max_users: z.number().int().positive().optional().default(10),
+  max_agents: z.number().int().positive().optional().default(10),
+  max_managers: z.number().int().positive().optional().default(2),
+  max_qa: z.number().int().positive().optional().default(2),
   contact_email: z.string().email().optional().nullable(),
   billing_info: z.string().optional().nullable(),
 });
@@ -31,6 +34,9 @@ const UpdateOrganizationSchema = z.object({
   is_demo: z.boolean().optional(),
   valid_until: z.string().datetime().optional().nullable(),
   max_users: z.number().int().positive().optional(),
+  max_agents: z.number().int().positive().optional(),
+  max_managers: z.number().int().positive().optional(),
+  max_qa: z.number().int().positive().optional(),
   contact_email: z.string().email().optional().nullable(),
   billing_info: z.string().optional().nullable(),
 });

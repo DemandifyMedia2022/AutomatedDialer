@@ -69,8 +69,8 @@ export default function Page() {
   const [dispositionView, setDispositionView] = useState<'daily' | 'monthly'>('daily')
   const [leaderboardView, setLeaderboardView] = useState<'daily' | 'monthly'>('daily')
 
-  // Format agent name from user email (same logic as sidebar)
-  const agentName = user?.email
+  // Format agent name from user (prefer username, fallback to email prefix)
+  const agentName = user?.username || (user?.email
     ? user.email
       .split("@")[0]
       .replace(/[._-]+/g, " ")
@@ -78,7 +78,7 @@ export default function Page() {
       .filter(Boolean)
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
       .join(" ")
-    : "Agent"
+    : "Agent")
 
 
   const fetchDispositionData = async () => {

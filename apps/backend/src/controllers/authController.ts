@@ -124,7 +124,13 @@ export async function login(req: Request, res: Response) {
     });
 
     // Ensure agent session is opened on successful login
-    try { await ensureSession(user.id, { ip: (req as any).ip, userAgent: req.headers['user-agent'] as any }) } catch { }
+    // Force logout from other devices/browser tabs
+    try {
+      await closeActiveSession(user.id, 'New login detected from another device/browser');
+      await ensureSession(user.id, { ip: (req as any).ip, userAgent: req.headers['user-agent'] as any });
+    } catch (err) {
+      console.error('Failed to manage sessions during login:', err);
+    }
 
     // Log successful login (only once)
     logAuthActivity(

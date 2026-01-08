@@ -38,6 +38,9 @@ interface Organization {
     is_demo: boolean
     valid_until?: string | null
     max_users: number
+    max_agents: number
+    max_managers: number
+    max_qa: number
     created_at: string
     _count: {
         users: number
@@ -88,6 +91,9 @@ export default function OrganizationManagePage() {
         name: '',
         status: 'active',
         max_users: 10,
+        max_agents: 10,
+        max_managers: 2,
+        max_qa: 2,
         is_demo: false,
         valid_until: null as string | null
     })
@@ -108,6 +114,9 @@ export default function OrganizationManagePage() {
                 name: org.name,
                 status: org.status,
                 max_users: org.max_users,
+                max_agents: org.max_agents || 10,
+                max_managers: org.max_managers || 2,
+                max_qa: org.max_qa || 2,
                 is_demo: org.is_demo,
                 valid_until: org.valid_until
             })
@@ -282,14 +291,43 @@ export default function OrganizationManagePage() {
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="maxUsers">Max Users</Label>
-                                <Input
-                                    id="maxUsers"
-                                    type="number"
-                                    value={orgEdit.max_users}
-                                    onChange={(e) => setOrgEdit({ ...orgEdit, max_users: parseInt(e.target.value) })}
-                                />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="maxUsers">Total Max Users</Label>
+                                    <Input
+                                        id="maxUsers"
+                                        type="number"
+                                        value={orgEdit.max_users}
+                                        onChange={(e) => setOrgEdit({ ...orgEdit, max_users: parseInt(e.target.value) })}
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="maxAgents">Max Agents</Label>
+                                    <Input
+                                        id="maxAgents"
+                                        type="number"
+                                        value={orgEdit.max_agents}
+                                        onChange={(e) => setOrgEdit({ ...orgEdit, max_agents: parseInt(e.target.value) })}
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="maxManagers">Max Managers</Label>
+                                    <Input
+                                        id="maxManagers"
+                                        type="number"
+                                        value={orgEdit.max_managers}
+                                        onChange={(e) => setOrgEdit({ ...orgEdit, max_managers: parseInt(e.target.value) })}
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="maxQA">Max QA</Label>
+                                    <Input
+                                        id="maxQA"
+                                        type="number"
+                                        value={orgEdit.max_qa}
+                                        onChange={(e) => setOrgEdit({ ...orgEdit, max_qa: parseInt(e.target.value) })}
+                                    />
+                                </div>
                             </div>
                             <div className="grid gap-2">
                                 <Label htmlFor="accountType">Account Type</Label>

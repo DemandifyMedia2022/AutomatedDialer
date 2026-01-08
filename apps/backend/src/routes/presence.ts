@@ -109,10 +109,18 @@ router.get('/break-reasons', requireAuth, requireRoles(['agent', 'manager', 'sup
 })
 
 // Manager summary counts for dashboard
-router.get('/manager/summary', requireAuth, requireRoles(['manager', 'superadmin']), async (_req: any, res: any, next: any) => {
+router.get('/manager/summary', requireAuth, requireRoles(['manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
-    const users: any[] = await (db as any).users.findMany({ where: { role: { in: ['agent', 'Agent'] as any } }, select: { id: true } })
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
+    const userWhere: any = { role: { in: ['agent', 'Agent'] as any } }
+    if (!isSuper && orgId) {
+      userWhere.organization_id = orgId
+    }
+
+    const users: any[] = await (db as any).users.findMany({ where: userWhere, select: { id: true } })
     const totalAgents = users.length
 
     let online = 0, available = 0, onCall = 0, idle = 0, onBreak = 0
@@ -181,10 +189,18 @@ router.get('/me', requireAuth, requireRoles(['agent', 'manager', 'superadmin']),
   } catch (e) { next(e) }
 })
 
-router.get('/manager/agents', requireAuth, requireRoles(['manager', 'superadmin']), async (_req: any, res: any, next: any) => {
+router.get('/manager/agents', requireAuth, requireRoles(['manager', 'superadmin']), async (req: any, res: any, next: any) => {
   try {
-    // Get all users with role agent (and optionally managers if needed)
-    const users: any[] = await (db as any).users.findMany({ where: { role: { in: ['agent', 'Agent'] as any } }, select: { id: true, username: true, usermail: true, extension: true } })
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
+
+    const userWhere: any = { role: { in: ['agent', 'Agent'] as any } }
+    if (!isSuper && orgId) {
+      userWhere.organization_id = orgId
+    }
+
+    // Get all users matching criteria
+    const users: any[] = await (db as any).users.findMany({ where: userWhere, select: { id: true, username: true, usermail: true, extension: true } })
 
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
     const now = new Date()
@@ -280,12 +296,17 @@ router.get('/manager/calls-series', requireAuth, requireRoles(['manager', 'super
         const label = start.toLocaleDateString(undefined, { month: 'short', day: '2-digit' })
         buckets.push({ start, end, label })
       }
+      const orgId = req.user?.organizationId
+      const isSuper = req.user?.role === 'superadmin'
+      const callWhere: any = {
+        created_at: { gte: buckets[0].start, lte: buckets[buckets.length - 1].end }
+      }
+      if (!isSuper && orgId) {
+        callWhere.organization_id = orgId
+      }
+
       const calls: any[] = await (db as any).calls.findMany({
-        where: {
-          created_at: { gte: buckets[0].start, lte: buckets[buckets.length - 1].end },
-          // If you only want outbound calls, uncomment:
-          // direction: 'outbound'
-        },
+        where: callWhere,
         select: { created_at: true, direction: true },
       })
       const series = buckets.map(b => {
@@ -306,11 +327,17 @@ router.get('/manager/calls-series', requireAuth, requireRoles(['manager', 'super
         const label = start.toLocaleTimeString(undefined, { hour: '2-digit' })
         buckets.push({ start, end, label })
       }
+      const orgId = req.user?.organizationId
+      const isSuper = req.user?.role === 'superadmin'
+      const callWhere: any = {
+        created_at: { gte: buckets[0].start, lte: buckets[buckets.length - 1].end }
+      }
+      if (!isSuper && orgId) {
+        callWhere.organization_id = orgId
+      }
+
       const calls: any[] = await (db as any).calls.findMany({
-        where: {
-          created_at: { gte: buckets[0].start, lte: buckets[buckets.length - 1].end },
-          // direction: 'outbound'
-        },
+        where: callWhere,
         select: { created_at: true, direction: true },
       })
       const series = buckets.map(b => {

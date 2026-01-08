@@ -18,6 +18,9 @@ export interface CreateOrganizationData {
   is_demo?: boolean;
   valid_until?: string | null;
   max_users?: number;
+  max_agents?: number;
+  max_managers?: number;
+  max_qa?: number;
   contact_email?: string | null;
   billing_info?: string | null;
 }
@@ -28,6 +31,9 @@ export interface UpdateOrganizationData {
   is_demo?: boolean;
   valid_until?: string | null;
   max_users?: number;
+  max_agents?: number;
+  max_managers?: number;
+  max_qa?: number;
   contact_email?: string | null;
   billing_info?: string | null;
 }
@@ -75,6 +81,9 @@ export async function getOrganizations(filters: OrganizationFilters = {}) {
       is_demo: true,
       valid_until: true,
       max_users: true,
+      max_agents: true,
+      max_managers: true,
+      max_qa: true,
       contact_email: true,
       created_at: true,
       updated_at: true,
@@ -97,6 +106,9 @@ export async function getOrganizations(filters: OrganizationFilters = {}) {
     is_demo: org.is_demo,
     valid_until: org.valid_until,
     max_users: org.max_users,
+    max_agents: org.max_agents,
+    max_managers: org.max_managers,
+    max_qa: org.max_qa,
     contact_email: org.contact_email,
     created_at: org.created_at,
     updated_at: org.updated_at,
@@ -130,6 +142,9 @@ export async function getOrganizationById(organizationId: number) {
       is_demo: true,
       valid_until: true,
       max_users: true,
+      max_agents: true,
+      max_managers: true,
+      max_qa: true,
       contact_email: true,
       billing_info: true,
       created_at: true,
@@ -168,6 +183,9 @@ export async function getOrganizationById(organizationId: number) {
     is_demo: organization.is_demo,
     valid_until: organization.valid_until,
     max_users: organization.max_users,
+    max_agents: organization.max_agents,
+    max_managers: organization.max_managers,
+    max_qa: organization.max_qa,
     contact_email: organization.contact_email,
     billing_info: organization.billing_info,
     created_at: organization.created_at,
@@ -193,14 +211,17 @@ export async function getOrganizationById(organizationId: number) {
  * Create a new organization
  */
 export async function createOrganization(data: CreateOrganizationData) {
-  const { 
-    name, 
-    status = 'active', 
-    is_demo = false, 
-    valid_until, 
-    max_users = 10, 
-    contact_email, 
-    billing_info 
+  const {
+    name,
+    status = 'active',
+    is_demo = false,
+    valid_until,
+    max_users = 10,
+    max_agents = 10,
+    max_managers = 2,
+    max_qa = 2,
+    contact_email,
+    billing_info
   } = data;
 
   // Check if organization name already exists
@@ -220,6 +241,9 @@ export async function createOrganization(data: CreateOrganizationData) {
       is_demo,
       valid_until: valid_until ? new Date(valid_until) : null,
       max_users,
+      max_agents,
+      max_managers,
+      max_qa,
       contact_email,
       billing_info,
     },
@@ -230,6 +254,9 @@ export async function createOrganization(data: CreateOrganizationData) {
       is_demo: true,
       valid_until: true,
       max_users: true,
+      max_agents: true,
+      max_managers: true,
+      max_qa: true,
       contact_email: true,
       billing_info: true,
       created_at: true,
@@ -287,6 +314,15 @@ export async function updateOrganization(organizationId: number, data: UpdateOrg
   if (data.max_users !== undefined) {
     updateData.max_users = data.max_users;
   }
+  if (data.max_agents !== undefined) {
+    updateData.max_agents = data.max_agents;
+  }
+  if (data.max_managers !== undefined) {
+    updateData.max_managers = data.max_managers;
+  }
+  if (data.max_qa !== undefined) {
+    updateData.max_qa = data.max_qa;
+  }
 
   if (data.contact_email !== undefined) {
     updateData.contact_email = data.contact_email;
@@ -307,6 +343,9 @@ export async function updateOrganization(organizationId: number, data: UpdateOrg
       is_demo: true,
       valid_until: true,
       max_users: true,
+      max_agents: true,
+      max_managers: true,
+      max_qa: true,
       contact_email: true,
       billing_info: true,
       created_at: true,
@@ -324,8 +363,8 @@ export async function deleteOrganization(organizationId: number) {
   // Check if organization exists
   const organization = await db.organizations.findUnique({
     where: { id: organizationId },
-    select: { 
-      id: true, 
+    select: {
+      id: true,
       name: true,
       _count: {
         select: {

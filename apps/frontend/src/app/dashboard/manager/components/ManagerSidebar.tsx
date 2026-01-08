@@ -73,8 +73,8 @@ const data: {
       featureKey: 'manager-admin',
       items: [
         { title: "Agent", url: "/dashboard/manager/administration/agent" },
-        { title: "Campaigns", url: "/dashboard/manager/administration/campaigns" },
-        { title: "Automated Dialer", url: "/dashboard/manager/administration/automated" },
+        { title: "Campaigns", url: "/dashboard/manager/administration/campaigns", featureKey: 'manager-campaigns' },
+        { title: "Automated Dialer", url: "/dashboard/manager/administration/automated", featureKey: 'manager-automated' },
       ],
     },
     {
@@ -115,7 +115,7 @@ export function ManagerSidebar({ ...props }: React.ComponentProps<typeof Sidebar
   const { user } = useAuth()
 
   const displayUser = {
-    name: user?.email
+    name: user?.username || (user?.email
       ? user.email
         .split("@")[0]
         .replace(/[._-]+/g, " ")
@@ -123,7 +123,7 @@ export function ManagerSidebar({ ...props }: React.ComponentProps<typeof Sidebar
         .filter(Boolean)
         .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(" ")
-      : data.user.name,
+      : data.user.name),
     email: user?.email || data.user.email,
     avatar: "",
   }

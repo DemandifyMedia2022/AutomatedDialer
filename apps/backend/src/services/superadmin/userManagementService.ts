@@ -155,7 +155,7 @@ export async function getUsers(filters: UserFilters = {}, requestingUser?: { rol
  */
 export async function getUserById(userId: number, requestingUser?: { role?: string; organizationId?: number | null }) {
   const whereClause: any = { id: userId };
-  
+
   // Non-superadmin users can only access users from their own organization
   if (requestingUser?.role !== 'superadmin') {
     whereClause.organization_id = requestingUser?.organizationId;
@@ -210,24 +210,24 @@ export async function getUserById(userId: number, requestingUser?: { role?: stri
   const pool = getPool();
   let callQuery = 'SELECT COUNT(*) as call_count FROM calls WHERE useremail = ?';
   let callParams = [user.usermail];
-  
+
   if (user.organization_id) {
     callQuery += ' AND organization_id = ?';
     callParams.push(String(user.organization_id));
   }
-  
+
   const [callRows]: any = await pool.query(callQuery, callParams);
   const callCount = Number(callRows[0]?.call_count || 0);
 
   // Get campaign count (with organization filter)
   let campaignQuery = 'SELECT COUNT(DISTINCT campaign_name) as campaign_count FROM calls WHERE useremail = ?';
   let campaignParams = [user.usermail];
-  
+
   if (user.organization_id) {
     campaignQuery += ' AND organization_id = ?';
     campaignParams.push(String(user.organization_id));
   }
-  
+
   const [campaignRows]: any = await pool.query(campaignQuery, campaignParams);
   const campaignCount = Number(campaignRows[0]?.campaign_count || 0);
 
@@ -265,15 +265,15 @@ export async function getUserById(userId: number, requestingUser?: { role?: stri
  * Create a new user
  */
 export async function createUser(data: CreateUserData) {
-  const { 
-    username, 
-    email, 
-    password, 
-    role, 
-    extension, 
-    status = 'active', 
+  const {
+    username,
+    email,
+    password,
+    role,
+    extension,
+    status = 'active',
     is_demo_user = false,
-    organization_id 
+    organization_id
   } = data;
 
   // Check if user already exists
@@ -289,7 +289,15 @@ export async function createUser(data: CreateUserData) {
   if (organization_id) {
     const organization = await db.organizations.findUnique({
       where: { id: organization_id },
-      select: { id: true, status: true, max_users: true, _count: { select: { users: true } } },
+      select: {
+        id: true,
+        status: true,
+        max_users: true,
+        max_agents: true,
+        max_managers: true,
+        max_qa: true,
+        _count: { select: { users: true } }
+      },
     });
 
     if (!organization) {
@@ -300,9 +308,28 @@ export async function createUser(data: CreateUserData) {
       throw new Error('Cannot add users to inactive organization');
     }
 
-    // Check organization user limit
+    // Check organization total user limit
     if (organization._count.users >= organization.max_users) {
-      throw new Error(`Organization has reached its user limit of ${organization.max_users}`);
+      throw new Error(`Organization has reached its total user limit of ${organization.max_users}`);
+    }
+
+    // Check role-specific limits
+    if (role === 'agent' || role === 'manager' || role === 'qa') {
+      const roleCount = await db.users.count({
+        where: { organization_id, role }
+      });
+
+      const limit = role === 'agent' ? organization.max_agents :
+        role === 'manager' ? organization.max_managers :
+          organization.max_qa;
+
+      const limitLabel = role === 'agent' ? 'Agent' :
+        role === 'manager' ? 'Manager' :
+          'QA';
+
+      if (roleCount >= (limit || 0)) {
+        throw new Error(`Organization has reached its ${limitLabel} limit of ${limit}`);
+      }
     }
   }
 
@@ -485,7 +512,15 @@ export async function updateUser(userId: number, data: UpdateUserData) {
       // Validate organization exists and is active
       const organization = await db.organizations.findUnique({
         where: { id: data.organization_id },
-        select: { id: true, status: true, max_users: true, _count: { select: { users: true } } },
+        select: {
+          id: true,
+          status: true,
+          max_users: true,
+          max_agents: true,
+          max_managers: true,
+          max_qa: true,
+          _count: { select: { users: true } }
+        },
       });
 
       if (!organization) {
@@ -496,16 +531,40 @@ export async function updateUser(userId: number, data: UpdateUserData) {
         throw new Error('Cannot assign users to inactive organization');
       }
 
-      // Check organization user limit (excluding current user)
-      const currentUserCount = await db.users.count({
+      // Check organization total user limit (excluding current user if already in this org)
+      const currentUserCountInOrg = await db.users.count({
         where: {
           organization_id: data.organization_id,
           NOT: { id: userId },
         },
       });
 
-      if (currentUserCount >= organization.max_users) {
-        throw new Error(`Organization has reached its user limit of ${organization.max_users}`);
+      if (currentUserCountInOrg >= (organization.max_users || 0)) {
+        throw new Error(`Organization has reached its total user limit of ${organization.max_users}`);
+      }
+
+      // Check role-specific limits
+      const effectiveRole = data.role || existingUser.role;
+      if (effectiveRole === 'agent' || effectiveRole === 'manager' || effectiveRole === 'qa') {
+        const roleCount = await db.users.count({
+          where: {
+            organization_id: data.organization_id,
+            role: effectiveRole,
+            NOT: { id: userId }
+          }
+        });
+
+        const limit = effectiveRole === 'agent' ? organization.max_agents :
+          effectiveRole === 'manager' ? organization.max_managers :
+            organization.max_qa;
+
+        const limitLabel = effectiveRole === 'agent' ? 'Agent' :
+          effectiveRole === 'manager' ? 'Manager' :
+            'QA';
+
+        if (roleCount >= (limit || 0)) {
+          throw new Error(`Organization has reached its ${limitLabel} limit of ${limit}`);
+        }
       }
 
       updateData.organization_id = data.organization_id;
