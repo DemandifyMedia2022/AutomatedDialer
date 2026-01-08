@@ -46,11 +46,12 @@ const data = {
       ],
     },
     {
-      title: "Users",
+      title: "Users & Orgs",
       url: "/dashboard/superadmin/users",
       icon: Users,
       items: [
         { title: "All Users", url: "/dashboard/superadmin/users" },
+        { title: "Organizations", url: "/dashboard/superadmin/organizations" },
         { title: "Roles & Permissions", url: "/dashboard/superadmin/users/roles" },
       ],
     },
@@ -60,6 +61,7 @@ const data = {
       icon: Server,
       items: [
         { title: "Health Monitoring", url: "/dashboard/superadmin/system/health" },
+        { title: "Demo Restrictions", url: "/dashboard/superadmin/demo-restrictions" },
         // Not implemented yet:
         // { title: "Database", url: "/dashboard/superadmin/system/database" },
         // { title: "Resources", url: "/dashboard/superadmin/system/resources" },
@@ -111,12 +113,12 @@ export function SuperAdminSidebar({
   const displayUser = {
     name: user?.email
       ? user.email
-          .split("@")[0]
-          .replace(/[._-]+/g, " ")
-          .split(" ")
-          .filter(Boolean)
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-          .join(" ")
+        .split("@")[0]
+        .replace(/[._-]+/g, " ")
+        .split(" ")
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ")
       : data.user.name,
     email: user?.email || data.user.email,
     avatar: "",

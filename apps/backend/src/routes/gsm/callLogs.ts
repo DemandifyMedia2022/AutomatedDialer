@@ -98,15 +98,15 @@ router.get('/', async (req, res) => {
 })
 
 // Export call logs
-router.get('/export', async (req, res) => {
+router.get('/export/:id', async (req, res) => {
   try {
     const { id } = req.params
 
     // Validate id is parseable as BigInt
     try {
-        BigInt(id);
+      BigInt(id);
     } catch {
-        return res.status(400).json({ error: 'Invalid ID format' });
+      return res.status(400).json({ error: 'Invalid ID format' });
     }
 
     const call = await db.calls.findUnique({

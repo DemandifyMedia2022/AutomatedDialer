@@ -22,6 +22,7 @@ export interface CreateUserData {
   role: 'agent' | 'manager' | 'qa' | 'superadmin';
   extension?: string | null;
   status?: 'active' | 'inactive' | 'suspended';
+  is_demo_user?: boolean;
 }
 
 export interface UpdateUserData {
@@ -31,6 +32,7 @@ export interface UpdateUserData {
   extension?: string | null;
   status?: 'active' | 'inactive' | 'suspended';
   password?: string;
+  is_demo_user?: boolean;
 }
 
 /**
@@ -85,6 +87,7 @@ export async function getUsers(filters: UserFilters = {}) {
       extension: true,
       created_at: true,
       updated_at: true,
+      is_demo_user: true,
       // Get last login from agent_sessions
       agent_sessions: {
         where: { is_active: false },
@@ -106,6 +109,7 @@ export async function getUsers(filters: UserFilters = {}) {
     extension: user.extension,
     created_at: user.created_at,
     updated_at: user.updated_at,
+    is_demo_user: user.is_demo_user,
     last_login: user.agent_sessions[0]?.logout_at || null,
   }));
 
@@ -136,6 +140,7 @@ export async function getUserById(userId: number) {
       extension: true,
       created_at: true,
       updated_at: true,
+      is_demo_user: true,
       // Get session statistics
       agent_sessions: {
         select: {
@@ -186,6 +191,7 @@ export async function getUserById(userId: number) {
     extension: user.extension,
     created_at: user.created_at,
     updated_at: user.updated_at,
+    is_demo_user: user.is_demo_user,
     last_login: user.agent_sessions[0]?.logout_at || null,
     statistics: {
       total_calls: callCount,
@@ -207,7 +213,7 @@ export async function getUserById(userId: number) {
  * Create a new user
  */
 export async function createUser(data: CreateUserData) {
-  const { username, email, password, role, extension, status = 'active' } = data;
+  const { username, email, password, role, extension, status = 'active', is_demo_user = false } = data;
 
   // Check if user already exists
   const existing = await db.users.findFirst({
@@ -256,6 +262,7 @@ export async function createUser(data: CreateUserData) {
       status,
       unique_user_id: uniqueUserId,
       extension: extension || null,
+      is_demo_user,
     },
     select: {
       id: true,
@@ -265,6 +272,7 @@ export async function createUser(data: CreateUserData) {
       role: true,
       status: true,
       extension: true,
+      is_demo_user: true,
       created_at: true,
       updated_at: true,
     },
@@ -278,6 +286,7 @@ export async function createUser(data: CreateUserData) {
     role: user.role,
     status: user.status,
     extension: user.extension,
+    is_demo_user: user.is_demo_user,
     created_at: user.created_at,
     updated_at: user.updated_at,
   };
@@ -373,6 +382,10 @@ export async function updateUser(userId: number, data: UpdateUserData) {
     updateData.password = await bcrypt.hash(data.password, 10);
   }
 
+  if (data.is_demo_user !== undefined) {
+    updateData.is_demo_user = data.is_demo_user;
+  }
+
   // Update user
   const updatedUser = await db.users.update({
     where: { id: userId },
@@ -387,6 +400,7 @@ export async function updateUser(userId: number, data: UpdateUserData) {
       extension: true,
       created_at: true,
       updated_at: true,
+      is_demo_user: true,
     },
   });
 
@@ -398,6 +412,7 @@ export async function updateUser(userId: number, data: UpdateUserData) {
     role: updatedUser.role,
     status: updatedUser.status,
     extension: updatedUser.extension,
+    is_demo_user: updatedUser.is_demo_user,
     created_at: updatedUser.created_at,
     updated_at: updatedUser.updated_at,
   };

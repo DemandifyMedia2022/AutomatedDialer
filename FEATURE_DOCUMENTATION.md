@@ -9,12 +9,14 @@ This document outlines the key features, unique selling points (USPs), reliabili
 Unlike fragmented solutions, our platform provides a single, cohesive environment with distinct, secure portals for every role:
 *   **Agents:** Focused interface for dialing, campaign management, and performance tracking.
 *   **Managers:** Real-time oversight, agent monitoring, and campaign administration.
+*   **QA / Analysts:** Dedicated audit interface for compliance scoring, call reviewing, and performance feedback.
 *   **Superadmins:** Full system control, security settings, and global analytics.
 
 ### 2. Hybrid Dialing Modes
 Adapt to any campaign requirement with flexible dialing options:
 *   **Automated Dialer:** Maximize talk time with sequential auto-dialing from uploaded lists (CSV/Excel). Features intelligent queue management, auto-skip, and configurable delays.
 *   **Manual Dialer:** Precision control for high-value leads requiring specific attention and preparation time.
+*   **GSM Hybrid Dialer:** Integrate physical GSM gateways (SIM banks) to dial via local SIMs. Supports SMS, USSD codes, and hardware-level carrier management.
 
 ### 3. Integrated Decision Maker Workflows
 Streamline data capture with built-in **Decision Maker Forms**. Agents can capture structured lead details (contact info, company size, custom questions) directly within the active call interface, ensuring data consistency and reducing post-call work.
@@ -42,6 +44,10 @@ Boost team morale and productivity with built-in performance tracking:
 *   **Live Monitoring:** Managers can view a snapshot of active calls and agent statuses in real-time.
 *   **Campaign Management:** Create, assign, and track campaigns to align dialing efforts with business goals.
 *   **Secure File Management:** Centralized storage for call recordings and uploaded documents with strict access controls.
+
+### Advanced AI & Quality Control
+*   **Live AI Transcription:** Real-time speech-to-text powered by Deepgram. Includes sentiment analysis, speaker diarization, and instant transcript search.
+*   **Interactive QA Module:** Comprehensive auditing system allowing Quality Analysts to grade calls on custom parameters (Tone, Compliance), leave timestamps comments, and track improvement trends.
 
 ---
 

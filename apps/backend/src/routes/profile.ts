@@ -18,6 +18,30 @@ router.get('/me', requireAuth, async (req, res, next) => {
   }
 })
 
+// Get restrictions for current user (if demo)
+router.get('/me/restrictions', requireAuth, async (req: any, res, next) => {
+  try {
+    const userId = req.user?.userId;
+    const user = await db.users.findUnique({ where: { id: userId }, select: { role: true, is_demo_user: true } });
+
+    if (!user || !user.is_demo_user) {
+      return res.json({ restrictions: [] });
+    }
+
+    const restrictions = await db.demo_feature_restrictions.findMany({
+      where: {
+        role: user.role,
+        is_locked: true
+      },
+      select: { feature_key: true }
+    });
+
+    res.json({ restrictions: restrictions.map(r => r.feature_key) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 const protectIfCookie = env.USE_AUTH_COOKIE ? [csrfProtect] : []
 
 const UpdateProfileSchema = z.object({

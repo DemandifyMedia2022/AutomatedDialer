@@ -23,6 +23,7 @@ const CreateUserSchema = z.object({
   role: z.enum(['agent', 'manager', 'qa', 'superadmin']),
   extension: z.string().trim().optional().nullable(),
   status: z.enum(['active', 'inactive', 'suspended']).optional(),
+  is_demo_user: z.boolean().optional(),
 });
 
 const UpdateUserSchema = z.object({
@@ -32,6 +33,7 @@ const UpdateUserSchema = z.object({
   extension: z.string().trim().optional().nullable(),
   status: z.enum(['active', 'inactive', 'suspended']).optional(),
   password: z.string().min(6).optional(),
+  is_demo_user: z.boolean().optional(),
 });
 
 const UpdateUserStatusSchema = z.object({

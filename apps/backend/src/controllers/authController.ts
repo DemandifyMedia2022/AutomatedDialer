@@ -156,7 +156,7 @@ export async function login(req: Request, res: Response) {
       });
     }
 
-    return res.json({ success: true, token, user: { id: user.id, role: user.role, username: user.username, email: user.usermail } });
+    return res.json({ success: true, token, user: { id: user.id, role: user.role, username: user.username, email: user.usermail, is_demo_user: user.is_demo_user } });
   } catch (e: any) {
     return res.status(500).json({ success: false, message: e?.message || 'Login failed' });
   }
@@ -166,8 +166,8 @@ export async function me(req: Request, res: Response) {
   const u = req.user;
   if (!u) return res.status(401).json({ success: false, message: 'Unauthorized' });
   try {
-    const user = await db.users.findUnique({ where: { id: u.userId }, select: { username: true, usermail: true, role: true, id: true, extension: true } });
-    return res.json({ success: true, user: { id: user?.id || u.userId, role: user?.role || u.role, username: user?.username || null, email: user?.usermail || null, extension: user?.extension || null } });
+    const user = await db.users.findUnique({ where: { id: u.userId }, select: { username: true, usermail: true, role: true, id: true, extension: true, is_demo_user: true } });
+    return res.json({ success: true, user: { id: user?.id || u.userId, role: user?.role || u.role, username: user?.username || null, email: user?.usermail || null, extension: user?.extension || null, is_demo_user: user?.is_demo_user || false } });
   } catch {
     return res.json({ success: true, user: { id: u.userId, role: u.role, username: null, email: null, extension: null } });
   }

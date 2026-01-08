@@ -7,7 +7,11 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:40
 const api = axios.create({
   baseURL: API_BASE,
   timeout: 30000,
+  withCredentials: true,
 })
+
+export { api } // Exporting it as a named export
+
 
 // Status and Control APIs
 export const getStatus = async (): Promise<ApiStatus> => {
