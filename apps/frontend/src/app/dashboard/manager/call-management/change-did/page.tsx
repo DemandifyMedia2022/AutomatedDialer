@@ -8,53 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { ManagerSidebar } from "../../components/ManagerSidebar"
-import { Input } from "@/components/ui/input"
+import { SuperAdminSidebar } from "../../../superadmin/components/SuperAdminSidebar"
+
+import { useAuth } from "@/hooks/useAuth"
 import { useToast } from "@/hooks/use-toast"
 import { API_BASE } from "@/lib/api"
 
-const DEFAULT_ACCOUNT_ID = "360"
-const DEFAULT_PLAN_ID = "10332"
-// TEMPORARY: Current DIDs from your portal (replace these with your actual current DIDs)
-const CURRENT_PORTAL_DIDS = [
-  "13736595567",  // Example - replace with actual current DIDs
-  "13236931150",
-  "16822431118",
-  "442046000568",
-  "442080683948",
-  "441214681682",  // From your screenshot
-  "442046382898",  // From your screenshot
-  "442046382890",  // From your screenshot
-  "16073206094",   // From your screenshot
-]
 
-// Current allocated DIDs per extension (from your screenshots)
-const CURRENT_ALLOCATIONS: Record<string, string> = {
-  "1033201": "16073206094",  // Extension 1033201 allocated DID
-  "1033202": "441214681682",  // Extension 1033202 allocated DID  
-  "1033203": "442046382898",  // Extension 1033203 allocated DID
-  // Add more as needed
-}
-
-const DEFAULT_DIDS = [
-  "442046000568",
-  "441214681682",
-  "442046382898",
-  "12148330889",
-  "16073206094",
-]
-const DEFAULT_EXTS = [
-  "1033201",
-  "1033202",
-  "1033203",
-  "1033204",
-  "1033205",
-  "1033206",
-  "1033207",
-  "1033208",
-  "1033209",
-  "1033210",
-  "1033211",
-]
 
 
 type ExtItem = {
@@ -76,7 +36,11 @@ export default function Page() {
   const [lastAccount, setLastAccount] = React.useState<any>(null)
   const [bulkDid, setBulkDid] = React.useState<string>("")
   const [didOptions, setDidOptions] = React.useState<string[]>([])
+  const [allowedDids, setAllowedDids] = React.useState<string[]>([])
   const { toast } = useToast()
+  const { user, role, loading: authLoading } = useAuth()
+  const isSuperAdmin = role === 'superadmin'
+  const isManager = role === 'manager'
 
   const upsertDid = React.useCallback(async (ext: string, did: string) => {
     if (!ext) return
@@ -109,27 +73,23 @@ export default function Page() {
         headers: forceRefresh ? { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } : {}
       })
       const acc = await accRes.json()
-      setLastAccount(acc)
       if (!accRes.ok) {
-        // Hide all account fetch errors - use fallback silently
-        console.log("Account fetch failed, using fallback:", acc)
+        console.error("Account fetch failed:", acc)
         setItems([])
-        // Try fallbacks even if API failed
+        const msg = acc?.error || acc?.message || `API Error: ${accRes.status}`
+        setError(msg)
+        // Also keep the detailed error for debugging display
+        setLastAccount(acc)
+        return // Stop processing
       }
+
+      setLastAccount(acc)
       // Determine PBX account and planId from payload (handle diagnostic wrappers)
       const accData = acc?.data ?? acc?.get?.body?.data ?? acc?.post?.body?.data ?? acc?.body?.data ?? null
       let pbxAccountId: string | null = accData?.account_id ?? acc?.account_id ?? null
       let planKey = accData?.plan ? Object.keys(accData.plan)[0] : null
 
-      // NEXT_PUBLIC fallbacks
-      const fbAccount = process.env.NEXT_PUBLIC_TELXIO_ACCOUNT_FALLBACK || ""
-      const fbPlan = process.env.NEXT_PUBLIC_TELXIO_PLAN_FALLBACK || ""
-      if (!pbxAccountId && fbAccount) pbxAccountId = fbAccount
-      if (!planKey && fbPlan) planKey = fbPlan
 
-      // Hard defaults as last resort
-      if (!pbxAccountId) pbxAccountId = DEFAULT_ACCOUNT_ID
-      if (!planKey) planKey = DEFAULT_PLAN_ID
 
       setAccountId(pbxAccountId)
       setPlanId(planKey)
@@ -140,12 +100,12 @@ export default function Page() {
       }
 
       // 2) Use extensions directly from account details
-      let extArray: string[] = Array.isArray(accData?.plan?.[planKey]?.extensions)
+      let extArray: string[] = (planKey && Array.isArray(accData?.plan?.[planKey]?.extensions))
         ? (accData.plan[planKey].extensions as any[]).map((e: any) => String(e)).filter(Boolean)
         : []
       // Normalize DID numbers for caller ID options
       let didNumbers: string[] = []
-      const rawNumbers = accData?.plan?.[planKey]?.numbers
+      const rawNumbers = planKey ? accData?.plan?.[planKey]?.numbers : null
       if (Array.isArray(rawNumbers)) {
         for (const n of rawNumbers) {
           if (n == null) continue
@@ -157,37 +117,63 @@ export default function Page() {
           }
         }
       }
-      // NEXT_PUBLIC fallback for DID numbers
-      if (!didNumbers.length) {
-        didNumbers = (process.env.NEXT_PUBLIC_TELXIO_NUMBERS_FALLBACK || "")
-          .split(",")
-          .map(s => s.trim())
-          .filter(Boolean)
-      }
-      if (!didNumbers.length) {
-        didNumbers = DEFAULT_DIDS
-      }
-      setDidOptions(didNumbers)
-      // NEXT_PUBLIC fallback for known extension list
-      if (!extArray.length) {
-        const fbExts = (process.env.NEXT_PUBLIC_TELXIO_EXTENSIONS_FALLBACK || "")
-          .split(",")
-          .map(s => s.trim())
-          .filter(Boolean)
-        if (fbExts.length) {
-          extArray = fbExts
-        }
-      }
-      // Hard defaults as last resort
-      if (!extArray.length) {
-        extArray = DEFAULT_EXTS
-      }
+
       if (!extArray.length) {
         setError('No extensions found for this account/plan')
       }
-      const targetExts = extArray.slice(0, 11) // display up to 11 as requested
 
-      // 3) Fetch each extension details with cache-busting
+      // 3) Filter extensions if Manager
+      let filteredExts = extArray
+      let filteringError = ""
+
+      console.log("[DID Page] Filtering for role:", role, { isManager, isSuperAdmin })
+
+      if (isManager) {
+        try {
+          console.log("[DID Page] Fetching organization extensions from backend...")
+          const mappingRes = await fetch(`${API_BASE}/api/extension-dids/dids`, { credentials: 'include' })
+          const mappingData = await mappingRes.json()
+          if (mappingRes.ok && mappingData.success) {
+            const items = (mappingData.items || [])
+            const allowedExts = new Set(items.map((i: any) => String(i.extensionId)))
+            console.log("[DID Page] Allowed extensions for manager:", Array.from(allowedExts))
+            filteredExts = extArray.filter(e => allowedExts.has(e))
+
+            // NEW: Capture the pool of permitted Caller IDs
+            if (Array.isArray(mappingData.allowedDids) && mappingData.allowedDids.length > 0) {
+              const permitted = mappingData.allowedDids.map(String)
+              setAllowedDids(permitted)
+              // Intersect account numbers with permitted ones for the bulk dropdown
+              const permittedSet = new Set(permitted)
+              setDidOptions(didNumbers.filter(n => permittedSet.has(n)))
+            } else {
+              setDidOptions(didNumbers)
+            }
+          } else {
+            console.error("[DID Page] Mapping fetch failed:", mappingData)
+            filteredExts = []
+            filteringError = mappingData?.message || "Could not verify allocated extensions."
+          }
+        } catch (e) {
+          console.error("[DID Page] Failed to fetch organization mappings:", e)
+          filteredExts = []
+          filteringError = "Network error verifying your allocated extensions."
+        }
+      } else if (!isSuperAdmin && role !== "") {
+        // If not superadmin and not manager (and role loaded), hide everything for safety
+        console.warn("[DID Page] Unauthorized role attempted view:", role)
+        filteredExts = []
+        filteringError = "Unauthorized: Access restricted to Managers and Superadmins."
+      }
+
+      const targetExts = filteredExts.slice(0, 11) // display up to 11 as requested
+      if ((isManager || !isSuperAdmin) && filteringError) {
+        setError(filteringError)
+      } else if (filteredExts.length === 0 && extArray.length > 0 && isManager) {
+        setError("No extensions allocated to your organization found.")
+      }
+
+      // 4) Fetch each extension details with cache-busting
       const details = await Promise.all(
         targetExts.map(async (ext: string) => {
           try {
@@ -208,44 +194,19 @@ export default function Page() {
                 ? data.callerids
                 : []
 
-            // Debug: Log what we received for this extension
-            console.log(`Extension ${ext} data:`, {
-              callerId,
-              callerIds,
-              extData,
-              fullData: data,
-              didNumbers,
-              meta: data?.meta
-            })
+            // Use only the current portal data for caller IDs
+            callerIds = Array.from(new Set(callerIds || [])).filter(Boolean)
 
-            // If API failed (soft bypass), use current portal DIDs but preserve current allocation
-            if (data?.meta?.softBypass) {
-              console.log(`Using current portal DIDs for extension ${ext} due to API failure`)
-              callerIds = CURRENT_PORTAL_DIDS
-              // Use the known current allocation for this extension
-              const currentAlloc = CURRENT_ALLOCATIONS[ext]
-              console.log(`Extension ${ext} - Current allocation from mapping:`, currentAlloc)
-              console.log(`Extension ${ext} - Original callerId from API:`, callerId)
-              callerId = currentAlloc || callerId || CURRENT_PORTAL_DIDS[0] || ""
-              console.log(`Extension ${ext} - Final callerId after override:`, callerId)
-            } else {
-              // Use only the current portal data for caller IDs, not fallback DIDs
-              callerIds = Array.from(new Set(callerIds || [])).filter(Boolean)
-
-              // If no callerIds from portal, use account numbers as fallback
-              if (callerIds.length === 0 && didNumbers.length > 0) {
-                callerIds = didNumbers
-              }
+            // If no callerIds from portal, use account numbers as fallback
+            if (callerIds.length === 0 && didNumbers.length > 0) {
+              callerIds = didNumbers
             }
+
             const allocated = callerId || (callerIds[0] || "")
-            console.log(`Extension ${ext} - Final allocated value:`, allocated)
-            console.log(`Extension ${ext} - Final callerIds array:`, callerIds)
             // Initialize editable field to currently allocated DID
             return { ext, status: res.ok ? "OK" : "ERROR", callerId: allocated, callerIds, allocated } as ExtItem
           } catch {
-            // On failure, use current portal DIDs and known allocation
-            const currentAllocated = CURRENT_ALLOCATIONS[ext] || CURRENT_PORTAL_DIDS[0] || ""
-            return { ext, status: "ERROR", callerId: currentAllocated, callerIds: CURRENT_PORTAL_DIDS, allocated: currentAllocated } as ExtItem
+            return { ext, status: "ERROR", callerId: "", callerIds: [], allocated: "" } as ExtItem
           }
         })
       )
@@ -255,11 +216,13 @@ export default function Page() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [isManager, isSuperAdmin, API_BASE, upsertDid])
 
   React.useEffect(() => {
+    if (authLoading) return
+    if (!role) return
     fetchAccountAndExtensions()
-  }, [fetchAccountAndExtensions])
+  }, [authLoading, role, fetchAccountAndExtensions])
 
   const onSave = async (idx: number) => {
     const it = items[idx]
@@ -390,7 +353,7 @@ export default function Page() {
 
   return (
     <SidebarProvider>
-      <ManagerSidebar />
+      {isSuperAdmin ? <SuperAdminSidebar /> : <ManagerSidebar />}
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
           <div className="flex items-center gap-2 px-4 w-full">
@@ -403,11 +366,11 @@ export default function Page() {
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="/dashboard/manager">Manager</BreadcrumbLink>
+                  <BreadcrumbLink href={isSuperAdmin ? "/dashboard/superadmin" : "/dashboard/manager"}>{isSuperAdmin ? "Super Admin" : "Manager"}</BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="/dashboard/manager/call-management">Call Management</BreadcrumbLink>
+                  <BreadcrumbLink href={isSuperAdmin ? "/dashboard/superadmin/system" : "/dashboard/manager/call-management"}>{isSuperAdmin ? "System" : "Call Management"}</BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem>
@@ -421,17 +384,15 @@ export default function Page() {
                   <SelectValue placeholder="Select DID" />
                 </SelectTrigger>
                 <SelectContent>
-                  {didOptions.map(did => (
+                  {(allowedDids.length > 0
+                    ? didOptions.filter(d => allowedDids.includes(String(d)))
+                    : didOptions
+                  ).map(did => (
                     <SelectItem key={did} value={did}>{did}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Input
-                placeholder="Or enter DID manually"
-                value={bulkDid}
-                onChange={(e) => setBulkDid(e.target.value)}
-                className="h-9 w-[220px]"
-              />
+
               <Button
                 variant="outline"
                 disabled={!bulkDid || items.length === 0}
@@ -464,10 +425,13 @@ export default function Page() {
               {!loading && (error || items.length === 0) && (
                 <div className="col-span-full text-xs text-muted-foreground space-y-2">
                   <div>Derived accountId: {accountId || "-"}, planId: {planId || "-"}</div>
-                  {lastAccount && !lastAccount?.error && (
-                    <pre className="max-h-64 overflow-auto rounded border bg-muted p-3 text-[11px] whitespace-pre-wrap break-all">
-                      {JSON.stringify(lastAccount, null, 2)}
-                    </pre>
+                  {true && (
+                    <div className="mt-2">
+                      <div className="text-[10px] font-mono text-xs text-muted-foreground mb-1">Debug Response:</div>
+                      <pre className="max-h-64 overflow-auto rounded border bg-muted p-2 text-[10px] whitespace-pre-wrap break-all">
+                        {JSON.stringify(lastAccount, null, 2)}
+                      </pre>
+                    </div>
                   )}
                 </div>
               )}
@@ -503,17 +467,15 @@ export default function Page() {
                             <SelectValue placeholder="Select Caller ID" />
                           </SelectTrigger>
                           <SelectContent>
-                            {it.callerIds.map((cid) => (
+                            {(allowedDids.length > 0
+                              ? it.callerIds.filter(cid => allowedDids.includes(String(cid)))
+                              : it.callerIds
+                            ).map((cid) => (
                               <SelectItem key={cid} value={cid}>{cid}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        <div className="text-[11px] text-muted-foreground">or enter manually</div>
-                        <Input
-                          placeholder="e.g. 442046003675"
-                          value={it.callerId}
-                          onChange={(e) => updateItem(idx, { callerId: e.target.value })}
-                        />
+
                       </div>
 
                       <div className="pt-1">

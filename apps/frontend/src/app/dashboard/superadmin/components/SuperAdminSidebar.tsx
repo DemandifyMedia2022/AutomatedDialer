@@ -62,6 +62,7 @@ const data = {
       items: [
         { title: "Health Monitoring", url: "/dashboard/superadmin/system/health" },
         { title: "Demo Restrictions", url: "/dashboard/superadmin/demo-restrictions" },
+        { title: "Change DID", url: "/dashboard/manager/call-management/change-did" },
         // Not implemented yet:
         // { title: "Database", url: "/dashboard/superadmin/system/database" },
         // { title: "Resources", url: "/dashboard/superadmin/system/resources" },

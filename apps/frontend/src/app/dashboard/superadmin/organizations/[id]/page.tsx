@@ -47,6 +47,13 @@ interface Organization {
     }
 }
 
+interface ExtensionMapping {
+    extensionId: string
+    did: string | null
+    updatedAt: string
+    organizationId: number | null
+}
+
 interface User {
     id: number
     username: string
@@ -69,6 +76,15 @@ export default function OrganizationManagePage() {
     const [showEditOrg, setShowEditOrg] = useState(false)
     const [showEditUser, setShowEditUser] = useState(false)
     const [editingUser, setEditingUser] = useState<User | null>(null)
+    const [allocatedExtensions, setAllocatedExtensions] = useState<ExtensionMapping[]>([])
+    const [telxioExtensions, setTelxioExtensions] = useState<string[]>([])
+    const [showAllocateExt, setShowAllocateExt] = useState(false)
+    const [selectedExts, setSelectedExts] = useState<string[]>([])
+    const [allMappings, setAllMappings] = useState<ExtensionMapping[]>([])
+    const [accountNumbers, setAccountNumbers] = useState<string[]>([])
+    const [allowedDids, setAllowedDids] = useState<string[]>([])
+    const [showManageDids, setShowManageDids] = useState(false)
+    const [selectedDids, setSelectedDids] = useState<string[]>([])
 
     // Form states
     const [newUser, setNewUser] = useState({
@@ -102,8 +118,57 @@ export default function OrganizationManagePage() {
         if (organizationId) {
             fetchOrganization()
             fetchUsers()
+            fetchAllocatedExtensions()
+            fetchTelxioExtensions()
+            fetchAllowedDids()
         }
     }, [organizationId])
+
+    const fetchAllowedDids = async () => {
+        try {
+            const res = await api.get(`/api/extension-dids/allowed-dids/${organizationId}`)
+            if (res.data.success) {
+                const dids = (res.data.items || []).map((i: any) => i.did)
+                setAllowedDids(dids)
+            }
+        } catch (err) {
+            console.error('Failed to fetch allowed DIDs:', err)
+        }
+    }
+
+    const fetchAllocatedExtensions = async () => {
+        try {
+            const res = await api.get('/api/extension-dids/dids')
+            if (res.data.success) {
+                const mappings = (res.data.items || []) as ExtensionMapping[]
+                setAllMappings(mappings)
+                setAllocatedExtensions(mappings.filter(m => m.organizationId === parseInt(organizationId)))
+            }
+        } catch (err) {
+            console.error('Failed to fetch allocated extensions:', err)
+        }
+    }
+
+    const fetchTelxioExtensions = async () => {
+        try {
+            const res = await fetch('/api/telxio/account', { method: 'POST' })
+            const data = await res.json()
+            const accData = data?.data ?? data?.get?.body?.data ?? data?.post?.body?.data ?? data?.body?.data
+            const planKey = accData?.plan ? Object.keys(accData.plan)[0] : null
+            if (planKey && accData?.plan?.[planKey]?.extensions) {
+                setTelxioExtensions(accData.plan[planKey].extensions.map((e: any) => String(e)))
+            }
+            // Also capture account-level numbers
+            if (planKey && accData?.plan?.[planKey]?.numbers) {
+                const numbers = accData.plan[planKey].numbers.map((n: any) => {
+                    return typeof n === 'string' ? n : (n.number || n.did || String(n))
+                })
+                setAccountNumbers(numbers)
+            }
+        } catch (err) {
+            console.error('Failed to fetch Telxio extensions:', err)
+        }
+    }
 
     const fetchOrganization = async () => {
         try {
@@ -234,6 +299,58 @@ export default function OrganizationManagePage() {
             } catch (err) {
                 console.error('Failed to delete user:', err)
             }
+        }
+    }
+
+    const handleAllocateExtensions = async () => {
+        try {
+            setLoading(true)
+            // Batch process selection
+            await Promise.all(selectedExts.map(async (ext) => {
+                await api.post(`/api/extension-dids/${ext}/did`, {
+                    organizationId: parseInt(organizationId)
+                })
+            }))
+            toast({ title: 'Success', description: 'Extensions allocated successfully' })
+            setShowAllocateExt(false)
+            fetchAllocatedExtensions()
+        } catch (err) {
+            console.error('Failed to allocate extensions:', err)
+            toast({ title: 'Error', description: 'Failed to allocate some extensions', variant: 'destructive' })
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleRemoveExtension = async (ext: string) => {
+        if (confirm(`Are you sure you want to remove extension ${ext} from this organization?`)) {
+            try {
+                // To remove from organization, we set organizationId to null
+                await api.post(`/api/extension-dids/${ext}/did`, {
+                    organizationId: null
+                })
+                fetchAllocatedExtensions()
+                toast({ title: 'Success', description: 'Extension removed' })
+            } catch (err) {
+                console.error('Failed to remove extension:', err)
+            }
+        }
+    }
+
+    const handleSaveAllowedDids = async () => {
+        try {
+            setLoading(true)
+            await api.post(`/api/extension-dids/allowed-dids/${organizationId}`, {
+                dids: selectedDids
+            })
+            toast({ title: 'Success', description: 'Permitted Caller IDs updated' })
+            setShowManageDids(false)
+            fetchAllowedDids()
+        } catch (err) {
+            console.error('Failed to update allowed DIDs:', err)
+            toast({ title: 'Error', description: 'Failed to update permitted DIDs', variant: 'destructive' })
+        } finally {
+            setLoading(false)
         }
     }
 
@@ -590,6 +707,177 @@ export default function OrganizationManagePage() {
                     </Table>
                 </CardContent>
             </Card>
+
+            {/* Extensions Management */}
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle>Allocated Extensions</CardTitle>
+                            <CardDescription>
+                                PBX Extensions assigned to this organization
+                            </CardDescription>
+                        </div>
+                        <Dialog open={showAllocateExt} onOpenChange={(open) => {
+                            if (open) {
+                                // Default selection to existing ones
+                                setSelectedExts(allocatedExtensions.map(m => m.extensionId))
+                            }
+                            setShowAllocateExt(open)
+                        }}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline">
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    Manage Allocations
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-[500px]">
+                                <DialogHeader>
+                                    <DialogTitle>Allocate Extensions</DialogTitle>
+                                    <DialogDescription>
+                                        Select extensions from the Telxio pool to assign to {organization.name}.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="max-h-[300px] overflow-y-auto py-4">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {telxioExtensions.map(ext => {
+                                            const mapping = allMappings.find(m => m.extensionId === ext)
+                                            const isTakenByOther = mapping && mapping.organizationId && mapping.organizationId !== parseInt(organizationId)
+
+                                            return (
+                                                <div key={ext} className="flex items-center space-x-2 p-2 border rounded hover:bg-muted cursor-pointer" onClick={() => {
+                                                    if (isTakenByOther) return
+                                                    setSelectedExts(prev => prev.includes(ext) ? prev.filter(e => e !== ext) : [...prev, ext])
+                                                }}>
+                                                    <Switch
+                                                        checked={selectedExts.includes(ext)}
+                                                        disabled={!!isTakenByOther}
+                                                    />
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-medium">{ext}</span>
+                                                        {isTakenByOther && (
+                                                            <span className="text-[10px] text-red-500">Already in Org #{mapping.organizationId}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                                <DialogFooter>
+                                    <Button variant="outline" onClick={() => setShowAllocateExt(false)}>
+                                        Cancel
+                                    </Button>
+                                    <Button onClick={handleAllocateExtensions} disabled={loading}>
+                                        Save Allocations
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Extension ID</TableHead>
+                                <TableHead>Current DID</TableHead>
+                                <TableHead>Last Updated</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {allocatedExtensions.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={4} className="text-center py-4 text-muted-foreground">No extensions allocated</TableCell>
+                                </TableRow>
+                            ) : (
+                                allocatedExtensions.map((ext) => (
+                                    <TableRow key={ext.extensionId}>
+                                        <TableCell className="font-medium text-blue-600">{ext.extensionId}</TableCell>
+                                        <TableCell>{ext.did || 'Not Set'}</TableCell>
+                                        <TableCell>{new Date(ext.updatedAt).toLocaleString()}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleRemoveExtension(ext.extensionId)}
+                                                className="text-red-500 hover:text-red-700"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+
+            {/* Permitted Caller IDs Management */}
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle>Permitted Caller IDs</CardTitle>
+                            <CardDescription>
+                                Shared pool of DIDs that this organization is allowed to choose from
+                            </CardDescription>
+                        </div>
+                        <Dialog open={showManageDids} onOpenChange={(open) => {
+                            if (open) setSelectedDids(allowedDids)
+                            setShowManageDids(open)
+                        }}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline">
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    Manage Permitted DIDs
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-[500px]">
+                                <DialogHeader>
+                                    <DialogTitle>Permit Caller IDs</DialogTitle>
+                                    <DialogDescription>
+                                        Select which DIDs {organization.name} is allowed to use as Caller IDs.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="max-h-[300px] overflow-y-auto py-4">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {accountNumbers.map(num => (
+                                            <div key={num} className="flex items-center space-x-2 p-2 border rounded hover:bg-muted cursor-pointer" onClick={() => {
+                                                setSelectedDids(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num])
+                                            }}>
+                                                <Switch checked={selectedDids.includes(num)} />
+                                                <span className="text-sm font-medium">{num}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <DialogFooter>
+                                    <Button variant="outline" onClick={() => setShowManageDids(false)}>Cancel</Button>
+                                    <Button onClick={handleSaveAllowedDids} disabled={loading}>Save Permissions</Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                        {allowedDids.length === 0 ? (
+                            <p className="text-sm text-muted-foreground italic">No specific DIDs permitted (Managers will see all account DIDs by default)</p>
+                        ) : (
+                            allowedDids.map(did => (
+                                <div key={did} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-mono">
+                                    {did}
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
+
 
             {/* Edit User Dialog */}
             <Dialog open={showEditUser} onOpenChange={setShowEditUser}>

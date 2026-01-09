@@ -64,18 +64,22 @@ async function ensureTable() {
       active TINYINT(1) DEFAULT 0,
       campaign_id INT NULL,
       campaign_name VARCHAR(255) NULL,
+      organization_id INT NULL,
       assigned_user_ids TEXT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_dialer_sheets_org (organization_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `)
 
-  // Add campaign_id column if it doesn't exist
+  // Add missing columns if they don't exist
   try {
     await pool.query('ALTER TABLE dialer_sheets ADD COLUMN IF NOT EXISTS campaign_id INT NULL AFTER active')
     await pool.query('ALTER TABLE dialer_sheets ADD COLUMN IF NOT EXISTS campaign_name VARCHAR(255) NULL AFTER campaign_id')
+    await pool.query('ALTER TABLE dialer_sheets ADD COLUMN IF NOT EXISTS organization_id INT NULL AFTER campaign_name')
+    await pool.query('ALTER TABLE dialer_sheets ADD INDEX IF NOT EXISTS idx_dialer_sheets_org (organization_id)')
   } catch (e) {
-    console.warn('Error adding campaign columns:', e)
+    console.warn('Error upgrading dialer_sheets table:', e)
   }
 }
 

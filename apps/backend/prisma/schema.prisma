@@ -89,6 +89,7 @@ model campaigns {
   organizations   organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_campaigns_organization")
 
   @@index([organization_id], map: "idx_campaigns_organization")
+  @@index([organization_id], map: "idx_campaigns_organization_id")
 }
 
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
@@ -164,6 +165,7 @@ model agentic_campaigns {
   organizations   organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_agentic_campaigns_organization")
 
   @@index([organization_id], map: "idx_agentic_campaigns_organization")
+  @@index([organization_id], map: "idx_agentic_campaigns_org")
 }
 
 model agentic_csv_files {
@@ -178,6 +180,7 @@ model agentic_csv_files {
   organizations   organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_agentic_csv_files_organization")
 
   @@index([organization_id], map: "idx_agentic_csv_files_organization")
+  @@index([organization_id], map: "idx_agentic_csv_files_org")
 }
 
 model dialing_contacts {
@@ -204,6 +207,7 @@ model dialing_contacts {
   organizations   organizations?          @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_dialing_contacts_organization")
 
   @@index([organization_id], map: "idx_dialing_contacts_organization")
+  @@index([organization_id], map: "idx_dialing_contacts_org")
 }
 
 model document_shares {
@@ -380,6 +384,7 @@ model dialer_sheets {
   organizations     organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_dialer_sheets_organization")
 
   @@index([organization_id], map: "idx_dialer_sheets_organization")
+  @@index([organization_id], map: "idx_dialer_sheets_org")
 }
 
 model password_resets {
@@ -708,39 +713,50 @@ model demo_feature_restrictions {
 }
 
 model organizations {
-  id                    Int                     @id @default(autoincrement())
-  name                  String                  @unique(map: "unique_org_name") @db.VarChar(255)
-  status                String                  @default("active") @db.VarChar(50)
-  is_demo               Boolean?                @default(false)
-  valid_until           DateTime?               @db.DateTime(0)
-  max_users             Int?                    @default(10)
-  billing_info          String?                 @db.LongText
-  contact_email         String?                 @db.VarChar(255)
-  created_at            DateTime?               @default(now()) @db.DateTime(0)
-  updated_at            DateTime?               @default(now()) @db.DateTime(0)
-  max_agents            Int?                    @default(10)
-  max_managers          Int?                    @default(2)
-  max_qa                Int?                    @default(2)
-  agent_breaks          agent_breaks[]
-  agent_heartbeats      agent_heartbeats[]
-  agent_presence_events agent_presence_events[]
-  agent_sessions        agent_sessions[]
-  agentic_campaigns     agentic_campaigns[]
-  agentic_csv_files     agentic_csv_files[]
-  api_metrics           api_metrics[]
-  audit_logs            audit_logs[]
-  break_reasons         break_reasons[]
-  campaigns             campaigns[]
-  dialer_sheets         dialer_sheets[]
-  dialing_contacts      dialing_contacts[]
-  dm_form               dm_form[]
-  documents             documents[]
-  extension_dids        extension_dids[]
-  feature_flags         feature_flags[]
-  notes                 notes[]
-  password_resets       password_resets[]
-  qa_call_reviews       qa_call_reviews[]
-  users                 users[]
+  id                        Int                         @id @default(autoincrement())
+  name                      String                      @unique(map: "unique_org_name") @db.VarChar(255)
+  status                    String                      @default("active") @db.VarChar(50)
+  is_demo                   Boolean?                    @default(false)
+  valid_until               DateTime?                   @db.DateTime(0)
+  max_users                 Int?                        @default(10)
+  billing_info              String?                     @db.LongText
+  contact_email             String?                     @db.VarChar(255)
+  created_at                DateTime?                   @default(now()) @db.DateTime(0)
+  updated_at                DateTime?                   @default(now()) @db.DateTime(0)
+  max_agents                Int?                        @default(10)
+  max_managers              Int?                        @default(2)
+  max_qa                    Int?                        @default(2)
+  agent_breaks              agent_breaks[]
+  agent_heartbeats          agent_heartbeats[]
+  agent_presence_events     agent_presence_events[]
+  agent_sessions            agent_sessions[]
+  agentic_campaigns         agentic_campaigns[]
+  agentic_csv_files         agentic_csv_files[]
+  api_metrics               api_metrics[]
+  audit_logs                audit_logs[]
+  break_reasons             break_reasons[]
+  campaigns                 campaigns[]
+  dialer_sheets             dialer_sheets[]
+  dialing_contacts          dialing_contacts[]
+  dm_form                   dm_form[]
+  documents                 documents[]
+  extension_dids            extension_dids[]
+  feature_flags             feature_flags[]
+  notes                     notes[]
+  organization_allowed_dids organization_allowed_dids[]
+  password_resets           password_resets[]
+  qa_call_reviews           qa_call_reviews[]
+  users                     users[]
+}
+
+model organization_allowed_dids {
+  id              Int           @id @default(autoincrement())
+  organization_id Int
+  did             String        @db.VarChar(64)
+  created_at      DateTime?     @default(now()) @db.DateTime(0)
+  organizations   organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_org_allowed_dids_org")
+
+  @@unique([organization_id, did], map: "uk_org_did")
 }
 
 enum documents_type {

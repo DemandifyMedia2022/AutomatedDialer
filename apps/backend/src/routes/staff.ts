@@ -83,20 +83,31 @@ router.post('/agents', ...protectIfCookie, async (req: any, res, next) => {
       include: { _count: { select: { users: true } } }
     })
     if (!org) return res.status(404).json({ success: false, message: 'Organization not found' })
+    if (org.status !== 'active') return res.status(403).json({ success: false, message: `Cannot add users. Organization status is ${org.status}` })
 
     if (org.max_users !== null && (org as any)._count.users >= org.max_users) {
       return res.status(400).json({ success: false, message: `Organization has reached its total user limit of ${org.max_users}` })
     }
 
     const totalAgents = await db.users.count({ where: { organization_id: orgId, role: 'agent' } })
-    if ((org as any).max_agents !== null && totalAgents >= (org as any).max_agents) {
-      return res.status(400).json({ success: false, message: `Organization has reached its Agent limit of ${(org as any).max_agents}` })
+    if (org.max_agents !== null && totalAgents >= (org.max_agents || 0)) {
+      return res.status(400).json({ success: false, message: `Organization has reached its Agent limit of ${org.max_agents}` })
     }
 
-    // Verify extension exists and has capacity (<10)
+    // Verify extension ownership and capacity
     const pool = getPool()
-    const [extRows]: any = await pool.query('SELECT extension_id FROM extensions WHERE extension_id = ? LIMIT 1', [extension])
-    if (!extRows || extRows.length === 0) return res.status(400).json({ success: false, message: 'Extension not found' })
+    const isSuper = req.user?.role === 'superadmin'
+
+    if (!isSuper) {
+      const [mapping]: any = await pool.query('SELECT organization_id FROM extension_dids WHERE extension_id = ? LIMIT 1', [extension])
+      if (!mapping || mapping.length === 0 || mapping[0].organization_id !== orgId) {
+        return res.status(403).json({ success: false, message: 'Extension not allocated to your organization' })
+      }
+    } else {
+      const [extRows]: any = await pool.query('SELECT extension_id FROM extensions WHERE extension_id = ? LIMIT 1', [extension])
+      if (!extRows || extRows.length === 0) return res.status(400).json({ success: false, message: 'Extension not found' })
+    }
+
     const count = await db.users.count({ where: { extension } })
     if (count >= 10) return res.status(400).json({ success: false, message: 'Extension capacity reached (10)' })
 
@@ -112,15 +123,30 @@ router.post('/agents', ...protectIfCookie, async (req: any, res, next) => {
 })
 
 // Extensions with assigned counts — managers and superadmins
-router.get('/agents/extensions', async (_req, res, next) => {
+router.get('/agents/extensions', async (req: any, res, next) => {
   try {
+    const orgId = req.user?.organizationId
+    const isSuper = req.user?.role === 'superadmin'
     const pool = getPool()
-    const [rows] = await pool.query(`
+
+    let query = `
       SELECT e.extension_id AS extensionId,
              (SELECT COUNT(1) FROM users u WHERE u.extension = e.extension_id) AS assignedCount
       FROM extensions e
-      ORDER BY e.extension_id ASC
-    `)
+    `
+    const params: any[] = []
+
+    if (!isSuper && orgId) {
+      query += `
+        INNER JOIN extension_dids ed ON e.extension_id = ed.extension_id
+        WHERE ed.organization_id = ?
+      `
+      params.push(orgId)
+    }
+
+    query += ` ORDER BY e.extension_id ASC`
+
+    const [rows] = await pool.query(query, params)
     res.json({ success: true, extensions: rows })
   } catch (e) {
     next(e)
@@ -162,8 +188,16 @@ router.patch('/agents/:id', ...protectIfCookie, async (req: any, res, next) => {
         data.extension = null
       } else {
         const pool = getPool()
-        const [extRows]: any = await pool.query('SELECT extension_id FROM extensions WHERE extension_id = ? LIMIT 1', [ext])
-        if (!extRows || extRows.length === 0) return res.status(400).json({ success: false, message: 'Extension not found' })
+        if (!isSuper) {
+          const [mapping]: any = await pool.query('SELECT organization_id FROM extension_dids WHERE extension_id = ? LIMIT 1', [ext])
+          if (!mapping || mapping.length === 0 || mapping[0].organization_id !== orgId) {
+            return res.status(403).json({ success: false, message: 'Extension not allocated to your organization' })
+          }
+        } else {
+          const [extRows]: any = await pool.query('SELECT extension_id FROM extensions WHERE extension_id = ? LIMIT 1', [ext])
+          if (!extRows || extRows.length === 0) return res.status(400).json({ success: false, message: 'Extension not found' })
+        }
+
         const countExcl = await db.users.count({ where: { extension: ext, NOT: { id } } })
         if (countExcl >= 10) return res.status(400).json({ success: false, message: 'Extension capacity reached (10)' })
         data.extension = ext

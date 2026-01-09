@@ -52,6 +52,7 @@ import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
 import { io } from "socket.io-client"
 import { useCampaigns } from "@/hooks/agentic/useCampaigns"
 import { useAuth } from "@/hooks/useAuth"
+import { useDemoRestrictions } from "@/hooks/useDemoRestrictions"
 import { detectRegion, getCountryName } from "@/utils/regionDetection"
 import { GSM_CONFIG } from "@/lib/gsm-config"
 
@@ -155,6 +156,8 @@ export default function ManualDialerPage() {
 }
 
 function ManualDialerPageContent() {
+  const { isFeatureLocked } = useDemoRestrictions()
+  const isCampaignRestricted = isFeatureLocked('agent-campaigns')
   const TRANSFER_MODE: 'dtmf' | 'refer-then-dtmf' = 'dtmf'
   const [sipMode, setSipMode] = useState<'telxio' | 'gsm'>('telxio')
   const [gsmPort, setGsmPort] = useState<string>('COM1')
@@ -284,8 +287,9 @@ function ManualDialerPageContent() {
   const selectedCampaignLabel = useMemo(() => {
     if (!selectedCampaign) return ""
     const found = campaigns.find((c: { key: string; label: string }) => c.key === selectedCampaign)
+    if (isCampaignRestricted && !found) return ""
     return found?.label || selectedCampaign
-  }, [campaigns, selectedCampaign])
+  }, [campaigns, selectedCampaign, isCampaignRestricted])
 
   const currentPhone = useMemo(() => {
     const dialNum = number ? number.replace(/[^0-9+]/g, '') : (lastDialedNumber || "")
@@ -2004,7 +2008,7 @@ function ManualDialerPageContent() {
                   disabled={campaignsLoading || campaigns.length === 0}
                 >
                   <SelectTrigger className="w-full mt-1.5">
-                    <SelectValue placeholder={campaignsLoading ? "Loading campaigns..." : "Select campaign"} />
+                    <SelectValue placeholder={campaignsLoading ? "Loading campaigns..." : (isCampaignRestricted ? "" : "Select campaign")} />
                   </SelectTrigger>
                   <SelectContent>
                     {campaigns.length === 0 ? (
@@ -2020,8 +2024,8 @@ function ManualDialerPageContent() {
                     )}
                   </SelectContent>
                 </Select>
-                <p className="mt-1.5 text-[11px] text-muted-foreground">
-                  {selectedCampaign ? `Calling under ${selectedCampaignLabel}` : "Select a campaign to enable dialing."}
+                <p className="mt-1.5 text-[11px] text-muted-foreground min-h-[1rem]">
+                  {selectedCampaign && selectedCampaignLabel ? `Calling under ${selectedCampaignLabel}` : (isCampaignRestricted ? "" : "Select a campaign to enable dialing.")}
                 </p>
               </div>
 
@@ -2102,7 +2106,7 @@ function ManualDialerPageContent() {
                   <Button
                     onClick={placeCall}
                     className="gap-2 flex-1 h-11 bg-emerald-600 hover:bg-emerald-700 transition-all hover:shadow-md active:scale-95"
-                    disabled={!number || !uaRef.current || !status.includes("Registered") || !selectedCampaign}
+                    disabled={!number || !uaRef.current || !status.includes("Registered") || (!selectedCampaign && !isCampaignRestricted)}
                   >
                     <Phone className="h-4 w-4" /> Call
                   </Button>

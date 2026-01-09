@@ -7,13 +7,7 @@ const headers = new Headers({
 });
 
 export async function GET() {
-  if ((process.env.TELXIO_BYPASS || "").toLowerCase() === "true") {
-    const accountId = process.env.TELXIO_ACCOUNT_FALLBACK || "360";
-    const planId = process.env.TELXIO_PLAN_FALLBACK || "10332";
-    const exts = (process.env.TELXIO_EXTENSIONS_FALLBACK || "1033201,1033202,1033203,1033204,1033205,1033206,1033207,1033208,1033209,1033210,1033211").split(",").map(s => s.trim()).filter(Boolean);
-    const numbers = (process.env.TELXIO_NUMBERS_FALLBACK || "442046000568,441214681682,442046382898,12148330889,16073206094").split(",").map(s => s.trim()).filter(Boolean);
-    return NextResponse.json({ action: "get_account_details", data: { account_id: accountId, crm_id: accountId, plan: { [planId]: { numbers, extensions: exts } } } }, { headers });
-  }
+
   const public_key = process.env.TELXIO_PUBLIC_KEY;
   const private_key = process.env.TELXIO_PRIVATE_KEY;
   const authorization = process.env.TELXIO_AUTHORIZATION; // e.g., "Basic base64..." or Bearer
@@ -102,17 +96,14 @@ export async function GET() {
 }
 
 export async function POST() {
-  if ((process.env.TELXIO_BYPASS || "").toLowerCase() === "true") {
-    const accountId = process.env.TELXIO_ACCOUNT_FALLBACK || "360";
-    const planId = process.env.TELXIO_PLAN_FALLBACK || "10332";
-    const exts = (process.env.TELXIO_EXTENSIONS_FALLBACK || "1033201,1033202,1033203,1033204,1033205,1033206,1033207,1033208,1033209,1033210,1033211").split(",").map(s => s.trim()).filter(Boolean);
-    const numbers = (process.env.TELXIO_NUMBERS_FALLBACK || "442046000568,441214681682,442046382898,12148330889,16073206094").split(",").map(s => s.trim()).filter(Boolean);
-    return NextResponse.json({ action: "get_account_details", data: { account_id: accountId, crm_id: accountId, plan: { [planId]: { numbers, extensions: exts } } } }, { headers });
-  }
+
   const public_key = process.env.TELXIO_PUBLIC_KEY;
   const private_key = process.env.TELXIO_PRIVATE_KEY;
   const authorization = process.env.TELXIO_AUTHORIZATION;
   const cookie = process.env.TELXIO_COOKIE;
+
+  let candidates: string[] = [];
+  const attempts: any[] = [];
 
   if (!public_key || !private_key) {
     console.warn("Missing TELXIO env vars (TELXIO_PUBLIC_KEY/TELXIO_PRIVATE_KEY). Skipping API calls and using fallback data.");
@@ -121,7 +112,7 @@ export async function POST() {
     const url = `${baseUrl}/get_account_details`;
 
     try {
-      const candidates = (process.env.TELXIO_ACCOUNT_IDS || process.env.TELXIO_ACCOUNT_ID || "360")
+      candidates = (process.env.TELXIO_ACCOUNT_IDS || process.env.TELXIO_ACCOUNT_ID || "360")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
@@ -130,68 +121,68 @@ export async function POST() {
       console.log("Using base URL:", baseUrl);
 
       for (const acct of candidates) {
-        // Try GET first with proper Basic Auth
+        // Try GET first with proper parameters
         try {
           const basicAuth = `Basic ${Buffer.from(`${public_key}:${private_key}`).toString('base64')}`;
-          const getUrl = `${url}?account_id=${encodeURIComponent(acct)}`;
-          const resGet = await fetch(getUrl, {
+          const getUrl = `${url}?account_id=${encodeURIComponent(acct)}&public_key=${encodeURIComponent(public_key)}&private_key=${encodeURIComponent(private_key)}`;
+          const getRes = await fetch(getUrl, {
             method: "GET",
             headers: {
               Authorization: basicAuth,
               ...(cookie ? { Cookie: cookie } : {}),
             },
           });
-          const textGet = await resGet.text();
+          const textGet = await getRes.text();
           const parsedGet = (() => { try { return JSON.parse(textGet); } catch { return null; } })();
 
-          if (resGet.ok && parsedGet) {
+          if (getRes.ok && parsedGet && !parsedGet.error) {
             return NextResponse.json(parsedGet);
           }
+          attempts.push({ id: acct, method: "GET", status: getRes.status, body: parsedGet ?? textGet });
         } catch (e: any) {
-          // continue
+          attempts.push({ id: acct, method: "GET", error: e?.message || String(e) });
         }
 
-        // Then POST with proper Basic Auth
+        // Then POST with proper parameters
         try {
           const basicAuth = `Basic ${Buffer.from(`${public_key}:${private_key}`).toString('base64')}`;
-          const resPost = await fetch(url, {
+          const postRes = await fetch(url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: basicAuth,
               ...(cookie ? { Cookie: cookie } : {}),
             },
-            body: JSON.stringify({ account_id: acct }),
+            body: JSON.stringify({ account_id: acct, public_key, private_key }),
           });
-          const textPost = await resPost.text();
+          const textPost = await postRes.text();
           const parsedPost = (() => { try { return JSON.parse(textPost); } catch { return null; } })();
 
-          if (resPost.ok && parsedPost) {
+          if (postRes.ok && parsedPost && !parsedPost.error) {
             return NextResponse.json(parsedPost);
           }
+          attempts.push({ id: acct, method: "POST", status: postRes.status, body: parsedPost ?? textPost });
         } catch (e: any) {
-          // continue
+          attempts.push({ id: acct, method: "POST", error: e?.message || String(e) });
         }
       }
     } catch (err: any) {
       console.error("Telxio account fetch error:", err);
+      attempts.push({ error: err?.message || String(err) });
     }
   }
 
   // Fallback if keys missing or all attempts failed
-  console.log("Returning Telxio fallback data");
-  const fallbackAccountId = process.env.TELXIO_ACCOUNT_FALLBACK || "360";
-  const fallbackPlanId = process.env.TELXIO_PLAN_FALLBACK || "10332";
-  const exts = (process.env.TELXIO_EXTENSIONS_FALLBACK || "1033201,1033202,1033203,1033204,1033205,1033206,1033207,1033208,1033209,1033210,1033211").split(",").map(s => s.trim()).filter(Boolean);
-  const numbers = (process.env.TELXIO_NUMBERS_FALLBACK || "442046000568,441214681682,442046382898,12148330889,16073206094").split(",").map(s => s.trim()).filter(Boolean);
-
+  console.error("Telxio account fetch failed. Attempts:", JSON.stringify(attempts, null, 2));
+  console.log("Env vars check:", {
+    hasPublic: !!public_key,
+    hasPrivate: !!private_key,
+    hasAuth: !!authorization,
+    candidates: candidates
+  });
   return NextResponse.json({
-    action: "get_account_details",
-    data: {
-      account_id: fallbackAccountId,
-      crm_id: fallbackAccountId,
-      plan: { [fallbackPlanId]: { numbers, extensions: exts } },
-      meta: { softBypass: true, reason: "Telxio API skipped or failed - using fallback" }
-    }
-  }, { headers });
+    error: "Telxio account fetch failed after all attempts",
+    attempts,
+    envCheck: { hasPublic: !!public_key, hasPrivate: !!private_key }
+  }, { status: 502, headers });
 }
