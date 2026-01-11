@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Clock3, LogIn, LogOut, CheckCircle, XCircle, CalendarDays, History, Coffee, PlayCircle, StopCircle, User, Eye } from "lucide-react"
 import { io, Socket } from "socket.io-client"
+import { SOCKET_IO_URL } from "@/lib/api"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -121,7 +122,7 @@ export default function TrackAgentPage() {
   }, [])
 
   useEffect(() => {
-    const s: Socket = io(API_BASE, { path: "/socket.io", withCredentials: true })
+    const s: Socket = io(SOCKET_IO_URL, { path: "/socket.io", withCredentials: true })
     const onAnyUpdate = () => { refresh() }
     s.on("presence:update", onAnyUpdate)
     s.on("session:opened", onAnyUpdate)

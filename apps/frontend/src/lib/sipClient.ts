@@ -223,8 +223,31 @@ export async function createSipClient(
             // Outbound call is starting – we are in RINGING state until the far end answers
             setCallState("RINGING");
 
-            // Build a full SIP URI so SIP.js can create a valid URI
-            const target = `sip:${destination}@${domain}`;
+            // Format phone number for international calls (Telxio/Asterisk compatible)
+            // Sanitize: trim, remove spaces/dashes
+            let formattedNumber = String(destination).trim().replace(/[\s-]/g, '');
+            
+            // If E.164 with leading '+', remove it for SIP URI (Telxio dial plan expects digits only)
+            const isE164 = formattedNumber.startsWith('+');
+            if (isE164) {
+                formattedNumber = formattedNumber.slice(1);
+            }
+            
+            // Apply dial prefix for international calls if configured (e.g., '00' for international access code)
+            // This should be set via NEXT_PUBLIC_DIAL_PREFIX environment variable
+            const dialPrefix = typeof window !== 'undefined' 
+                ? (window as any).__DIAL_PREFIX__ || process.env.NEXT_PUBLIC_DIAL_PREFIX || ''
+                : '';
+            
+            if (dialPrefix && isE164) {
+                // Only apply prefix for international numbers (E.164 format)
+                formattedNumber = `${dialPrefix}${formattedNumber}`;
+            }
+            
+            // Build a full SIP URI with user=phone hint for Telxio/Asterisk compatibility
+            const target = `sip:${formattedNumber}@${domain};user=phone`;
+
+            console.log('[SIP Client] Calling:', { original: destination, formatted: formattedNumber, target });
 
             // Make the call - SimpleUser will handle early media (ringback tone) automatically
             // The remote audio element will receive the MediaStream and play it via delegates

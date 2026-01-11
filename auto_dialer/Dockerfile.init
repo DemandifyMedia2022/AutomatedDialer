@@ -1,0 +1,41 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install mysql client for waiting on database
+RUN apk add --no-cache mysql-client bash
+
+# Copy root package files
+COPY package.json package-lock.json* ./
+
+# Copy backend package.json for workspace dependencies
+COPY apps/backend/package.json ./apps/backend/
+COPY apps/frontend/package.json ./apps/frontend/
+
+# Install root dependencies first
+RUN npm install
+
+# Copy Prisma schema
+COPY apps/backend/prisma ./apps/backend/prisma
+
+# Generate Prisma Client
+WORKDIR /app/apps/backend
+RUN npx prisma generate
+
+# Copy restore script, setup script, populate script, and init script
+WORKDIR /app
+COPY auto_dialer/restore-database.js ./auto_dialer/
+COPY auto_dialer/setup-database.js ./auto_dialer/
+COPY auto_dialer/populate-extensions.js ./auto_dialer/
+COPY auto_dialer/init-database.sh ./auto_dialer/
+RUN chmod +x ./auto_dialer/init-database.sh
+# mysql2 should be available from backend workspace dependencies after npm install
+
+# Copy database backups directory
+COPY auto_dialer/database-backups ./auto_dialer/database-backups
+
+# Set working directory
+WORKDIR /app/auto_dialer
+
+CMD ["./init-database.sh"]
+

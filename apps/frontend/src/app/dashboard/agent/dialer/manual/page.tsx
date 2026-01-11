@@ -47,7 +47,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, SOCKET_IO_URL } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
 import { io } from "socket.io-client"
 import { useCampaigns } from "@/hooks/agentic/useCampaigns"
@@ -223,6 +223,7 @@ function ManualDialerPageContent() {
   const uploadedOnceRef = useRef<boolean>(false)
   const dialStartRef = useRef<number | null>(null)
   const sipDomainRef = useRef<string | null>(null)
+  const stunServerRef = useRef<string | undefined>(undefined)
 
   // Recording refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -454,14 +455,47 @@ function ManualDialerPageContent() {
   const ensureSocket = useCallback(() => {
     if (socketRef.current) return socketRef.current
     try {
-      const opts: any = { transports: ["polling", "websocket"], path: "/socket.io" }
+      // Ensure SOCKET_IO_URL uses http:// or https:// (not ws://)
+      // Socket.IO client handles the WebSocket upgrade automatically
+      let socketUrl = SOCKET_IO_URL
+      // Force http:// or https:// (never ws:// or wss://)
+      // Socket.IO will automatically upgrade http:// to ws:// for WebSocket transport
+      if (socketUrl.startsWith('ws://')) {
+        socketUrl = socketUrl.replace('ws://', 'http://')
+      } else if (socketUrl.startsWith('wss://')) {
+        socketUrl = socketUrl.replace('wss://', 'https://')
+      }
+      
+      // For localhost, ensure we're using the correct protocol and host
+      if (typeof window !== 'undefined') {
+        const hostname = window.location.hostname
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+          const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
+          socketUrl = `${protocol}//${window.location.host}`
+        }
+      }
+      
+      console.log('[Socket.IO] Connecting to:', socketUrl)
+      
+      const opts: any = { 
+        transports: ["polling", "websocket"], 
+        path: "/socket.io",
+        upgrade: true,
+        rememberUpgrade: false, // Don't remember upgrade to avoid ws:// issues on reconnect
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        forceNew: false,
+        autoConnect: true,
+        timeout: 20000,
+      }
       if (USE_AUTH_COOKIE) {
         opts.withCredentials = true
       } else {
         const t = getToken()
         if (t) opts.auth = { token: t }
       }
-      const s = io(API_BASE, opts)
+      const s = io(socketUrl, opts)
 
       s.on("transcription:segment", (payload: any) => {
         try {
@@ -545,33 +579,12 @@ function ManualDialerPageContent() {
         setError(null)
         teardownUA() // Ensure previous UA is stopped before switching
 
-        // GSM MODE
-        if (sipMode === 'gsm') {
-          console.log('[DEBUG] GSM Config Loaded:', {
-            extension: GSM_CONFIG.extension,
-            hasPassword: !!GSM_CONFIG.password,
-            wssUrl: GSM_CONFIG.wssUrl,
-            domain: GSM_CONFIG.domain,
-            realm: GSM_CONFIG.realm
-          });
-
-          if (!GSM_CONFIG.extension || !GSM_CONFIG.password) {
-            setError('GSM credentials missing in configuration')
-            return
-          }
-
-          setExt(GSM_CONFIG.extension)
-          setPwd(GSM_CONFIG.password)
-          // In GSM mode via API, we don't register SIP UA
-          // Just clear error and return
-          setExt(GSM_CONFIG.extension)
-          setPwd(GSM_CONFIG.password) // Not used for API calls but kept for state consistency
-          // await startUA(GSM_CONFIG.extension, GSM_CONFIG.password)
-          setStatus("GSM Ready")
-          return
-        }
-
-        // TELXIO MODE (Default)
+        // Both domestic and international modes now use Telxio SIP
+        // The sipMode switch only controls number formatting (domestic vs international)
+        // sipMode === 'gsm' means "Domestic" (format number as domestic)
+        // sipMode === 'telxio' means "International" (format number as international with 00 prefix)
+        
+        // Always use Telxio SIP credentials for both modes
         const headers: Record<string, string> = {}
         if (!USE_AUTH_COOKIE) {
           const t = getToken()
@@ -785,6 +798,7 @@ function ManualDialerPageContent() {
     }
 
     sipDomainRef.current = domain
+    stunServerRef.current = stunServer
 
     const socket = new window.JsSIP.WebSocketInterface(wssUrl)
 
@@ -1426,27 +1440,7 @@ function ManualDialerPageContent() {
   ]
 
   const hangup = async () => {
-    // GSM API Hangup
-    if (sipMode === 'gsm') {
-      try {
-        const callId = gsmCallIdRef.current || Date.now().toString()
-        await fetch(`${API_PREFIX}/dialer/hangup`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ callId }),
-        })
-      } catch { }
-      finally {
-        gsmCallIdRef.current = null
-        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
-        setStatus("GSM Ready") // Reset to ready state
-        setIsMuted(false)
-        setIsOnHold(false)
-        setShowPopup(false)
-      }
-      return
-    }
-
+    // Both domestic and international modes use Telxio SIP, so always use SIP hangup
     try { sessionRef.current?.terminate() } catch { }
     setShowPopup(false)
     if (!uploadedOnceRef.current) {
@@ -1464,66 +1458,47 @@ function ManualDialerPageContent() {
     // Reset last call disposition when manually placing a call
     setLastCallDisposition(null)
 
-    if (sipMode === 'gsm') {
-      setStatus("Calling...")
-      try {
-        const response = await fetch(`${API_PREFIX}/dialer/call`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            number: (() => {
-              const raw = number.replace(/[^0-9+]/g, '')
-              return raw.startsWith('+') ? raw : '+' + raw
-            })(),
-            port: gsmPort,
-            type: 'gsm',
-            username: user?.username,
-            extension: user?.extension || ext
-          }),
-        })
-        if (!response.ok) throw new Error('GSM Call failed')
-
-        // Capture the call ID from the server
-        const data = await response.json()
-        if (data && data.id) {
-          gsmCallIdRef.current = data.id
-        }
-
-        setStatus("In Call")
-        callStartRef.current = Date.now()
-        if (timerRef.current) window.clearInterval(timerRef.current)
-        timerRef.current = window.setInterval(() => {
-          setStatus((s) => (s.startsWith("In Call") ? `In Call ${elapsed()}` : s))
-        }, 1000)
-        setShowPopup(true)
-
-        // Setup popup position
-        try {
-          const w = window.innerWidth
-          const h = window.innerHeight
-          const px = Math.max(8, Math.floor(w / 2 - 180))
-          const py = Math.max(60, Math.floor(h / 2 - 120))
-          setPopupPos({ x: px, y: py })
-        } catch { }
-
-      } catch (e: any) {
-        setError(e?.message || "GSM Call start error")
-        setStatus("Call Failed")
-        setTimeout(() => setStatus("GSM Ready"), 3000)
-      }
+    // Both domestic and international modes now use Telxio SIP (not GSM API)
+    // The sipMode switch only controls number formatting via numberToSipUri:
+    // - sipMode === 'telxio' (International): Add 00 prefix for international dialing
+    // - sipMode === 'gsm' (Domestic): Remove country code if present, use as-is for domestic
+    if (!uaRef.current) { setError("UA not ready"); return }
+    
+    // Wait for registration to complete before making calls
+    // Check both the status string and ensure UA is registered
+    const ua = uaRef.current
+    if (!ua) {
+      setError("UA not ready")
+      return
+    }
+    
+    // Wait for UA to be registered before making calls
+    // JsSIP's isRegistered() method returns true when registration is complete
+    if (!ua.isRegistered()) {
+      setError("Please wait for SIP registration to complete. Status: " + status)
+      console.warn('[Manual Dialer] Call attempted before registration:', { status, isRegistered: ua.isRegistered() })
+      return
+    }
+    
+    if (!String(status).includes('Registered')) {
+      setError("Registration not complete. Please wait and try again.")
       return
     }
 
-    if (!uaRef.current) { setError("UA not ready"); return }
-
-    // Normalize number: ensure it starts with + if missing
+    // Normalize number: ensure it starts with + if missing (for proper E.164 format)
     const rawNum = number.replace(/[^0-9+]/g, '')
     const destination = rawNum.startsWith('+') ? rawNum : '+' + rawNum
 
     const options = {
       eventHandlers: {},
       mediaConstraints: { audio: true, video: false },
-      pcConfig: { rtcpMuxPolicy: "require" },
+      pcConfig: { 
+        rtcpMuxPolicy: "require",
+        iceServers: stunServerRef.current ? [{ urls: stunServerRef.current }] : [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      },
       rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
     }
     try {
@@ -2000,6 +1975,55 @@ function ManualDialerPageContent() {
                   })()}
                 </div>
               </div>
+              {/* Display Telxio Configuration and Extension */}
+              <div className="mb-3 p-3 bg-muted/50 rounded-md border border-border">
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-xs font-semibold">Telxio Configuration</Label>
+                  {sipDomainRef.current ? (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">{sipDomainRef.current}</Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-amber-600">Loading...</Badge>
+                  )}
+                </div>
+                <div className="space-y-1.5 text-[11px]">
+                  {ext ? (
+                    <div className="flex items-center justify-between py-0.5 border-b border-border/30 pb-1.5">
+                      <span className="text-muted-foreground font-medium">Your Extension:</span>
+                      <span className="font-mono font-semibold text-primary">{ext}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between py-0.5 border-b border-border/30 pb-1.5">
+                      <span className="text-muted-foreground font-medium">Extension:</span>
+                      <span className="text-amber-600 dark:text-amber-400 font-semibold">Not Assigned</span>
+                    </div>
+                  )}
+                  <div className="space-y-1 pt-1">
+                    <div className="flex items-center justify-between opacity-80">
+                      <span className="text-muted-foreground">Domain:</span>
+                      <span className="font-mono text-[10px] truncate ml-2 max-w-[150px]" title={sipDomainRef.current || 'pbx2.telxio.com.sg'}>
+                        {sipDomainRef.current || 'pbx2.telxio.com.sg'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between opacity-80">
+                      <span className="text-muted-foreground">WSS URL:</span>
+                      <span className="font-mono text-[10px] truncate ml-2 max-w-[150px]" title={sipDomainRef.current ? `wss://${sipDomainRef.current}:8089/ws` : 'wss://pbx2.telxio.com.sg:8089/ws'}>
+                        {sipDomainRef.current ? `wss://${sipDomainRef.current}:8089/ws` : 'wss://pbx2.telxio.com.sg:8089/ws'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between opacity-80">
+                      <span className="text-muted-foreground">STUN Server:</span>
+                      <span className="font-mono text-[10px] truncate ml-2 max-w-[150px]" title={stunServerRef.current || 'stun:stun.l.google.com:19302'}>
+                        {stunServerRef.current || 'stun:stun.l.google.com:19302'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between opacity-70 pt-1 border-t border-border/20 mt-1">
+                      <span className="text-muted-foreground text-[10px]">Available Extensions:</span>
+                      <span className="font-mono text-[10px]">1033201-1033211</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="mb-0">
                 <Label className="text-xs font-medium text-muted-foreground">Campaign</Label>
                 <Select
@@ -2673,12 +2697,39 @@ function ManualDialerPageContent() {
     const domain = sipDomainRef.current || 'pbx2.telxio.com.sg'
     // sanitize: trim, remove spaces/dashes
     let n = String(num).trim().replace(/[\s-]/g, '')
-    // If E.164 with leading '+', many Asterisk/Telxio dialplans expect digits only.
-    // Use ;user=phone hint so PBX treats it as a telephone number.
+    
+    // Check if number is E.164 format (starts with +)
     const isE164 = n.startsWith('+')
-    if (isE164) n = n.slice(1)
-    // Optional outbound route prefix (e.g., 9 or 00) configured via env
-    if (DIAL_PREFIX) n = `${DIAL_PREFIX}${n}`
-    return `sip:${n}@${domain};user=phone`
+    const originalNumber = n
+    if (isE164) n = n.slice(1) // Remove + for SIP URI
+    
+    // Determine if number should be treated as international based on sipMode toggle
+    // sipMode === 'telxio' means "International" mode (add 00 prefix)
+    // sipMode === 'gsm' means "Domestic" mode (use number as-is or remove country code)
+    const isInternationalMode = sipMode === 'telxio'
+    
+    if (isInternationalMode) {
+      // International mode: Add 00 prefix for Telxio international dialing
+      const prefix = DIAL_PREFIX || '00'
+      // Only add prefix if number doesn't already start with it
+      if (!n.startsWith(prefix)) {
+        n = `${prefix}${n}`
+      }
+      console.log('[Manual Dialer] International mode - formatted:', { original: originalNumber, formatted: n, prefix, sipMode })
+    } else {
+      // Domestic mode: Remove country code if present (e.g., 91 for India)
+      // If number starts with 91 and is 12 digits (91 + 10 digits), remove 91
+      if (n.startsWith('91') && n.length === 12) {
+        n = n.substring(2) // Remove '91' country code for India
+        console.log('[Manual Dialer] Domestic mode - removed country code:', { original: originalNumber, formatted: n, sipMode })
+      } else {
+        console.log('[Manual Dialer] Domestic mode - using as-is:', { original: originalNumber, formatted: n, length: n.length, sipMode })
+      }
+      // For other domestic formats, use as-is (no prefix)
+    }
+    
+    const sipUri = `sip:${n}@${domain};user=phone`
+    console.log('[Manual Dialer] Final SIP URI:', sipUri)
+    return sipUri
   }
 }

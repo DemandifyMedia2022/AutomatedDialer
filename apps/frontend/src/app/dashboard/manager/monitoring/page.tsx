@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { Users, Search, Filter, Clock, Phone, Coffee, AlertCircle } from "lucide-react"
 import { useEffect, useState, useMemo } from "react"
+import { SOCKET_IO_URL } from "@/lib/api"
 import { io, Socket } from "socket.io-client"
 
 interface AgentData {
@@ -208,7 +209,7 @@ export default function Page() {
   useEffect(() => {
     loadAgents()
     
-    const socket: Socket = io(API_BASE, { withCredentials: true })
+    const socket: Socket = io(SOCKET_IO_URL, { withCredentials: true })
     
     socket.on('connect', () => {
       setIsConnected(true)

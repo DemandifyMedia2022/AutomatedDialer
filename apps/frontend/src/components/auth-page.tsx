@@ -59,18 +59,36 @@ export function AuthPage() {
 			if (!res.ok) {
 				const msg = (await res.json()).message || "Login failed";
 				setError(msg);
+				setSubmitting(false);
 				return;
 			}
 			const data = await res.json();
+			if (!data.success) {
+				setError(data.message || "Login failed");
+				setSubmitting(false);
+				return;
+			}
+			
 			if (data.token) setToken(data.token);
+			
 			const role = String((data.user?.role || "")).toLowerCase();
-			if (role === "manager") router.replace("/dashboard/manager");
-			else if (role === "superadmin") router.replace("/dashboard/superadmin");
-			else if (role === "qa") router.replace("/dashboard/qa");
-			else router.replace("/dashboard/agent");
-		} catch {
+			let redirectPath = "/dashboard/agent";
+			if (role === "manager") redirectPath = "/dashboard/manager";
+			else if (role === "superadmin") redirectPath = "/dashboard/superadmin";
+			else if (role === "qa") redirectPath = "/dashboard/qa";
+			
+			// For cookie-based auth, use window.location to ensure full page reload with cookies
+			// For token-based auth, use router.replace
+			if (USE_AUTH_COOKIE) {
+				// Small delay to ensure cookie is set
+				await new Promise(resolve => setTimeout(resolve, 200));
+				window.location.href = redirectPath;
+			} else {
+				router.replace(redirectPath);
+			}
+		} catch (err) {
+			console.error("Login error:", err);
 			setError("Network error");
-		} finally {
 			setSubmitting(false);
 		}
 	};
@@ -220,12 +238,12 @@ export function AuthPage() {
 					<div className="mx-auto space-y-6 sm:w-sm">
 						<div className="h-5 lg:hidden">
 							<img
-								src="/dialerlogo.svg"
+								src="/dialerlogo-dark.svg"
 								alt="Automated Dialer logo"
 								className="block h-full dark:hidden mx-auto"
 							/>
 							<img
-								src="/dialerlogo-dark.svg"
+								src="/dialerlogo.svg"
 								alt="Automated Dialer logo"
 								className="hidden h-full dark:block mx-auto"
 							/>

@@ -24,6 +24,7 @@ import { Users, PhoneCall, PhoneIncoming, Timer, Trophy, Plus } from "lucide-rea
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { io, Socket } from "socket.io-client"
+import { SOCKET_IO_URL } from "@/lib/api"
 import { PeriodSwitcher } from "../agent/components/PeriodSwitcher"
 
 type CallRow = {
@@ -194,7 +195,7 @@ export default function Page() {
 
   useEffect(() => {
     loadSummary()
-    const s: Socket = io(API_BASE, { withCredentials: true })
+    const s: Socket = io(SOCKET_IO_URL, { withCredentials: true })
 
     s.on('connect', () => setIsConnected(true))
     s.on('disconnect', () => setIsConnected(false))
@@ -277,7 +278,7 @@ export default function Page() {
   useEffect(() => {
     fetchLeaderboardData()
     loadLeaders()
-    const s: Socket = io(API_BASE, { withCredentials: true })
+    const s: Socket = io(SOCKET_IO_URL, { withCredentials: true })
 
     const onAny = () => {
       fetchLeaderboardData()

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { USE_AUTH_COOKIE, getToken, logout } from '@/lib/auth'
-import { API_BASE } from '@/lib/api'
+import { API_BASE, SOCKET_IO_URL } from '@/lib/api'
 
 type Status = 'OFFLINE' | 'AVAILABLE' | 'ON_CALL' | 'IDLE' | 'BREAK'
 
@@ -124,7 +124,7 @@ export function useAgentPresence() {
 
     const connectSocket = () => {
       try {
-        const s = io(API_BASE, {
+        const s = io(SOCKET_IO_URL, {
           withCredentials: USE_AUTH_COOKIE,
           transports: ['websocket', 'polling'],
           path: '/socket.io',

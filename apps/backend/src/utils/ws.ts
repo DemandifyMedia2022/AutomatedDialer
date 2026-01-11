@@ -77,9 +77,30 @@ export function initWs(server: HttpServer) {
     path: '/socket.io',
     transports: ['websocket', 'polling'],
     cors: {
-      origin: env.CORS_ORIGIN,
+      origin: (origin, callback) => {
+        // Allow connections from frontend (localhost:3000) or same origin
+        const allowedOrigins = [
+          env.CORS_ORIGIN,
+          'http://localhost',
+          'http://localhost:80',
+          'http://localhost:3000',
+          'http://localhost:8050',
+          'http://127.0.0.1',
+          'http://127.0.0.1:80',
+          'http://127.0.0.1:3000',
+          'http://127.0.0.1:8050',
+        ]
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true)
+        } else {
+          callback(new Error('Not allowed by CORS'))
+        }
+      },
       credentials: env.USE_AUTH_COOKIE,
+      methods: ['GET', 'POST'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
     },
+    allowEIO3: true,
   })
 
   io.on('connection', (socket) => {

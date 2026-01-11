@@ -111,11 +111,11 @@ const callsHandler = async (req: any, res: any, next: any) => {
     if (req.file) {
       console.log('[calls] Debug - req.file keys:', Object.keys(req.file))
     }
-    
+
     // Debug: Check if country is specifically in req.body
     console.log('[calls] Debug - req.body.country specifically:', req.body?.country)
     console.log('[calls] Debug - typeof req.body.country:', typeof req.body?.country)
-    
+
     const parsed = CallsSchema.safeParse(req.body ?? {})
     if (!parsed.success) {
       console.log('[calls] Debug - schema validation failed:', parsed.error.flatten())
@@ -184,11 +184,11 @@ const callsHandler = async (req: any, res: any, next: any) => {
     // Detect region and country from destination phone number if not provided
     let detectedRegion = b.region || null
     let detectedCountry = b.country || null
-    
+
     console.log('[calls] Debug - destination:', b.destination)
     console.log('[calls] Debug - incoming region:', b.region)
     console.log('[calls] Debug - incoming country:', b.country)
-    
+
     if (b.destination && (!detectedRegion || !detectedCountry)) {
       if (!detectedRegion) {
         detectedRegion = detectRegion(b.destination, 'Unknown')
@@ -201,18 +201,51 @@ const callsHandler = async (req: any, res: any, next: any) => {
     }
 
     // Get user's organization_id for the call
-    let organizationId = null;
-    if (req.user?.userId) {
+    let organizationId = req.user?.organizationId;
+
+    // Fallback: If missing from req.user, try to fetch it from DB
+    // Also check by username or extension if userId doesn't work
+    if (!organizationId && req.user?.userId) {
       try {
-        const u = await db.users.findUnique({ 
-          where: { id: req.user.userId }, 
-          select: { organization_id: true } 
+        const u = await db.users.findUnique({
+          where: { id: req.user.userId },
+          select: { organization_id: true }
         });
         organizationId = u?.organization_id || null;
-      } catch { }
+      } catch (err) {
+        console.error('[calls] Error fetching organization_id by userId:', err);
+      }
     }
 
-    const data = {
+    // Additional fallback: If still not found, try to get it from username or extension
+    if (!organizationId && (usernameVal || extensionVal)) {
+      try {
+        const where: any = {};
+        if (usernameVal) where.username = usernameVal;
+        if (extensionVal) where.extension = extensionVal;
+        
+        const u = await db.users.findFirst({
+          where,
+          select: { organization_id: true }
+        });
+        if (u?.organization_id) {
+          organizationId = u.organization_id;
+          console.log('[calls] Found organization_id via username/extension fallback:', organizationId);
+        }
+      } catch (err) {
+        console.error('[calls] Error fetching organization_id by username/extension:', err);
+      }
+    }
+
+    // Debug logging
+    console.log('[calls] Final organizationId for save:', organizationId);
+    console.log('[calls] req.user details:', {
+      userId: req.user?.userId,
+      role: req.user?.role,
+      organizationId: req.user?.organizationId
+    });
+
+    const data: any = {
       campaign_name: b.campaign_name || null,
       useremail: b.useremail || null,
       username: usernameVal,
@@ -249,7 +282,13 @@ const callsHandler = async (req: any, res: any, next: any) => {
 
     const saved = await (db as any).calls.create({ data })
     try { console.log('[calls] saved id', saved?.id) } catch { }
-    res.status(201).json(saved)
+
+    // Safely return with BigInt conversion
+    const safeSaved = {
+      ...saved,
+      id: typeof saved.id === 'bigint' ? Number(saved.id) : saved.id
+    }
+    res.status(201).json(safeSaved)
   } catch (err) {
     try { console.error('[calls] error', err) } catch { }
     next(err)
@@ -285,21 +324,30 @@ router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'qa', 'super
     const skip = (page - 1) * pageSize
 
     const where: any = { AND: [] as any[] }
-    
+
     // Organization filtering - non-superadmin users can only see calls from their organization
-    if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
-      where.AND.push({ organization_id: req.user.organizationId });
+    if (req.user?.role !== 'superadmin') {
+      if (req.user?.organizationId) {
+        where.AND.push({ organization_id: req.user.organizationId });
+      } else {
+        // If user has no organization, let them see calls without organization (NULL)
+        where.AND.push({ organization_id: null });
+      }
     }
-    
+
     const from = req.query.from ? new Date(String(req.query.from)) : null
     const to = req.query.to ? new Date(String(req.query.to)) : null
+
+    if (from) from.setHours(0, 0, 0, 0)
+    if (to) to.setHours(23, 59, 59, 999)
+
     if (from && to) {
       // Overlap: starts before end, ends after start
       where.AND.push({ start_time: { lte: to } })
-      where.AND.push({ end_time: { gte: from } })
+      where.AND.push({ OR: [{ end_time: { gte: from } }, { end_time: null }] })
     } else if (from && !to) {
-      // Any call that ends after 'from'
-      where.AND.push({ end_time: { gte: from } })
+      // Any call that ends after 'from' or hasn't ended
+      where.AND.push({ OR: [{ end_time: { gte: from } }, { end_time: null }] })
     } else if (!from && to) {
       // Any call that starts before 'to'
       where.AND.push({ start_time: { lte: to } })
@@ -346,7 +394,7 @@ router.get('/debug-calls-qa', async (req: any, res: any, next: any) => {
       ORDER BY start_time DESC
       LIMIT 5
     `)
-    
+
     // Check all leads regardless of QA status
     const allLeads = await (db as any).$queryRaw(`
       SELECT 
@@ -361,20 +409,20 @@ router.get('/debug-calls-qa', async (req: any, res: any, next: any) => {
       ORDER BY start_time DESC
       LIMIT 5
     `)
-    
+
     console.log('Calls with QA status:', callsWithQa)
     console.log('All leads (first 5):', allLeads)
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       callsWithQa,
       allLeads,
       message: callsWithQa.length > 0 ? 'Found calls with QA status' : 'No calls with QA status found'
     })
   } catch (e: any) {
     console.error('Debug calls QA error:', e)
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       error: e?.message || 'Unknown error occurred'
     })
   }
@@ -391,7 +439,7 @@ router.get('/test-qa-data', async (req: any, res: any, next: any) => {
       GROUP BY unique_id, f_qa_status
       LIMIT 5
     `)
-    
+
     // Check if calls have matching unique_ids
     const callsWithQa = await (db as any).$queryRaw(`
       SELECT 
@@ -405,21 +453,21 @@ router.get('/test-qa-data', async (req: any, res: any, next: any) => {
       WHERE c.remarks = 'Lead' AND dm.f_qa_status IS NOT NULL
       LIMIT 5
     `)
-    
+
     console.log('QA Data exists:', qaData)
     console.log('Calls with QA:', callsWithQa)
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       qaData,
       callsWithQa,
       message: qaData.length > 0 ? 'QA data found' : 'No QA data found'
     })
   } catch (e: any) {
     console.error('Test error:', e)
-    res.status(500).json({ 
-      success: false, 
-      error: e.message 
+    res.status(500).json({
+      success: false,
+      error: e.message
     })
   }
 })
@@ -428,40 +476,62 @@ router.get('/test-qa-data', async (req: any, res: any, next: any) => {
 router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => {
   try {
     const userId = req.user?.userId
+    const organizationId = req.user?.organizationId
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
 
-    const me = await db.users.findUnique({ 
-      where: { id: userId }, 
-      select: { 
-        username: true, 
-        usermail: true, 
-        extension: true, 
-        organization_id: true 
-      } 
+    const me = await db.users.findUnique({
+      where: { id: userId },
+      select: {
+        username: true,
+        usermail: true,
+        extension: true
+      }
     })
-    const username = me?.username || undefined
-    const usermail = me?.usermail || undefined
-    const extension = me?.extension || undefined
-    const organizationId = me?.organization_id || undefined
 
-    const where: any = { OR: [] as any[], AND: [] as any[] }
-    if (username) where.OR.push({ username })
-    if (usermail) where.OR.push({ useremail: usermail })
-    if (extension) where.OR.push({ extension })
-    if (where.OR.length === 0) { where.OR.push({ id: -1 }) }
+    const username = me?.username
+    const usermail = me?.usermail
+    const extension = me?.extension
 
-    // Add organization filtering
-    if (organizationId) {
-      where.AND.push({ organization_id: organizationId });
+    const where: any = { AND: [] }
+
+    // Identity filter (OR conditions for the same user)
+    const identityConditions: any[] = []
+    if (username) identityConditions.push({ username })
+    if (usermail) identityConditions.push({ useremail: usermail })
+    if (extension) identityConditions.push({ extension })
+
+    if (identityConditions.length > 0) {
+      where.AND.push({ OR: identityConditions })
+    } else {
+      // If no identifier, return nothing
+      where.AND.push({ id: -1 })
     }
 
-    const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1)
-    const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize || '20'), 10) || 20))
-    const skip = (page - 1) * pageSize
+    // Organization filter
+    if (organizationId) {
+      where.AND.push({ organization_id: organizationId })
+    } else if (req.user?.role !== 'superadmin') {
+      // If the user has no organization assigned, allow them to see calls with no organization (NULL)
+      where.AND.push({ organization_id: null })
+    }
 
+    // Date filters
     const from = req.query.from ? new Date(String(req.query.from)) : null
     const to = req.query.to ? new Date(String(req.query.to)) : null
-    if (from || to) where.AND.push({ start_time: { gte: from || undefined, lte: to || undefined } })
+
+    if (from) from.setHours(0, 0, 0, 0)
+    if (to) to.setHours(23, 59, 59, 999)
+
+    if (from || to) {
+      where.AND.push({
+        start_time: {
+          gte: from || undefined,
+          lte: to || undefined
+        }
+      })
+    }
+
+    // Search filters
     const qDest = (req.query.destination || req.query.phone || '').toString().trim()
     if (qDest) where.AND.push({ destination: { contains: qDest } })
     const qExt = (req.query.extension || '').toString().trim()
@@ -471,50 +541,26 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     const qDir = (req.query.direction || '').toString().trim()
     if (qDir) where.AND.push({ direction: qDir })
 
-    // Build the WHERE clause manually for the raw query
-    let whereClause = '('
-    const conditions = []
-    if (username) conditions.push(`c.username = '${username}'`)
-    if (usermail) conditions.push(`c.useremail = '${usermail}'`)
-    if (extension) conditions.push(`c.extension = '${extension}'`)
-    if (conditions.length === 0) conditions.push('1=0')
-    whereClause += conditions.join(' OR ') + ')'
-    
-    // Add organization filter to raw query
-    if (organizationId) {
-      whereClause += ` AND c.organization_id = ${organizationId}`;
-    }
-    
-    if (from || to) {
-      whereClause += ` AND (c.start_time >= '${from || '1970-01-01'}' AND c.start_time <= '${to || new Date().toISOString()}')`
-    }
-    if (qDest) whereClause += ` AND c.destination LIKE '%${qDest}%'`
-    if (qExt) whereClause += ` AND c.extension = '${qExt}'`
-    if (qStatus) whereClause += ` AND c.disposition = '${qStatus}'`
-    if (qDir) whereClause += ` AND c.direction = '${qDir}'`
-
-    // Debug: Log the actual SQL being executed
-    const sql = `
-      SELECT 
-        c.*,
-        c.f_qa_status
-      FROM calls c
-      WHERE ${whereClause}
-      ORDER BY c.start_time DESC
-      LIMIT ${pageSize} OFFSET ${skip}
-    `
-    console.log('Executing SQL:', sql)
-    console.log('Where clause:', whereClause)
+    const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1)
+    const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize || '20'), 10) || 20))
+    const skip = (page - 1) * pageSize
 
     const [total, items] = await Promise.all([
       (db as any).calls.count({ where }),
-      (db as any).$queryRaw(sql),
+      (db as any).calls.findMany({
+        where,
+        orderBy: { start_time: 'desc' },
+        skip,
+        take: pageSize
+      }),
     ])
 
-    console.log('Query results:', items?.slice(0, 2)) // Log first 2 results for debugging
-    console.log('Sample QA status from DB:', items?.[0]?.qa_status) // Check QA status specifically
+    const safeItems = items.map((r: any) => ({
+      ...r,
+      id: typeof r.id === 'bigint' ? Number(r.id) : r.id,
+    }))
 
-    res.json({ success: true, page, pageSize, total, items })
+    res.json({ success: true, page, pageSize, total: Number(total), items: safeItems })
   } catch (e: any) {
     next(e)
   }
@@ -539,16 +585,16 @@ router.get('/debug-qa-join', async (req: any, res: any, next: any) => {
       ORDER BY c.start_time DESC
       LIMIT 3
     `)
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       results,
       count: results.length
     })
   } catch (e: any) {
     console.error('Debug join error:', e)
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       error: e?.message || 'Unknown error occurred'
     })
   }
@@ -564,7 +610,7 @@ router.get('/calls/test-qa', requireAuth, async (req: any, res: any, next: any) 
       WHERE f_qa_status IS NOT NULL AND f_qa_status != ''
       LIMIT 5
     `)
-    
+
     // Then check calls with unique_ids
     const callsData = await (db as any).$queryRaw(`
       SELECT id, unique_id, destination, remarks
@@ -572,7 +618,7 @@ router.get('/calls/test-qa', requireAuth, async (req: any, res: any, next: any) 
       WHERE remarks = 'Lead' AND unique_id IS NOT NULL
       LIMIT 5
     `)
-    
+
     // Finally test the join
     const joinResults = await (db as any).$queryRaw(`
       SELECT 
@@ -586,13 +632,13 @@ router.get('/calls/test-qa', requireAuth, async (req: any, res: any, next: any) 
       ORDER BY c.start_time DESC
       LIMIT 5
     `)
-    
+
     console.log('DM Form data:', dmFormData)
     console.log('Calls data:', callsData)
     console.log('Join results:', joinResults)
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       dmFormData,
       callsData,
       joinResults,

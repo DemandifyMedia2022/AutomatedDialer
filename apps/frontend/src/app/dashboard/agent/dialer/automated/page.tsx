@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { UploadCloud, Play, Pause, SkipForward, PhoneOff, Trash2, Search, Mic, MicOff, Grid2X2, UserPlus, Phone } from "lucide-react"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, SOCKET_IO_URL } from "@/lib/api"
 import { USE_AUTH_COOKIE, getToken, getCsrfTokenFromCookies } from "@/lib/auth"
 import { io } from "socket.io-client"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -456,7 +456,7 @@ export default function AutomatedDialerPage() {
         const t = getToken()
         if (t) opts.auth = { token: t }
       }
-      const s = io(API_BASE, opts)
+      const s = io(SOCKET_IO_URL, opts)
       s.on("transcription:segment", (payload: any) => {
         try {
           if (!payload || payload.sessionId !== liveSessionIdRef.current || !payload.segment) return

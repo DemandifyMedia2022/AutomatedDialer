@@ -1,16 +1,70 @@
-
 services:
-  frontend:
+  mysql:
+    image: mysql:8.0
+    container_name: automated-dialer-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-demandify_db}
+      MYSQL_USER: ${MYSQL_USER:-demandify}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-Demandify@765}
+    # No external ports exposed - only internal Docker network access
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./auto_dialer/organization_segregation.sql:/docker-entrypoint-initdb.d/01-organization_segregation.sql
+      - ./auto_dialer/populate_organization_data.sql:/docker-entrypoint-initdb.d/02-populate_organization_data.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 90s
+    networks:
+      - dialer-network
+
+  db-init:
     build:
       context: .
-      dockerfile: apps/frontend/Dockerfile
-      args:
-        NEXT_PUBLIC_API_BASE: http://localhost:8050
-    restart: always
-    ports:
-      - "3050:3000"
+      dockerfile: auto_dialer/Dockerfile.init
+    container_name: automated-dialer-db-init
+    restart: "no"
     environment:
-      - NEXT_PUBLIC_API_BASE=http://localhost:8050
+      MYSQL_HOST: mysql
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-demandify_db}
+      MYSQL_USER: ${MYSQL_USER:-demandify}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-Demandify@765}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+    volumes:
+      - ./auto_dialer:/app/auto_dialer
+      - ./auto_dialer/database-backups:/app/auto_dialer/database-backups
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - dialer-network
+    # Auto-run on first deployment - will skip if database already initialized
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: automated-dialer-backend
+    restart: always
+    # No external ports exposed - only accessible via Nginx
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-demandify_db}
+      - MYSQL_USER=${MYSQL_USER:-demandify}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-Demandify@765}
+      - JWT_SECRET=${JWT_SECRET:-Speed@2025}
+      - SIP_WSS_URL=${SIP_WSS_URL:-wss://pbx2.telxio.com.sg:8089/ws}
+      - SIP_DOMAIN=${SIP_DOMAIN:-pbx2.telxio.com.sg}
+      - STUN_SERVER=${STUN_SERVER:-stun:stun.l.google.com:19302}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost}
+      - RECORDINGS_DIR=${RECORDINGS_DIR:-uploads/recordings}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-1H}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
+      - USE_AUTH_COOKIE=${USE_AUTH_COOKIE:-true}
       - TELXIO_PUBLIC_KEY=${TELXIO_PUBLIC_KEY}
       - TELXIO_PRIVATE_KEY=${TELXIO_PRIVATE_KEY}
       - TELXIO_BASE_URL=${TELXIO_BASE_URL}
@@ -22,33 +76,133 @@ services:
       - TELXIO_BYPASS=${TELXIO_BYPASS}
       - TELXIO_AUTHORIZATION=${TELXIO_AUTHORIZATION}
       - TELXIO_COOKIE=${TELXIO_COOKIE}
-      - TELXIO_ACCOUNT_IDS=${TELXIO_ACCOUNT_IDS}
+      - LIVEKIT_URL=${LIVEKIT_URL}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+      - BACKEND_API_BASE=${BACKEND_API_BASE}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - CAMPAIGN_PROMPT_MODULE=${CAMPAIGN_PROMPT_MODULE}
+      - CAMPAIGN_AGENT_NAME=${CAMPAIGN_AGENT_NAME}
+      - CAMPAIGN_SESSION_NAME=${CAMPAIGN_SESSION_NAME}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_DB_PASSWORD=${SUPABASE_DB_PASSWORD}
+      - SUPABASE_PROSPECTS_BUCKET=${SUPABASE_PROSPECTS_BUCKET}
+      - SIP_USER_ID=${SIP_USER_ID}
+      - SIP_PASSWORD=${SIP_PASSWORD}
+      - SIP_URL=${SIP_URL}
+      - MAIL_MAILER=${MAIL_MAILER}
+      - MAIL_HOST=${MAIL_HOST}
+      - MAIL_PORT=${MAIL_PORT}
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
+      - MAIL_ENCRYPTION=${MAIL_ENCRYPTION}
+      - MAIL_FROM_ADDRESS=${MAIL_FROM_ADDRESS}
+      - MAIL_FROM_NAME=${MAIL_FROM_NAME}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PORT=4000
+    volumes:
+      - ./apps/backend/uploads:/app/apps/backend/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4000/api/health || wget --no-verbose --tries=1 --spider http://localhost:4000/health || curl -f http://localhost:4000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     depends_on:
-      - backend
+      mysql:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    networks:
+      - dialer-network
 
-  backend:
+  frontend:
     build:
       context: .
-      dockerfile: apps/backend/Dockerfile
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost}
+        NEXT_PUBLIC_DIAL_PREFIX: ${NEXT_PUBLIC_DIAL_PREFIX:-00}
+    container_name: automated-dialer-frontend
     restart: always
-    ports:
-      - "4050:4000"
+    # No external ports exposed - only accessible via Nginx
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=redis://redis:6379
-      - PORT=4000
-      - CORS_ORIGIN=http://localhost:8050
-
+      - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-http://localhost}
+      - NEXT_PUBLIC_USE_AUTH_COOKIE=${NEXT_PUBLIC_USE_AUTH_COOKIE:-true}
+      - TELXIO_PUBLIC_KEY=${TELXIO_PUBLIC_KEY}
+      - TELXIO_PRIVATE_KEY=${TELXIO_PRIVATE_KEY}
+      - TELXIO_BASE_URL=${TELXIO_BASE_URL}
+      - TELXIO_ACCOUNT_ID=${TELXIO_ACCOUNT_ID}
+      - TELXIO_ACCOUNT_FALLBACK=${TELXIO_ACCOUNT_FALLBACK}
+      - TELXIO_PLAN_FALLBACK=${TELXIO_PLAN_FALLBACK}
+      - TELXIO_EXTENSIONS_FALLBACK=${TELXIO_EXTENSIONS_FALLBACK}
+      - TELXIO_NUMBERS_FALLBACK=${TELXIO_NUMBERS_FALLBACK}
+      - TELXIO_BYPASS=${TELXIO_BYPASS}
+      - TELXIO_AUTHORIZATION=${TELXIO_AUTHORIZATION}
+      - TELXIO_COOKIE=${TELXIO_COOKIE}
+      - NEXT_PUBLIC_LIVEKIT_WS_URL=${NEXT_PUBLIC_LIVEKIT_WS_URL}
+      - NEXT_PUBLIC_LIVEKIT_API_KEY=${NEXT_PUBLIC_LIVEKIT_API_KEY}
+      - NEXT_PUBLIC_LIVEKIT_PROJECT_ID=${NEXT_PUBLIC_LIVEKIT_PROJECT_ID}
+      - NEXT_PUBLIC_ENABLE_LIVEKIT_SIP=${NEXT_PUBLIC_ENABLE_LIVEKIT_SIP}
+      - NEXT_PUBLIC_LIVEKIT_ENABLE_RECORDING=${NEXT_PUBLIC_LIVEKIT_ENABLE_RECORDING}
+      - NEXT_PUBLIC_LIVEKIT_ENABLE_TRANSCRIPTION=${NEXT_PUBLIC_LIVEKIT_ENABLE_TRANSCRIPTION}
+      - NEXT_PUBLIC_LIVEKIT_REGION=${NEXT_PUBLIC_LIVEKIT_REGION}
+      - NEXT_PUBLIC_TELXIO_ACCOUNT_FALLBACK=${NEXT_PUBLIC_TELXIO_ACCOUNT_FALLBACK}
+      - NEXT_PUBLIC_TELXIO_PLAN_FALLBACK=${NEXT_PUBLIC_TELXIO_PLAN_FALLBACK}
+      - NEXT_PUBLIC_TELXIO_NUMBERS_FALLBACK=${NEXT_PUBLIC_TELXIO_NUMBERS_FALLBACK}
+      - NEXT_PUBLIC_TELXIO_EXTENSIONS_FALLBACK=${NEXT_PUBLIC_TELXIO_EXTENSIONS_FALLBACK}
+      - NEXT_PUBLIC_AGENTIC_API_BASE=${NEXT_PUBLIC_AGENTIC_API_BASE}
+      - NEXT_PUBLIC_GSM_EXTENSION=${NEXT_PUBLIC_GSM_EXTENSION}
+      - NEXT_PUBLIC_DIAL_PREFIX=${NEXT_PUBLIC_DIAL_PREFIX:-00}
+      - NEXT_PUBLIC_GSM_PASSWORD=${NEXT_PUBLIC_GSM_PASSWORD}
+      - NEXT_PUBLIC_GSM_DOMAIN=${NEXT_PUBLIC_GSM_DOMAIN}
+      - NEXT_PUBLIC_GSM_WSS_URL=${NEXT_PUBLIC_GSM_WSS_URL}
+      - NEXT_PUBLIC_GSM_REALM=${NEXT_PUBLIC_GSM_REALM}
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'next-server|node.*server.js' > /dev/null && (wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health 2>/dev/null || wget --no-verbose --tries=1 --spider http://localhost:3000/api/health 2>/dev/null || curl -f -s http://127.0.0.1:3000/api/health 2>/dev/null || curl -f -s http://localhost:3000/api/health 2>/dev/null || netstat -tuln | grep :3000 > /dev/null || ss -tuln | grep :3000 > /dev/null) || exit 1"]
+      interval: 30s
+      timeout: 20s
+      retries: 10
+      start_period: 180s
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - dialer-network
 
   nginx:
     image: nginx:alpine
+    container_name: automated-dialer-nginx
     restart: always
     ports:
-      - "8050:80"
+      - "80:80"
+      # - "443:443"  # SSL commented out for now - uncomment when SSL certificates are ready
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # - ./nginx/ssl:/etc/nginx/ssl:ro  # SSL volume commented out for now
+      - nginx_logs:/var/log/nginx
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1/health 2>/dev/null || wget --quiet --tries=1 --spider http://localhost/health 2>/dev/null || curl -f -s http://127.0.0.1/health 2>/dev/null || curl -f -s http://localhost/health 2>/dev/null || (pgrep nginx > /dev/null && exit 0) || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - dialer-network
 
+volumes:
+  mysql_data:
+    driver: local
+  nginx_logs:
+    driver: local
 
+networks:
+  dialer-network:
+    driver: bridge

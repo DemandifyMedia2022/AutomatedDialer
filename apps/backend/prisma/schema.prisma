@@ -726,6 +726,15 @@ model organizations {
   max_agents                Int?                        @default(10)
   max_managers              Int?                        @default(2)
   max_qa                    Int?                        @default(2)
+  timezone                  String?                     @default("UTC") @db.VarChar(100)
+  working_hours_start       String?                     @default("09:00") @db.VarChar(20)
+  working_hours_end         String?                     @default("17:00") @db.VarChar(20)
+  notification_email        Boolean?                    @default(true)
+  notification_sms          Boolean?                    @default(false)
+  notification_in_app       Boolean?                    @default(true)
+  auto_assign_campaigns     Boolean?                    @default(false)
+  require_approval_for_calls Boolean?                    @default(false)
+  daily_report_time         String?                     @default("08:00") @db.VarChar(20)
   agent_breaks              agent_breaks[]
   agent_heartbeats          agent_heartbeats[]
   agent_presence_events     agent_presence_events[]

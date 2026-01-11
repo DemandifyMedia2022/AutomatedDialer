@@ -2,7 +2,34 @@ import axios from 'axios'
 
 import type { Lead, ApiStatus, Campaign, CsvFile, CsvPreview, CampaignData } from '@/types/agentic'
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000'
+// Use relative path for Socket.IO when in browser to work with proxy
+// For API calls, use the full URL from env or default
+// For localhost testing, explicitly use localhost to avoid redirect issues
+export const API_BASE = (typeof window !== 'undefined')
+  ? (process.env.NEXT_PUBLIC_API_BASE || 
+     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+       ? window.location.origin // Use localhost origin for localhost testing
+       : window.location.origin) // Use current origin for other domains
+  : (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000')
+
+// Socket.IO should connect to the API backend via Nginx proxy
+// Important: Use http:// or https:// (not ws://) - Socket.IO handles protocol upgrade internally
+// Socket.IO client will automatically upgrade http:// to ws:// for WebSocket transport
+export const SOCKET_IO_URL = typeof window !== 'undefined' 
+  ? (() => {
+      // Always use http:// or https:// (never ws:// or wss://)
+      const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
+      const host = window.location.host
+      
+      // For localhost, ensure we use http:// explicitly
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return `${protocol}//${host}`
+      }
+      
+      // For other hosts, use the current origin
+      return window.location.origin
+    })()
+  : (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000')
 
 const api = axios.create({
   baseURL: API_BASE,

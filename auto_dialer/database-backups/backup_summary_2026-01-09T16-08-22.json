@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-01-09T16-08-22",
+  "database": "demandify_db",
+  "recordCounts": {
+    "users": 18,
+    "organizations": 2,
+    "calls": 211,
+    "campaigns": 3,
+    "agent_sessions": 267,
+    "agent_presence_events": 11097,
+    "agent_breaks": 13,
+    "break_reasons": 5,
+    "password_resets": 1,
+    "api_metrics": 130700
+  },
+  "totalRecords": 142317,
+  "files": {
+    "data": "database_data_2026-01-09T16-08-22.json",
+    "schema": "schema_2026-01-09T16-08-22.prisma"
+  }
+}

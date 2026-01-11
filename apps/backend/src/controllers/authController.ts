@@ -92,9 +92,104 @@ export async function login(req: Request, res: Response) {
 
     const { email, password } = parsed.data;
 
+    // Normalize email (lowercase and trim)
+    const normalizedEmail = email.toLowerCase().trim();
+    
     // Allow login via email OR unique_user_id
-    // Timing attack protection: always compare password
-    const user = await db.users.findFirst({ where: { OR: [{ usermail: email }, { unique_user_id: email }] } });
+    // Use case-insensitive matching with raw SQL for better reliability
+    let user = null;
+    
+    try {
+      // First try exact match - MySQL default collation is case-insensitive, so this should work
+      // But we normalize to be safe
+      user = await db.users.findFirst({ 
+        where: { 
+          OR: [
+            { usermail: normalizedEmail },
+            { unique_user_id: normalizedEmail }
+          ] 
+        },
+        select: {
+          id: true,
+          username: true,
+          usermail: true,
+          password: true,
+          role: true,
+          status: true,
+          unique_user_id: true,
+          organization_id: true,
+        }
+      });
+      
+      // If not found and email contains @, try flexible matching for Gmail-style emails
+      // Gmail treats "jayeshdangi@gmail.com" and "jayesh.dangi@gmail.com" as the same
+      if (!user && normalizedEmail.includes('@')) {
+        const [localPart, domain] = normalizedEmail.split('@');
+        if (localPart && domain) {
+          // Remove dots from local part for matching
+          const normalizedLocalPart = localPart.replace(/\./g, '');
+          const domainLower = domain.toLowerCase();
+          
+          // Fetch all users with matching domain (MySQL should handle case-insensitive contains)
+          const allCandidates = await db.users.findMany({
+            select: {
+              id: true,
+              username: true,
+              usermail: true,
+              password: true,
+              role: true,
+              status: true,
+              unique_user_id: true,
+              organization_id: true,
+            },
+            where: {
+              usermail: {
+                contains: `@${domainLower}`,
+              },
+            },
+          });
+          
+          // Find user where local part matches when dots are removed (case-insensitive)
+          user = allCandidates.find((u) => {
+            if (!u.usermail) return false;
+            const emailLower = u.usermail.toLowerCase();
+            const [dbLocalPart, dbDomain] = emailLower.split('@');
+            // Match if domain matches and local parts match when dots are removed
+            return dbDomain === domainLower && dbLocalPart.replace(/\./g, '') === normalizedLocalPart;
+          }) || null;
+        }
+      }
+      
+      // If still not found, try with Prisma findMany as final fallback (safer than raw SQL)
+      if (!user && normalizedEmail.includes('@')) {
+        try {
+          // Final fallback: get all users and filter in JavaScript for case-insensitive matching
+          const allUsers = await db.users.findMany({
+            select: {
+              id: true,
+              username: true,
+              usermail: true,
+              password: true,
+              role: true,
+              status: true,
+              unique_user_id: true,
+              organization_id: true,
+            },
+          });
+          
+          // Case-insensitive match
+          user = allUsers.find((u) => {
+            if (!u.usermail) return false;
+            return u.usermail.toLowerCase().trim() === normalizedEmail;
+          }) || null;
+        } catch (queryError) {
+          console.error('[auth] Final fallback query error:', queryError);
+        }
+      }
+    } catch (queryError) {
+      console.error('[auth] Database query error during login:', queryError);
+      user = null;
+    }
 
     // Use a dummy hash for timing if user not found (generated once or cached)
     const dummyHash = '$2a$10$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'; // 60 chars
@@ -143,18 +238,25 @@ export async function login(req: Request, res: Response) {
 
     if (env.USE_AUTH_COOKIE) {
       // Set HttpOnly JWT cookie and CSRF token cookie (double-submit pattern)
+      // Check if connection is secure (HTTPS) via X-Forwarded-Proto header (Nginx proxy) or req.protocol
+      const isSecure = req.headers['x-forwarded-proto'] === 'https' || req.protocol === 'https';
+      // For now, use HTTP (secure=false) - set to true when SSL certificates are enabled
+      const useSecure = false; // Set to 'isSecure' or 'env.NODE_ENV === "production"' when SSL is enabled
+      // Use 'lax' for same-site cookies (Nginx proxy is same origin)
+      const sameSiteValue: 'strict' | 'lax' | 'none' = 'lax';
+      
       res.cookie(env.AUTH_COOKIE_NAME, token, {
         httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: useSecure, // false for HTTP, true for HTTPS
+        sameSite: sameSiteValue,
         maxAge: 1000 * 60 * 30, // 30 minutes
         path: '/',
       });
       const csrfToken = randomUUID();
       res.cookie('csrf_token', csrfToken, {
         httpOnly: false,
-        secure: env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: useSecure, // false for HTTP, true for HTTPS
+        sameSite: sameSiteValue,
         maxAge: 1000 * 60 * 30,
         path: '/',
       });

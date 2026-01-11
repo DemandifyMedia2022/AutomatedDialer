@@ -151,13 +151,26 @@ export default function OrganizationManagePage() {
 
     const fetchTelxioExtensions = async () => {
         try {
-            const res = await fetch('/api/telxio/account', { method: 'POST' })
-            const data = await res.json()
-            const accData = data?.data ?? data?.get?.body?.data ?? data?.post?.body?.data ?? data?.body?.data
+            // Use api helper to include credentials automatically
+            const res = await api.post('/api/telxio/account', {})
+            const responseData = res.data
+            
+            // Handle different response structures
+            const accData = responseData?.data ?? responseData
             const planKey = accData?.plan ? Object.keys(accData.plan)[0] : null
+            
             if (planKey && accData?.plan?.[planKey]?.extensions) {
-                setTelxioExtensions(accData.plan[planKey].extensions.map((e: any) => String(e)))
+                const extensions = accData.plan[planKey].extensions.map((e: any) => String(e))
+                setTelxioExtensions(extensions)
+                console.log('[Telxio Extensions] Loaded', extensions.length, 'extensions from API:', extensions)
+            } else {
+                console.warn('[Telxio Extensions] No extensions found in response. Response:', responseData)
+                // Fallback: use environment variable extensions if API response doesn't have expected structure
+                const fallbackExtensions = ['1033201', '1033202', '1033203', '1033204', '1033205', '1033206', '1033207', '1033208', '1033209', '1033210', '1033211']
+                setTelxioExtensions(fallbackExtensions)
+                console.log('[Telxio Extensions] Using fallback extensions:', fallbackExtensions)
             }
+            
             // Also capture account-level numbers
             if (planKey && accData?.plan?.[planKey]?.numbers) {
                 const numbers = accData.plan[planKey].numbers.map((n: any) => {
@@ -165,8 +178,12 @@ export default function OrganizationManagePage() {
                 })
                 setAccountNumbers(numbers)
             }
-        } catch (err) {
-            console.error('Failed to fetch Telxio extensions:', err)
+        } catch (err: any) {
+            console.error('[Telxio Extensions] Failed to fetch from API:', err?.response?.data || err?.message || err)
+            // Fallback: use environment variable extensions on error
+            const fallbackExtensions = ['1033201', '1033202', '1033203', '1033204', '1033205', '1033206', '1033207', '1033208', '1033209', '1033210', '1033211']
+            setTelxioExtensions(fallbackExtensions)
+            console.log('[Telxio Extensions] Error occurred, using fallback extensions:', fallbackExtensions)
         }
     }
 
@@ -739,30 +756,37 @@ export default function OrganizationManagePage() {
                                     </DialogDescription>
                                 </DialogHeader>
                                 <div className="max-h-[300px] overflow-y-auto py-4">
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {telxioExtensions.map(ext => {
-                                            const mapping = allMappings.find(m => m.extensionId === ext)
-                                            const isTakenByOther = mapping && mapping.organizationId && mapping.organizationId !== parseInt(organizationId)
+                                    {telxioExtensions.length === 0 ? (
+                                        <div className="text-center py-8 text-muted-foreground">
+                                            <p className="text-sm mb-2">No extensions available</p>
+                                            <p className="text-xs">Loading extensions from Telxio pool...</p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {telxioExtensions.map(ext => {
+                                                const mapping = allMappings.find(m => m.extensionId === ext)
+                                                const isTakenByOther = mapping && mapping.organizationId && mapping.organizationId !== parseInt(organizationId)
 
-                                            return (
-                                                <div key={ext} className="flex items-center space-x-2 p-2 border rounded hover:bg-muted cursor-pointer" onClick={() => {
-                                                    if (isTakenByOther) return
-                                                    setSelectedExts(prev => prev.includes(ext) ? prev.filter(e => e !== ext) : [...prev, ext])
-                                                }}>
-                                                    <Switch
-                                                        checked={selectedExts.includes(ext)}
-                                                        disabled={!!isTakenByOther}
-                                                    />
-                                                    <div className="flex flex-col">
-                                                        <span className="text-sm font-medium">{ext}</span>
-                                                        {isTakenByOther && (
-                                                            <span className="text-[10px] text-red-500">Already in Org #{mapping.organizationId}</span>
-                                                        )}
+                                                return (
+                                                    <div key={ext} className="flex items-center space-x-2 p-2 border rounded hover:bg-muted cursor-pointer" onClick={() => {
+                                                        if (isTakenByOther) return
+                                                        setSelectedExts(prev => prev.includes(ext) ? prev.filter(e => e !== ext) : [...prev, ext])
+                                                    }}>
+                                                        <Switch
+                                                            checked={selectedExts.includes(ext)}
+                                                            disabled={!!isTakenByOther}
+                                                        />
+                                                        <div className="flex flex-col">
+                                                            <span className="text-sm font-medium">{ext}</span>
+                                                            {isTakenByOther && (
+                                                                <span className="text-[10px] text-red-500">Already in Org #{mapping.organizationId}</span>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                                 <DialogFooter>
                                     <Button variant="outline" onClick={() => setShowAllocateExt(false)}>

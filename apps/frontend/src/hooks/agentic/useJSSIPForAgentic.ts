@@ -563,9 +563,31 @@ export function useJSSIPForAgentic() {
     // Initialize audio on user interaction
     initializeAudio()
 
-    const destination = phoneNumber.startsWith('+') 
-      ? phoneNumber 
-      : phoneNumber; // Use phone number as-is
+    // Format phone number for international calls (Telxio/Asterisk compatible)
+    // Sanitize: trim, remove spaces/dashes
+    let formattedNumber = String(phoneNumber).trim().replace(/[\s-]/g, '');
+    
+    // If E.164 with leading '+', remove it for SIP URI (Telxio dial plan expects digits only)
+    const isE164 = formattedNumber.startsWith('+');
+    if (isE164) {
+      formattedNumber = formattedNumber.slice(1);
+    }
+    
+    // Apply dial prefix for international calls if configured (e.g., '00' for international access code)
+    // This should be set via NEXT_PUBLIC_DIAL_PREFIX environment variable
+    const dialPrefix = typeof window !== 'undefined' 
+      ? (window as any).__DIAL_PREFIX__ || process.env.NEXT_PUBLIC_DIAL_PREFIX || ''
+      : '';
+    
+    if (dialPrefix && isE164) {
+      // Only apply prefix for international numbers (E.164 format)
+      formattedNumber = `${dialPrefix}${formattedNumber}`;
+    }
+    
+    // Build SIP URI with user=phone hint for Telxio/Asterisk compatibility
+    const destination = `sip:${formattedNumber}@${state.domain};user=phone`;
+
+    console.log('[JSSIP] Calling:', { original: phoneNumber, formatted: formattedNumber, destination });
 
     try {
       const session = uaRef.current.call(destination, {

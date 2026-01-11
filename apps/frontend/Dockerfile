@@ -18,7 +18,9 @@ COPY . .
 
 # Build frontend
 ARG NEXT_PUBLIC_API_BASE
+ARG NEXT_PUBLIC_DIAL_PREFIX
 ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
+ENV NEXT_PUBLIC_DIAL_PREFIX=$NEXT_PUBLIC_DIAL_PREFIX
 RUN npm run build --workspace=apps/frontend
 
 # Production image, copy all the files and run next
@@ -26,6 +28,9 @@ FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV production
+
+# Install wget for healthcheck
+RUN apk add --no-cache wget curl
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -41,6 +46,9 @@ USER nextjs
 EXPOSE 3000
 
 ENV PORT 3000
+ENV HOSTNAME="0.0.0.0"
 
 # Standalone output puts the server at server.js
-CMD ["node", "apps/frontend/server.js"]
+# Next.js standalone should bind to 0.0.0.0 by default, but we explicitly set it
+# Use sh -c to properly handle environment variable
+CMD sh -c "HOSTNAME=0.0.0.0 node apps/frontend/server.js"

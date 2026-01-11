@@ -21,6 +21,7 @@ import calls from './calls';
 import dialerRoutes from './gsm/dialer';
 import organizationDataRoutes from './organizationDataRoutes';
 import { getLiveCalls, updateLiveCallPhase, startLiveCallsSweeper } from './livecalls';
+import manager from './manager';
 
 import { env } from '../config/env';
 import multer from 'multer';
@@ -58,6 +59,7 @@ router.use('/superadmin', superadmin);
 router.use('/calls', calls);
 router.use('/dialer', dialerRoutes); // Mount GSM dialer routes
 router.use('/data', organizationDataRoutes); // Mount organization-aware data routes
+router.use('/manager', manager); // Mount manager routes
 
 router.get('/sip/config', (_req, res) => {
   res.json({
@@ -65,6 +67,44 @@ router.get('/sip/config', (_req, res) => {
     domain: env.SIP_DOMAIN,
     stunServer: env.STUN_SERVER,
   });
+});
+
+// Telxio account endpoint - returns available extensions from fallback or database
+router.post('/telxio/account', requireAuth, requireRoles(['superadmin']), async (_req, res) => {
+  try {
+    // Get extensions from environment variable fallback
+    const extensionsFallback = env.TELXIO_EXTENSIONS_FALLBACK?.split(',').map(e => e.trim()).filter(Boolean) || []
+    const numbersFallback = env.TELXIO_NUMBERS_FALLBACK?.split(',').map(n => n.trim()).filter(Boolean) || []
+    const planKey = env.TELXIO_PLAN_FALLBACK || '10332'
+    
+    // Also try to get extensions from database
+    const pool = getPool()
+    const [dbExtensions]: any = await pool.query('SELECT extension_id FROM extensions ORDER BY extension_id')
+    const dbExtensionIds = dbExtensions?.map((row: any) => String(row.extension_id)) || []
+    
+    // Merge and deduplicate extensions (prefer database, fallback to env)
+    const allExtensions = [...new Set([...dbExtensionIds, ...extensionsFallback])].sort()
+    
+    // Return data in format expected by frontend
+    const response = {
+      data: {
+        plan: {
+          [planKey]: {
+            extensions: allExtensions,
+            numbers: numbersFallback,
+          }
+        }
+      }
+    }
+    
+    res.json(response)
+  } catch (error: any) {
+    console.error('[Telxio Account] Error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: error?.message || 'Failed to fetch Telxio account data' 
+    })
+  }
 });
 
 // Update live call phase (agents/managers) -> updates shared liveCalls state
@@ -712,21 +752,21 @@ router.get('/analytics/leaderboard/daily', requireAuth, requireRoles(['agent', '
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
 
     params.push(startOfDay, endOfDay)
-    
+
     let sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
                  FROM calls 
                  WHERE LOWER(remarks) = 'lead' AND start_time >= ? AND start_time < ?`
-    
+
     // Add organization filtering for non-superadmin users
     if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
       sql += ' AND organization_id = ?';
       params.push(req.user.organizationId);
     }
-    
+
     sql += ` GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
              ORDER BY cnt DESC
              LIMIT 10`;
-    
+
     const [rows]: any = await pool.query(sql, params)
     const daily = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
     return res.json({ daily })
@@ -746,21 +786,21 @@ router.get('/analytics/leaderboard/monthly', requireAuth, requireRoles(['agent',
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1)
 
     params.push(startOfMonth, endOfMonth)
-    
+
     let sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
                  FROM calls 
                  WHERE LOWER(remarks) = 'lead' AND start_time >= ? AND start_time < ?`
-    
+
     // Add organization filtering for non-superadmin users
     if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
       sql += ' AND organization_id = ?';
       params.push(req.user.organizationId);
     }
-    
+
     sql += ` GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
              ORDER BY cnt DESC
              LIMIT 10`;
-    
+
     const [rows]: any = await pool.query(sql, params)
     const monthly = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
     return res.json({ monthly })
@@ -779,21 +819,21 @@ router.get('/analytics/leaderboard', requireAuth, requireRoles(['agent', 'manage
     if (from) { timeParts.push('start_time >= ?'); params.push(from) }
     if (to) { timeParts.push('start_time <= ?'); params.push(to) }
     const timeWhere = timeParts.length ? `AND ${timeParts.join(' AND ')}` : ''
-    
+
     let sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
                  FROM calls 
                  WHERE LOWER(remarks) = 'lead' ${timeWhere}`
-    
+
     // Add organization filtering for non-superadmin users
     if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
       sql += ' AND organization_id = ?';
       params.push(req.user.organizationId);
     }
-    
+
     sql += ` GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
              ORDER BY cnt DESC
              LIMIT 10`;
-    
+
     const [rows]: any = await pool.query(sql, params)
     const items = (rows || []).map((r: any) => ({ name: String(r.name || 'UNKNOWN'), count: Number(r.cnt || 0) }))
     return res.json({ items })
@@ -819,21 +859,21 @@ router.get('/analytics/leaderboard/stream', requireAuth, requireRoles(['agent', 
       if (from) { timeParts.push('start_time >= ?'); params.push(from) }
       if (to) { timeParts.push('start_time <= ?'); params.push(to) }
       const timeWhere = timeParts.length ? `AND ${timeParts.join(' AND ')}` : ''
-      
+
       let sql = `SELECT COALESCE(username, useremail, extension, 'UNKNOWN') AS name, COUNT(*) AS cnt
                    FROM calls 
                    WHERE LOWER(remarks) = 'lead' ${timeWhere}`
-      
+
       // Add organization filtering for non-superadmin users
       if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
         sql += ' AND organization_id = ?';
         params.push(req.user.organizationId);
       }
-      
+
       sql += ` GROUP BY COALESCE(username, useremail, extension, 'UNKNOWN')
                ORDER BY cnt DESC
                LIMIT 10`;
-      
+
       return { sql, params }
     }
 
@@ -863,12 +903,12 @@ router.get('/calls', requireAuth, requireRoles(['agent', 'manager', 'qa', 'super
     const skip = (page - 1) * pageSize
 
     const where: any = { AND: [] as any[] }
-    
+
     // Organization filtering - non-superadmin users can only see calls from their organization
     if (req.user?.role !== 'superadmin' && req.user?.organizationId) {
       where.AND.push({ organization_id: req.user.organizationId });
     }
-    
+
     const from = req.query.from ? new Date(String(req.query.from)) : null
     const to = req.query.to ? new Date(String(req.query.to)) : null
     if (from || to) where.AND.push({ start_time: { gte: from || undefined, lte: to || undefined } })
@@ -924,14 +964,14 @@ router.get('/calls/mine', requireAuth, async (req: any, res: any, next: any) => 
     const userId = req.user?.userId
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
 
-    const me = await db.users.findUnique({ 
-      where: { id: userId }, 
-      select: { 
-        username: true, 
-        usermail: true, 
-        extension: true, 
-        organization_id: true 
-      } 
+    const me = await db.users.findUnique({
+      where: { id: userId },
+      select: {
+        username: true,
+        usermail: true,
+        extension: true,
+        organization_id: true
+      }
     })
     const username = me?.username || undefined
     const usermail = me?.usermail || undefined

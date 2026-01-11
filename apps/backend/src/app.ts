@@ -20,14 +20,25 @@ export function createApp() {
     origin: env.NODE_ENV === 'production'
       ? (origin, callback) => {
         // Allow strict list or no origin (like mobile apps/curl)
-        const allowed = [env.PUBLIC_BASE_URL, 'http://localhost:3000']
+        // Include localhost for testing, and PUBLIC_BASE_URL for production
+        const allowed = [
+          env.PUBLIC_BASE_URL,
+          'http://localhost',
+          'http://localhost:80',
+          'http://localhost:3000',
+          'http://127.0.0.1',
+          'http://127.0.0.1:80',
+          'http://127.0.0.1:3000',
+          'http://demandifymedia.com',
+          'https://demandifymedia.com'
+        ]
         if (!origin || allowed.includes(origin)) {
           callback(null, true)
         } else {
           callback(new Error('Not allowed by CORS'))
         }
       }
-      : true,
+      : true, // Allow all origins in development
     credentials: true
   }));
 

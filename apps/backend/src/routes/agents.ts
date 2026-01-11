@@ -16,7 +16,19 @@ router.get('/me/credentials', requireRoles(['agent', 'manager', 'superadmin']), 
     if (!user || !user.extension) return res.status(404).json({ success: false, message: 'No extension assigned' })
     const pool = getPool()
     const [rows]: any = await pool.query('SELECT extension_id AS extensionId, password FROM extensions WHERE extension_id = ? LIMIT 1', [user.extension])
-    if (!rows || !rows[0]) return res.status(404).json({ success: false, message: 'Extension not found' })
+    
+    // If extension not found in database, use SIP_PASSWORD as fallback (common for Telxio)
+    if (!rows || !rows[0]) {
+      const sipPassword = process.env.SIP_PASSWORD || ''
+      if (sipPassword) {
+        // Insert the extension with SIP_PASSWORD as fallback
+        await pool.query('INSERT INTO extensions (extension_id, password) VALUES (?, ?) ON DUPLICATE KEY UPDATE password = ?', 
+          [user.extension, sipPassword, sipPassword])
+        return res.json({ success: true, extensionId: user.extension, password: sipPassword })
+      }
+      return res.status(404).json({ success: false, message: 'Extension not found and no SIP password configured' })
+    }
+    
     const { extensionId, password } = rows[0]
     return res.json({ success: true, extensionId, password })
   } catch (e) {
